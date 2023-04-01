@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use number::UnipolarFloat;
+use simple_error::bail;
 
 use crate::master::Strobe as MasterStrobe;
 use crate::{config::Options, util::unipolar_to_range};
@@ -81,33 +82,54 @@ pub enum GenericStrobeStateChange {
 
 #[derive(Debug)]
 pub struct Timer {
-    pub on: Duration,
-    pub off: Duration,
+    /// Total time in a full timer cycle (timer period).
+    duration: Duration,
+    /// The fraction of the cycle that the timer is "on".
+    duty_cycle: UnipolarFloat,
     is_on: bool,
     state_age: Duration,
 }
 
-fn parse_seconds(options: &Options, key: &str) -> Result<Duration, String> {
-    let v = options
+fn parse_seconds(options: &Options, key: &str) -> Result<Option<Duration>, String> {
+    let Some(v) = options
         .get(key)
-        .ok_or_else(|| format!("missing options key \"{}\"", key))?;
+        else { return Ok(None)};
     let secs = v
         .parse::<u64>()
         .map_err(|e| format!("{}: expected integer seconds: {}", key, e))?;
-    Ok(Duration::from_secs(secs))
+    Ok(Some(Duration::from_secs(secs)))
 }
 
 impl Timer {
-    pub fn from_options(options: &Options) -> Result<Self, String> {
-        let on = parse_seconds(options, "timer_on")?;
-        let off = parse_seconds(options, "timer_off")?;
-        Ok(Self::new(on, off))
+    /// The amount of time the timer stays on during a cycle.
+    fn on_duration(&self) -> Duration {
+        self.duration.mul_f64(self.duty_cycle.val())
     }
 
-    pub fn new(on: Duration, off: Duration) -> Self {
+    /// The amount of time the timer stays off during a cycle.
+    fn off_duration(&self) -> Duration {
+        self.duration.mul_f64(1.0 - self.duty_cycle.val())
+    }
+
+    pub fn from_options(options: &Options) -> Result<Self, String> {
+        match (
+            parse_seconds(options, "timer_on")?,
+            parse_seconds(options, "timer_off")?,
+        ) {
+            (Some(on), Some(off)) => {
+                let duration = on + off;
+                let duty_cycle = UnipolarFloat::new(on.as_secs_f64() / duration.as_secs_f64());
+                Ok(Self::new(duration, duty_cycle))
+            }
+            (None, None) => Ok(Self::new(Duration::from_secs(360), UnipolarFloat::new(0.5))),
+            _ => Err(format!("bad timer options: {:?}", options)),
+        }
+    }
+
+    pub fn new(duration: Duration, duty_cycle: UnipolarFloat) -> Self {
         Self {
-            on,
-            off,
+            duration,
+            duty_cycle,
             is_on: true,
             state_age: Duration::ZERO,
         }
@@ -115,7 +137,11 @@ impl Timer {
 
     pub fn update(&mut self, delta_t: Duration) {
         let new_state_age = self.state_age + delta_t;
-        let dwell = if self.is_on { self.on } else { self.off };
+        let dwell = if self.is_on {
+            self.on_duration()
+        } else {
+            self.off_duration()
+        };
         if new_state_age >= dwell {
             self.is_on = !self.is_on;
             self.state_age = Duration::ZERO;
@@ -133,4 +159,27 @@ impl Timer {
         self.is_on = true;
         self.state_age = Duration::ZERO;
     }
+
+    pub fn emit_state<F>(&self, emit: &mut F)
+    where
+        F: FnMut(TimerStateChange),
+    {
+        use TimerStateChange::*;
+        emit(Duration(self.duration));
+        emit(DutyCycle(self.duty_cycle));
+    }
+
+    pub fn handle_state_change(&mut self, sc: TimerStateChange) {
+        use TimerStateChange::*;
+        match sc {
+            Duration(d) => self.duration = d,
+            DutyCycle(d) => self.duty_cycle = d,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TimerStateChange {
+    Duration(Duration),
+    DutyCycle(UnipolarFloat),
 }

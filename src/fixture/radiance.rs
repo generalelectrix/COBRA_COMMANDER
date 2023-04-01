@@ -3,9 +3,13 @@
 
 use std::{collections::HashMap, error::Error, time::Duration};
 
+use log::error;
 use number::UnipolarFloat;
 
-use super::{generic::Timer, EmitFixtureStateChange, Fixture, FixtureControlMessage, PatchFixture};
+use super::{
+    generic::{Timer, TimerStateChange},
+    EmitFixtureStateChange, Fixture, FixtureControlMessage, PatchFixture,
+};
 use crate::{master::MasterControls, util::unipolar_to_range};
 
 #[derive(Default, Debug)]
@@ -36,6 +40,13 @@ impl Radiance {
         match sc {
             Haze(v) => self.haze = v,
             Fan(v) => self.fan = v,
+            Timer(t) => {
+                if let Some(ref mut timer) = self.timer {
+                    timer.handle_state_change(t);
+                } else {
+                    error!("radiance got a timer state change but has no timer");
+                }
+            }
         };
         emitter.emit_radiance(sc);
     }
@@ -63,6 +74,12 @@ impl Fixture for Radiance {
         use StateChange::*;
         emitter.emit_radiance(Haze(self.haze));
         emitter.emit_radiance(Fan(self.fan));
+        let mut emit_timer = |ssc| {
+            emitter.emit_radiance(Timer(ssc));
+        };
+        if let Some(ref timer) = self.timer {
+            timer.emit_state(&mut emit_timer);
+        }
     }
 
     fn control(
@@ -84,6 +101,7 @@ impl Fixture for Radiance {
 pub enum StateChange {
     Haze(UnipolarFloat),
     Fan(UnipolarFloat),
+    Timer(TimerStateChange),
 }
 
 // Venus has no controls that are not represented as state changes.
