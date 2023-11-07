@@ -14,6 +14,7 @@ use crate::fixture::rush_wizard::RushWizard;
 use crate::fixture::solar_system::SolarSystem;
 use crate::fixture::starlight::Starlight;
 use crate::fixture::swarmolon::Swarmolon;
+use crate::fixture::uv_led_brick::UvLedBrick;
 use crate::fixture::venus::Venus;
 use crate::fixture::wizard_extreme::WizardExtreme;
 use crate::fixture::{
@@ -152,6 +153,7 @@ impl EmitStateChange for OscController {
             FixtureStateChange::Color(sc) => Color::emit_state_change(sc, send),
             FixtureStateChange::Colordynamic(sc) => Colordynamic::emit_state_change(sc, send),
             FixtureStateChange::Dimmer(sc) => Dimmer::emit_state_change(sc, send),
+            FixtureStateChange::UvLedBrick(sc) => UvLedBrick::emit_state_change(sc, send),
             FixtureStateChange::Master(sc) => MasterControls::emit_state_change(sc, send),
             FixtureStateChange::Animation(sc) => AnimationControls::emit_state_change(sc, send),
         }

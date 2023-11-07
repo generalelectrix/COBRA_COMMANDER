@@ -15,5 +15,6 @@ mod rush_wizard;
 mod solar_system;
 mod starlight;
 mod swarmolon;
+mod uv_led_brick;
 mod venus;
 mod wizard_extreme;

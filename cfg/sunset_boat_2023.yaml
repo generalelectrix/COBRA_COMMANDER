@@ -1,0 +1,38 @@
+receive_port: 8000
+controllers:
+  - host: 10.0.1.2
+    port: 9000
+debug: False
+fixtures:
+  - name: wizard_extreme
+    addr: 16
+    selector: True
+  - name: wizard_extreme
+    addr: 32
+    selector: True
+  - name: starlight
+    addr: 200
+    selector: True
+  - name: starlight
+    addr: 205
+    selector: True
+  - name: h2o
+    selector: True
+    addr: 50
+  - name: h2o
+    selector: True
+    addr: 53
+  - name: h2o
+    selector: True
+    addr: 56
+  - name: h2o
+    selector: True
+    addr: 59
+  - name: hypnotic
+    addr: 100
+  - name: hypnotic
+    addr: 102
+  - name: uv_led_brick
+    addr: 250
+  - name: rotosphere_q3
+    addr: 300
