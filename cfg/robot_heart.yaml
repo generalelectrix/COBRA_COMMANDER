@@ -1,0 +1,12 @@
+receive_port: 8000
+controllers:
+  - host: 10.0.1.2
+    port: 9000
+debug: False
+fixtures:
+  - name: solar_system
+    addr: 50
+    selector: True
+  - name: wizard_extreme
+    addr: 128
+    selector: True
