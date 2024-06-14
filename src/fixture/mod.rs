@@ -270,6 +270,7 @@ pub enum FixtureStateChange {
     UvLedBrick(UvLedBrickControlMessage),
     Master(MasterStateChange),
     Animation(AnimationStateChange),
+    Active(bool),
 }
 
 #[derive(Clone, Debug)]
@@ -300,9 +301,12 @@ pub enum FixtureControlMessage {
     Colordynamic(ColordynamicControlMessage),
     Dimmer(DimmerControlMessage),
     UvLedBrick(UvLedBrickControlMessage),
+    /// FIXME: we should probably rescope these somehow
     Master(MasterControlMessage),
     RefreshUI,
     Animation(AnimationControlMessage),
+    /// Set the state of whether the fixture is active or not.
+    Active(bool),
     /// FIXME: horrible hack around OSC control map handlers currently being infallible
     Error(String),
 }
@@ -328,6 +332,8 @@ pub struct FixtureGroup {
     fixture_configs: Vec<GroupFixtureConfig>,
     /// The number of DMX channels used by this fixture.
     channel_count: usize,
+    /// True if the fixture should render. Otherwise, renders zeros into the frame.
+    active: bool,
     /// The inner implementation of the fixture.
     fixture: Box<dyn Fixture>,
 }
@@ -378,6 +384,11 @@ impl FixtureGroup {
             emitter,
             group: self.name().clone(),
         };
+        if let FixtureControlMessage::Active(active) = msg.msg {
+            self.active = active;
+            emitter.emit(FixtureStateChange::Active(active));
+            return None;
+        }
         self.fixture
             .control(msg.msg, &mut emitter)
             .map(|m| ControlMessage {
@@ -398,14 +409,19 @@ impl FixtureGroup {
             let phase_offset = phase_offset_per_fixture * i as f64;
             let dmx_buf =
                 &mut dmx_buffers[cfg.universe][cfg.dmx_addr..cfg.dmx_addr + self.channel_count];
-            self.fixture.render(
-                phase_offset,
-                &FixtureGroupControls {
-                    master_controls,
-                    mirror: cfg.mirror,
-                },
-                dmx_buf,
-            );
+            if self.active {
+                self.fixture.render(
+                    phase_offset,
+                    &FixtureGroupControls {
+                        master_controls,
+                        mirror: cfg.mirror,
+                    },
+                    dmx_buf,
+                );
+            } else {
+                dmx_buf.fill(0);
+            }
+
             debug!("{} ({}): {:?}", self.fixture_type(), self.name(), dmx_buf);
         }
     }
@@ -520,6 +536,7 @@ impl Patch {
                 mirror: cfg.mirror,
             }],
             channel_count: candidate.channel_count,
+            active: true,
             fixture: candidate.fixture,
         });
         if cfg.selector {

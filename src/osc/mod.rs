@@ -45,6 +45,7 @@ mod animation;
 mod basic_controls;
 mod control_message;
 mod fixture;
+mod group;
 mod label_array;
 mod master;
 mod radio_button;
@@ -55,6 +56,11 @@ pub type TalkbackMode = bool;
 pub trait MapControls {
     /// Add OSC control mappings to the provided control map.
     fn map_controls(&self, map: &mut ControlMap<FixtureControlMessage>);
+
+    /// Add all OSC control mappings to the provided control map.
+    ///
+    /// This includes controls that are provided for all fixture groups.
+    fn map_controls_for_group(&self, map: &mut ControlMap<FixtureControlMessage>);
 }
 
 /// Process a state change message into OSC messages.
@@ -197,6 +203,7 @@ impl EmitStateChange for OscController {
             FixtureStateChange::Animation(sc) => {
                 AnimationControls::emit_state_change(sc, send, self.talkback)
             }
+            FixtureStateChange::Active(sc) => {}
         }
     }
 }
