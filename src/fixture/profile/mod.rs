@@ -15,6 +15,7 @@ pub mod h2o;
 pub mod hypnotic;
 pub mod leko;
 pub mod lumasphere;
+pub mod lumitone;
 pub mod radiance;
 pub mod rotosphere_q3;
 pub mod rug_doctor;

@@ -67,6 +67,11 @@ impl<R: RenderToDmx<BipolarFloat>> Bipolar<R> {
         ChannelControl::wrap(self, label, false, ChannelKnobHandler { index })
     }
 
+    /// Get the current value of this control.
+    pub fn val(&self) -> BipolarFloat {
+        self.val
+    }
+
     /// Get the current value of this control with animations applied.
     pub fn val_with_anim(&self, animations: impl Iterator<Item = f64>) -> BipolarFloat {
         let mut val = if self.virtual_detent {
