@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+log = "0.4"
+simple_logger = "5"
+anyhow = "1"
+statrs = "0.18.0"
 
 [[bin]]
 name = "lumitone"
