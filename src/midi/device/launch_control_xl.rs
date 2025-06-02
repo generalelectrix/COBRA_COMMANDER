@@ -1,6 +1,5 @@
 //! Device model for the Novation Launch Control XL.
 use log::{debug, error};
-use number::{BipolarFloat, UnipolarFloat};
 use tunnels::{
     midi::{Event, EventType, Output},
     midi_controls::MidiDevice,
@@ -142,7 +141,6 @@ impl NovationLaunchControlXL {
                 Button { button, state } => {
                     set_led(button.sysex_set_led_offset() + channel, state, output);
                 }
-                _ => (),
             },
             ChannelButtonRadio {
                 channel,
@@ -186,6 +184,7 @@ pub enum LaunchControlXLControlEvent {
         channel: u8,
         event: LaunchControlXLChannelControlEvent,
     },
+    #[allow(unused)]
     SideButton(LaunchControlXLSideButton),
 }
 
@@ -240,6 +239,7 @@ pub enum LaunchControlXLStateChange {
         button: LaunchControlXLChannelButton,
         state: LedState,
     },
+    #[allow(unused)]
     SideButton {
         button: LaunchControlXLSideButton,
         state: LedState,
@@ -252,6 +252,7 @@ pub enum LaunchControlXLChannelStateChange {
         row: u8,
         state: LedState,
     },
+    #[allow(unused)]
     Button {
         button: LaunchControlXLChannelButton,
         state: LedState,

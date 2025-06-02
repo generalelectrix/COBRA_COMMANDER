@@ -108,6 +108,7 @@ pub enum Apc20ChannelButtonType {
     // ClipLaunch(u8), // payload is the row, 0 is top row
 }
 
+#[allow(unused)]
 #[derive(Clone, Copy)]
 pub enum Apc20SpecialButtonType {
     SceneLaunch(u8), // payload is the row, 0 is top row

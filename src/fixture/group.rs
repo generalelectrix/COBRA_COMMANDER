@@ -73,10 +73,6 @@ impl FixtureGroup {
         self.fixture.get_animation(index)
     }
 
-    pub fn is_animated(&self) -> bool {
-        self.fixture.is_animated()
-    }
-
     pub fn fixture_configs(&self) -> &[GroupFixtureConfig] {
         &self.fixture_configs
     }

@@ -18,6 +18,7 @@ where
     H: ChannelHandler<T>,
 {
     pub control: C,
+    #[allow(unused)]
     label: String,
     handler: H,
     /// If true, echo exact channel control messages.

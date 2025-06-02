@@ -97,6 +97,7 @@ fn initialize(url: &Url, poll_interval: Duration) -> Wled {
 
 pub enum WledControlMessage {
     SetState(State),
+    #[allow(unused)]
     GetEffectMetadata,
 }
 

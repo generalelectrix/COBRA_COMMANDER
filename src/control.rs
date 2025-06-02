@@ -155,6 +155,7 @@ impl<'a> EmitWledControlMessage for ControlMessageWithMetadataSender<'a> {
 pub enum ControlMessage {
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
+    #[allow(unused)]
     Wled(WledResponse),
 }
 

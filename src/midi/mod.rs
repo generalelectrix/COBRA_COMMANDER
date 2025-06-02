@@ -17,6 +17,7 @@ mod mapping;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Device {
+    #[allow(unused)]
     Apc20(AkaiApc20),
     LaunchControlXL(NovationLaunchControlXL),
 }

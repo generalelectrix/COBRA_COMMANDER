@@ -4,7 +4,6 @@ use local_ip_address::local_ip;
 use log::info;
 use log::LevelFilter;
 use midi::Device;
-use number::UnipolarFloat;
 use osc::prompt_osc_config;
 use osc::GroupControlMap;
 use rust_dmx::select_port;

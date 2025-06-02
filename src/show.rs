@@ -343,7 +343,9 @@ impl Show {
 /// These cover all of the fixed control features, but not fixture-specific controls.
 #[derive(Debug, Clone)]
 pub enum ShowControlMessage {
+    #[allow(unused)]
     Master(crate::master::ControlMessage),
     Channel(crate::channel::ControlMessage),
+    #[allow(unused)]
     Animation(crate::animation::ControlMessage),
 }
