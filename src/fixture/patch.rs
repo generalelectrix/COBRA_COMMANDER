@@ -37,6 +37,7 @@ use crate::fixture::cosmic_burst::CosmicBurst;
 use crate::fixture::freq_strobe::FreqStrobe;
 use crate::fixture::fusion_roll::FusionRoll;
 use crate::fixture::group::GroupFixtureConfig;
+use crate::fixture::leko::Leko;
 use crate::fixture::rug_doctor::RugDoctor;
 use crate::fixture::wizlet::Wizlet;
 
@@ -65,6 +66,7 @@ lazy_static! {
         FusionRoll::patcher(),
         H2O::patcher(),
         Hypnotic::patcher(),
+        Leko::patcher(),
         Lumasphere::patcher(),
         Radiance::patcher(),
         RotosphereQ3::patcher(),

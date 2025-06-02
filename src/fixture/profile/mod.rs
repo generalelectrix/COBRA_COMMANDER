@@ -13,6 +13,7 @@ pub mod fusion_roll;
 pub mod generic;
 pub mod h2o;
 pub mod hypnotic;
+pub mod leko;
 pub mod lumasphere;
 pub mod radiance;
 pub mod rotosphere_q3;
