@@ -1,4 +1,5 @@
 pub mod aquarius;
+pub mod astera;
 pub mod astroscan;
 pub mod color;
 pub mod colordynamic;
