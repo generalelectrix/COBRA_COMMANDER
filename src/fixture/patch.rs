@@ -32,6 +32,7 @@ use super::profile::wizard_extreme::WizardExtreme;
 use crate::channel::Channels;
 use crate::config::{FixtureConfig, FixtureGroupConfig, Options};
 use crate::dmx::UniverseIdx;
+use crate::fixture::astera::Astera;
 use crate::fixture::cosmic_burst::CosmicBurst;
 use crate::fixture::freq_strobe::FreqStrobe;
 use crate::fixture::fusion_roll::FusionRoll;
@@ -50,6 +51,7 @@ pub struct Patch {
 
 lazy_static! {
     static ref PATCHERS: Vec<Patcher> = vec![
+        Astera::patcher(),
         Astroscan::patcher(),
         Aquarius::patcher(),
         Color::patcher(),
