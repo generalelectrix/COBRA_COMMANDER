@@ -18,6 +18,8 @@ impl PatchFixture for Faderboard {
     }
 }
 
+crate::register!(Faderboard);
+
 const DEFAULT_CHANNEL_COUNT: usize = 16;
 
 impl Default for Faderboard {

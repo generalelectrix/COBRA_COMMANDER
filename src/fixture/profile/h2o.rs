@@ -1,7 +1,8 @@
 //! Intuitive control profile for the American DJ H2O DMX Pro.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 3]
 pub struct H2O {
     #[channel_control]
     #[animate]
@@ -47,13 +48,6 @@ impl Default for H2O {
                 .with_detent()
                 .with_channel_knob(1),
         }
-    }
-}
-
-impl PatchAnimatedFixture for H2O {
-    const NAME: FixtureType = FixtureType("H2O");
-    fn channel_count(&self) -> usize {
-        3
     }
 }
 

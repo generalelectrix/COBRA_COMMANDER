@@ -1,7 +1,8 @@
 //! Intuitive control profile for the American DJ Aquarius 250.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 2]
 pub struct Hypnotic {
     red_laser_on: Bool<()>,
     green_laser_on: Bool<()>,
@@ -22,13 +23,6 @@ impl Default for Hypnotic {
                 .with_mirroring(true)
                 .with_channel_knob(0),
         }
-    }
-}
-
-impl PatchAnimatedFixture for Hypnotic {
-    const NAME: FixtureType = FixtureType("Hypnotic");
-    fn channel_count(&self) -> usize {
-        2
     }
 }
 

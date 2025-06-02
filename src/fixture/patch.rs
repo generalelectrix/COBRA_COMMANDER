@@ -3,116 +3,83 @@ use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 
 use anyhow::bail;
-use lazy_static::lazy_static;
 use log::info;
 
 use super::fixture::{
     AnimatedFixture, Fixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture,
 };
 use super::group::{FixtureGroup, FixtureGroupKey};
-use super::profile::aquarius::Aquarius;
-use super::profile::astroscan::Astroscan;
-use super::profile::color::Color;
-use super::profile::colordynamic::Colordynamic;
-use super::profile::comet::Comet;
-use super::profile::dimmer::Dimmer;
-use super::profile::faderboard::Faderboard;
-use super::profile::freedom_fries::FreedomFries;
-use super::profile::h2o::H2O;
-use super::profile::hypnotic::Hypnotic;
-use super::profile::lumasphere::Lumasphere;
-use super::profile::radiance::Radiance;
-use super::profile::rotosphere_q3::RotosphereQ3;
-use super::profile::rush_wizard::RushWizard;
-use super::profile::solar_system::SolarSystem;
-use super::profile::starlight::Starlight;
-use super::profile::uv_led_brick::UvLedBrick;
-use super::profile::venus::Venus;
-use super::profile::wizard_extreme::WizardExtreme;
 use crate::channel::Channels;
 use crate::config::{FixtureConfig, FixtureGroupConfig, Options};
 use crate::dmx::UniverseIdx;
-use crate::fixture::astera::Astera;
-use crate::fixture::cosmic_burst::CosmicBurst;
-use crate::fixture::freq_strobe::FreqStrobe;
-use crate::fixture::fusion_roll::FusionRoll;
 use crate::fixture::group::GroupFixtureConfig;
-use crate::fixture::leko::Leko;
-use crate::fixture::rug_doctor::RugDoctor;
-use crate::fixture::wizlet::Wizlet;
+use linkme::distributed_slice;
 
 type UsedAddrs = HashMap<(UniverseIdx, usize), FixtureConfig>;
 
-#[derive(Default)]
 pub struct Patch {
+    patchers: Vec<Patcher>,
     fixtures: HashMap<FixtureGroupKey, FixtureGroup>,
     fixture_type_lookup: HashMap<&'static str, FixtureType>,
     used_addrs: UsedAddrs,
 }
 
-lazy_static! {
-    static ref PATCHERS: Vec<Patcher> = vec![
-        Astera::patcher(),
-        Astroscan::patcher(),
-        Aquarius::patcher(),
-        Color::patcher(),
-        Colordynamic::patcher(),
-        Comet::patcher(),
-        CosmicBurst::patcher(),
-        Dimmer::patcher(),
-        Faderboard::patcher(),
-        FreedomFries::patcher(),
-        FreqStrobe::patcher(),
-        FusionRoll::patcher(),
-        H2O::patcher(),
-        Hypnotic::patcher(),
-        Leko::patcher(),
-        Lumasphere::patcher(),
-        Radiance::patcher(),
-        RotosphereQ3::patcher(),
-        RushWizard::patcher(),
-        RugDoctor::patcher(),
-        SolarSystem::patcher(),
-        Starlight::patcher(),
-        UvLedBrick::patcher(),
-        Venus::patcher(),
-        WizardExtreme::patcher(),
-        Wizlet::patcher(),
-    ];
-}
+#[distributed_slice]
+pub static PATCHERS: [fn() -> Patcher];
 
-fn get_candidate(name: &str, options: &Options) -> Result<PatchCandidate> {
-    let mut candidates = PATCHERS
-        .iter()
-        .flat_map(|p| p(name, options))
-        .collect::<Result<Vec<_>>>()?;
-    let candidate = match candidates.len() {
-        0 => bail!("unable to patch {name}"),
-        1 => candidates.pop().unwrap(),
-        _ => bail!(
-            "multiple fixture patch candidates: {:?}",
-            candidates.iter().map(|c| &c.fixture_type).join(", ")
-        ),
+#[macro_export]
+macro_rules! register {
+    ($fixture:ty) => {
+        use linkme::distributed_slice;
+        use $crate::fixture::patch::{Patcher, PATCHERS};
+
+        #[distributed_slice(PATCHERS)]
+        static PATCHER: fn() -> Patcher = <$fixture>::patcher;
     };
-    Ok(candidate)
 }
 
 impl Patch {
+    pub fn new() -> Self {
+        Self {
+            patchers: PATCHERS.iter().map(|p| p()).collect(),
+            fixtures: Default::default(),
+            fixture_type_lookup: Default::default(),
+            used_addrs: Default::default(),
+        }
+    }
+
     pub fn patch(
         &mut self,
         channels: &mut Channels,
         cfg: FixtureGroupConfig,
     ) -> anyhow::Result<()> {
-        let candidate = get_candidate(&cfg.name, &cfg.options)?;
+        let candidate = self.get_candidate(&cfg.name, &cfg.options)?;
         for fixture_cfg in cfg.fixture_configs(candidate.channel_count) {
             self.patch_one(channels, fixture_cfg)?;
         }
         Ok(())
     }
 
+    fn get_candidate(&self, name: &str, options: &Options) -> Result<PatchCandidate> {
+        let mut candidates = self
+            .patchers
+            .iter()
+            .flat_map(|p| p(name, options))
+            .collect::<Result<Vec<_>>>()?;
+        let candidate = match candidates.len() {
+            0 => bail!("unable to patch {name}"),
+            1 => candidates.pop().unwrap(),
+            _ => bail!(
+                "multiple fixture patch candidates: {:?}",
+                candidates.iter().map(|c| &c.fixture_type).join(", ")
+            ),
+        };
+        Ok(candidate)
+    }
+
     /// Patch a single fixture config.
     fn patch_one(&mut self, channels: &mut Channels, cfg: FixtureConfig) -> anyhow::Result<()> {
-        let candidate = get_candidate(&cfg.name, &cfg.options)?;
+        let candidate = self.get_candidate(&cfg.name, &cfg.options)?;
         self.used_addrs = self.check_collision(&candidate, &cfg)?;
         // Add channel mapping index if provided.  Ensure this is an animatable fixture.
         if cfg.channel {

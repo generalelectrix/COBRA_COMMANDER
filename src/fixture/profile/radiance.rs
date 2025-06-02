@@ -42,6 +42,8 @@ impl PatchAnimatedFixture for Radiance {
     }
 }
 
+crate::register!(Radiance);
+
 impl AnimatedFixture for Radiance {
     type Target = AnimationTarget;
 

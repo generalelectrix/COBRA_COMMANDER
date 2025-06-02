@@ -1,6 +1,7 @@
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 11]
 pub struct FusionRoll {
     #[channel_control]
     #[animate]
@@ -59,13 +60,6 @@ impl Default for FusionRoll {
                 Strobe::channel("LaserStrobe", 6, 16, 131, 8),
             ),
         }
-    }
-}
-
-impl PatchAnimatedFixture for FusionRoll {
-    const NAME: FixtureType = FixtureType("FusionRoll");
-    fn channel_count(&self) -> usize {
-        11
     }
 }
 

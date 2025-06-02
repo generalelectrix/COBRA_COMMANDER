@@ -1,7 +1,8 @@
 //! Control profile for the "house light" Starlight white laser moonflower.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 4]
 pub struct Starlight {
     #[channel_control]
     #[animate]
@@ -21,13 +22,6 @@ impl Default for Starlight {
                 .with_mirroring(true)
                 .with_channel_knob(0),
         }
-    }
-}
-
-impl PatchAnimatedFixture for Starlight {
-    const NAME: FixtureType = FixtureType("Starlight");
-    fn channel_count(&self) -> usize {
-        4
     }
 }
 

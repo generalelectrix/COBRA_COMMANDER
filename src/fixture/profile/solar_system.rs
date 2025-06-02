@@ -1,7 +1,8 @@
 //! Optikinetics Solar System - the grand champion gobo rotator
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 7]
 pub struct SolarSystem {
     #[channel_control]
     shutter_open: ChannelLevelBool<Bool<()>>,
@@ -37,12 +38,6 @@ impl Default for SolarSystem {
     }
 }
 
-impl PatchAnimatedFixture for SolarSystem {
-    const NAME: FixtureType = FixtureType("SolarSystem");
-    fn channel_count(&self) -> usize {
-        7
-    }
-}
 impl ControllableFixture for SolarSystem {}
 
 impl AnimatedFixture for SolarSystem {

@@ -28,7 +28,8 @@ const MAX_ROTATION_SPEED: u8 = 100;
 /// the two channels after the lumasphere's built-in controller:
 /// 8: lamp 1 dimmer
 /// 9: lamp 2 dimmer
-#[derive(Debug)]
+#[derive(Debug, PatchFixture)]
+#[channel_count = 9]
 pub struct Lumasphere {
     controls: GroupControlMap<ControlMessage>,
     lamp_1_intensity: UnipolarFloat,
@@ -39,13 +40,6 @@ pub struct Lumasphere {
     color_start: bool,
     strobe_1: Strobe,
     strobe_2: Strobe,
-}
-
-impl PatchFixture for Lumasphere {
-    const NAME: FixtureType = FixtureType("Lumasphere");
-    fn channel_count(&self) -> usize {
-        9
-    }
 }
 
 impl Default for Lumasphere {

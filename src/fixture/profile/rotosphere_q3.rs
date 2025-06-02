@@ -3,7 +3,8 @@ use super::color::Model::Rgbw;
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 9]
 pub struct RotosphereQ3 {
     #[channel_control]
     #[animate]
@@ -32,13 +33,6 @@ impl Default for RotosphereQ3 {
                 .with_mirroring(true)
                 .with_channel_knob(2),
         }
-    }
-}
-
-impl PatchAnimatedFixture for RotosphereQ3 {
-    const NAME: FixtureType = FixtureType("RotosphereQ3");
-    fn channel_count(&self) -> usize {
-        9
     }
 }
 

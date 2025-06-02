@@ -6,7 +6,8 @@ use super::color::Color;
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 8]
 pub struct FreedomFries {
     #[channel_control]
     #[animate]
@@ -30,13 +31,6 @@ impl Default for FreedomFries {
 
             program: ProgramControl::default(),
         }
-    }
-}
-
-impl PatchAnimatedFixture for FreedomFries {
-    const NAME: FixtureType = FixtureType("FreedomFries");
-    fn channel_count(&self) -> usize {
-        8
     }
 }
 

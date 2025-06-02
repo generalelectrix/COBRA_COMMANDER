@@ -1,7 +1,8 @@
 //! Control profile for a uv_led_brick.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 7]
 pub struct UvLedBrick {
     #[channel_control]
     #[animate]
@@ -13,13 +14,6 @@ impl Default for UvLedBrick {
         Self {
             level: Unipolar::full_channel("Level", 0).with_channel_level(),
         }
-    }
-}
-
-impl PatchAnimatedFixture for UvLedBrick {
-    const NAME: FixtureType = FixtureType("UvLedBrick");
-    fn channel_count(&self) -> usize {
-        7
     }
 }
 

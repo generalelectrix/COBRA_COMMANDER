@@ -42,6 +42,6 @@ pub mod prelude {
     pub use crate::master::MasterControls;
     pub use crate::osc::prelude::*;
     pub use anyhow::bail;
-    pub use fixture_macros::{Control, EmitState};
+    pub use fixture_macros::{Control, EmitState, PatchAnimatedFixture, PatchFixture};
     pub use number::{BipolarFloat, Phase, UnipolarFloat};
 }

@@ -1,7 +1,8 @@
 //! Control profile for a dimmer.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 1]
 pub struct Dimmer {
     #[channel_control]
     #[animate]
@@ -13,13 +14,6 @@ impl Default for Dimmer {
         Self {
             level: Unipolar::full_channel("Level", 0).with_channel_level(),
         }
-    }
-}
-
-impl PatchAnimatedFixture for Dimmer {
-    const NAME: FixtureType = FixtureType("Dimmer");
-    fn channel_count(&self) -> usize {
-        1
     }
 }
 

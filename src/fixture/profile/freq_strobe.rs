@@ -8,7 +8,8 @@ use crate::fixture::prelude::*;
 
 const CELL_COUNT: usize = 16;
 
-#[derive(EmitState, Control)]
+#[derive(EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 18]
 pub struct FreqStrobe {
     #[channel_control]
     #[animate]
@@ -37,13 +38,6 @@ impl Default for FreqStrobe {
             reverse: Bool::new_off("Reverse", ()),
             flasher,
         }
-    }
-}
-
-impl PatchAnimatedFixture for FreqStrobe {
-    const NAME: FixtureType = FixtureType("FreqStrobe");
-    fn channel_count(&self) -> usize {
-        18
     }
 }
 

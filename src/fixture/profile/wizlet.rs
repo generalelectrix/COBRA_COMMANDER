@@ -1,7 +1,8 @@
 //! Control profile for the American DJ (Eliminator) Vortex, aka the Wizlet.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 12]
 pub struct Wizlet {
     #[channel_control]
     #[animate]
@@ -62,13 +63,6 @@ impl Default for Wizlet {
             strobe: Strobe::channel("Strobe", 4, 64, 95, 32),
             dimmer: Unipolar::full_channel("Dimmer", 5).with_channel_level(),
         }
-    }
-}
-
-impl PatchAnimatedFixture for Wizlet {
-    const NAME: FixtureType = FixtureType("Wizlet");
-    fn channel_count(&self) -> usize {
-        12
     }
 }
 
