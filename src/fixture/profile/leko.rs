@@ -53,7 +53,8 @@ impl PatchAnimatedFixture for Leko {
             bail!("lekos must specify the \"kind\" option");
         };
         Ok(Self {
-            model: Model::from_str(kind).context("invalid leko \"kind\"")?,
+            model: Model::from_str(kind)
+                .with_context(|| format!("invalid leko kind: \"{kind}\""))?,
             ..Default::default()
         })
     }
@@ -111,7 +112,6 @@ impl ControllableFixture for Leko {}
 
 /// Which model of gobo rotator is installed in this leko, or is this the dimmer.
 #[derive(Debug, EnumString)]
-#[strum(serialize_all = "snake_case")]
 enum Model {
     /// Dimmer channel.
     Dimmer,
