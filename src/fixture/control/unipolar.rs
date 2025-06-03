@@ -52,10 +52,12 @@ impl<R: RenderToDmx<UnipolarFloat>> Unipolar<R> {
         ChannelControl::wrap(self, label, false, ChannelKnobHandler { index })
     }
 
+    /// Get the current value of this control.
     pub fn val(&self) -> UnipolarFloat {
         self.val
     }
 
+    /// Get the current value of this control with animations applied.
     pub fn val_with_anim(&self, animations: impl Iterator<Item = f64>) -> UnipolarFloat {
         let mut val = self.val.val();
         for anim_val in animations {
