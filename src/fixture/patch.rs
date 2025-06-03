@@ -1,3 +1,4 @@
+//! Types and traits related to patching fixtures.
 use anyhow::{anyhow, ensure, Result};
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
@@ -17,6 +18,11 @@ use linkme::distributed_slice;
 
 type UsedAddrs = HashMap<(UniverseIdx, usize), FixtureConfig>;
 
+/// Factory for fixture instances.
+///
+/// Creates fixture instances based on configurations.
+/// Maintains a mapping of which DMX addresses are in use by which fixture, to
+/// prevent addressing collisions.
 pub struct Patch {
     patchers: Vec<Patcher>,
     fixtures: HashMap<FixtureGroupKey, FixtureGroup>,
@@ -24,9 +30,14 @@ pub struct Patch {
     used_addrs: UsedAddrs,
 }
 
+/// Distributed registry for things that we can patch.
+///
+/// Fixtures use the register macro to add themselves to this collection.
+/// The derive macros for the patch traits handle this.
 #[distributed_slice]
 pub static PATCHERS: [fn() -> Patcher];
 
+/// Register a patcher-generating function with the patch.
 #[macro_export]
 macro_rules! register {
     ($fixture:ty) => {
@@ -39,15 +50,21 @@ macro_rules! register {
 }
 
 impl Patch {
+    /// Initialize a new fixture patch.
+    ///
+    /// The patchers are initialized from the global registry.
     pub fn new() -> Self {
+        let patchers: Vec<_> = PATCHERS.iter().map(|p| p()).collect();
+        assert!(!patchers.is_empty());
         Self {
-            patchers: PATCHERS.iter().map(|p| p()).collect(),
+            patchers,
             fixtures: Default::default(),
             fixture_type_lookup: Default::default(),
             used_addrs: Default::default(),
         }
     }
 
+    /// Patch a fixture group config - either a single address or a range.
     pub fn patch(
         &mut self,
         channels: &mut Channels,
