@@ -35,10 +35,10 @@ impl Default for Astera {
         Self {
             dimmer: Unipolar::full_channel("Dimmer", 0).with_channel_level(),
             speed: Unipolar::full_channel("Speed", 3).with_channel_knob(0),
-            fade: Unipolar::full_channel("Fade", 5).with_channel_knob(1),
+            fade: Unipolar::full_channel("Fade", 4).with_channel_knob(1),
             program: LabeledSelect::new(
                 "Program",
-                3,
+                2,
                 vec![
                     ("Static1", 0),
                     // ("Static2", 7),
@@ -64,16 +64,16 @@ impl Default for Astera {
             pattern_direction: Bool::new_on("Forward", ()),
             pattern_loop: Bool::new_on("Loop", ()),
             hue1: PhaseControl::new("Hue1", ()),
-            sat1: Unipolar::new("Sat1", ()),
-            val1: Unipolar::new("Val1", ()),
+            sat1: Unipolar::new("Sat1", ()).at_full(),
+            val1: Unipolar::new("Val1", ()).at_full(),
             hue2: PhaseControl::new("Hue2", ()),
-            sat2: Unipolar::new("Sat2", ()),
+            sat2: Unipolar::new("Sat2", ()).at_full(),
             val2: Unipolar::new("Val2", ()),
             hue3: PhaseControl::new("Hue3", ()),
-            sat3: Unipolar::new("Sat3", ()),
+            sat3: Unipolar::new("Sat3", ()).at_full(),
             val3: Unipolar::new("Val3", ()),
             hue4: PhaseControl::new("Hue4", ()),
-            sat4: Unipolar::new("Sat4", ()),
+            sat4: Unipolar::new("Sat4", ()).at_full(),
             val4: Unipolar::new("Val4", ()),
         }
     }
@@ -94,10 +94,8 @@ impl AnimatedFixture for Astera {
             dmx_buf,
         );
         dmx_buf[1] = 0; // strobe off
-        self.speed
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
-        self.fade
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
+        self.speed.render_no_anim(dmx_buf);
+        self.fade.render_no_anim(dmx_buf);
         self.program.render_no_anim(dmx_buf);
         dmx_buf[5] = match (self.pattern_direction.val(), self.pattern_loop.val()) {
             (true, true) => 0,
