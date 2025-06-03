@@ -23,7 +23,8 @@ use crate::fixture::prelude::*;
 /// 6 - Motor 4 Dir
 /// 7 - Motor 4 Speed
 /// 8 - Lamp Control
-#[derive(Debug)]
+#[derive(Debug, PatchFixture)]
+#[channel_count = 8]
 pub struct Venus {
     controls: GroupControlMap<ControlMessage>,
     base_rotation: RampingParameter<BipolarFloat>,
@@ -31,13 +32,6 @@ pub struct Venus {
     head_rotation: RampingParameter<BipolarFloat>,
     color_rotation: RampingParameter<BipolarFloat>,
     lamp_on: bool,
-}
-
-impl PatchFixture for Venus {
-    const NAME: FixtureType = FixtureType("Venus");
-    fn channel_count(&self) -> usize {
-        8
-    }
 }
 
 impl Default for Venus {

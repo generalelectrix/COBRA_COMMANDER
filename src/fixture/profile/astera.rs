@@ -3,7 +3,8 @@ use super::color::Model::Rgb;
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 20]
 pub struct Astera {
     #[channel_control]
     #[animate]
@@ -75,13 +76,6 @@ impl Default for Astera {
             sat4: Unipolar::new("Sat4", ()),
             val4: Unipolar::new("Val4", ()),
         }
-    }
-}
-
-impl PatchAnimatedFixture for Astera {
-    const NAME: FixtureType = FixtureType("Astera");
-    fn channel_count(&self) -> usize {
-        20
     }
 }
 

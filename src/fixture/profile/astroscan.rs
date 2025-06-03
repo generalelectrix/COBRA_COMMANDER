@@ -1,7 +1,8 @@
 //! Clay Paky Astroscan - drunken sailor extraordinaire
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 9]
 pub struct Astroscan {
     lamp_on: BoolChannel,
     #[channel_control]
@@ -63,13 +64,6 @@ impl Default for Astroscan {
                 .with_detent()
                 .with_mirroring(false),
         }
-    }
-}
-
-impl PatchAnimatedFixture for Astroscan {
-    const NAME: FixtureType = FixtureType("Astroscan");
-    fn channel_count(&self) -> usize {
-        9
     }
 }
 

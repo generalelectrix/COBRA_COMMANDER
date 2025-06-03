@@ -58,6 +58,8 @@ impl PatchAnimatedFixture for Color {
     }
 }
 
+crate::register!(Color);
+
 impl Color {
     pub fn render_without_animations(&self, dmx_buf: &mut [u8]) {
         self.model.render(

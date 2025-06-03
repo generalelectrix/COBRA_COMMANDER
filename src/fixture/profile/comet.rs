@@ -37,6 +37,8 @@ impl PatchFixture for Comet {
     }
 }
 
+crate::register!(Comet);
+
 impl NonAnimatedFixture for Comet {
     fn render(&self, _group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
         if !self.shutter_open.val() {

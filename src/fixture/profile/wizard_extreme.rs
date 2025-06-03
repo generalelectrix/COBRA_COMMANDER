@@ -1,7 +1,8 @@
 //! Martin Wizard Extreme - the one that Goes Slow
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 11]
 pub struct WizardExtreme {
     #[channel_control]
     #[animate]
@@ -62,13 +63,6 @@ impl Default for WizardExtreme {
                 .with_mirroring(true)
                 .with_channel_knob(2),
         }
-    }
-}
-
-impl PatchAnimatedFixture for WizardExtreme {
-    const NAME: FixtureType = FixtureType("WizardExtreme");
-    fn channel_count(&self) -> usize {
-        11
     }
 }
 

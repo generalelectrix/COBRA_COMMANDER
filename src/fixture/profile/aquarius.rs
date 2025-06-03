@@ -1,7 +1,8 @@
 //! Intuitive control profile for the American DJ Aquarius 250.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 2]
 pub struct Aquarius {
     #[channel_control]
     lamp_on: ChannelLevelBool<BoolChannel>,
@@ -19,13 +20,6 @@ impl Default for Aquarius {
                 .with_mirroring(true)
                 .with_channel_knob(0),
         }
-    }
-}
-
-impl PatchAnimatedFixture for Aquarius {
-    const NAME: FixtureType = FixtureType("Aquarius");
-    fn channel_count(&self) -> usize {
-        2
     }
 }
 

@@ -2,7 +2,8 @@
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 10]
 pub struct RushWizard {
     #[channel_control]
     #[animate]
@@ -70,13 +71,6 @@ impl Default for RushWizard {
             .with_mirroring(true)
             .with_channel_knob(2),
         }
-    }
-}
-
-impl PatchAnimatedFixture for RushWizard {
-    const NAME: FixtureType = FixtureType("RushWizard");
-    fn channel_count(&self) -> usize {
-        10
     }
 }
 

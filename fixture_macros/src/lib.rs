@@ -1,7 +1,57 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Expr, Field, Fields, Lit, Meta};
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Expr, Field, Fields, Lit, Meta};
+
+/// Derive the PatchAnimatedFixture trait on a fixture struct.
+/// Use the channel_count attribute to specify the DMX channel count.
+/// Registers the fixture type with the patch.
+#[proc_macro_derive(PatchAnimatedFixture, attributes(channel_count))]
+pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
+    let DeriveInput { ident, attrs, .. } = parse_macro_input!(input as DeriveInput);
+
+    let channel_count = get_attr_and_usize_payload(&attrs, "channel_count")
+        .expect("channel_count attribute is missing");
+
+    let name = ident.to_string();
+
+    quote! {
+        impl crate::fixture::patch::PatchAnimatedFixture for #ident {
+            const NAME: FixtureType = FixtureType(#name);
+            fn channel_count(&self) -> usize {
+                #channel_count
+            }
+        }
+
+        crate::register!(#ident);
+    }
+    .into()
+}
+
+/// Derive the PatchFixture trait on a fixture struct.
+/// Use the channel_count attribute to specify the DMX channel count.
+/// Registers the fixture type with the patch.
+#[proc_macro_derive(PatchFixture, attributes(channel_count))]
+pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
+    let DeriveInput { ident, attrs, .. } = parse_macro_input!(input as DeriveInput);
+
+    let channel_count = get_attr_and_usize_payload(&attrs, "channel_count")
+        .expect("channel_count attribute is missing");
+
+    let name = ident.to_string();
+
+    quote! {
+        impl crate::fixture::patch::PatchFixture for #ident {
+            const NAME: FixtureType = FixtureType(#name);
+            fn channel_count(&self) -> usize {
+                #channel_count
+            }
+        }
+
+        crate::register!(#ident);
+    }
+    .into()
+}
 
 /// Derive the EmitState trait on a fixture struct.
 ///
@@ -88,7 +138,7 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
         let Some(ident) = &field.ident else {
             continue;
         };
-        let on_change = get_attr_and_payload(field, "on_change")
+        let on_change = get_attr_and_payload(&field.attrs, "on_change")
             .map(|method| {
                 let method = format_ident!("{method}");
                 quote! {
@@ -186,9 +236,8 @@ fn field_has_attr(field: &Field, ident: &str) -> bool {
         .any(|attr| attr.meta.path().is_ident(ident))
 }
 
-fn get_attr_and_payload(field: &Field, ident: &str) -> Option<String> {
-    field
-        .attrs
+fn get_attr_and_payload(attrs: &[Attribute], ident: &str) -> Option<String> {
+    attrs
         .iter()
         .filter_map(|attr| {
             if !attr.meta.path().is_ident(ident) {
@@ -204,6 +253,30 @@ fn get_attr_and_payload(field: &Field, ident: &str) -> Option<String> {
                 panic!("attribute {ident} expected a string literal as argument");
             };
             Some(s.value())
+        })
+        .next()
+}
+
+fn get_attr_and_usize_payload(attrs: &[Attribute], ident: &str) -> Option<usize> {
+    attrs
+        .iter()
+        .filter_map(|attr| {
+            if !attr.meta.path().is_ident(ident) {
+                return None;
+            }
+            let Meta::NameValue(nm) = &attr.meta else {
+                panic!("attribute {ident} must be name/value, not {:?}", attr.meta);
+            };
+            let Expr::Lit(f) = &nm.value else {
+                panic!("attribute {ident} expected a literal as argument");
+            };
+            let Lit::Int(s) = &f.lit else {
+                panic!("attribute {ident} expected a integer literal as argument");
+            };
+            let Ok(val) = s.base10_parse() else {
+                panic!("attribute {ident} unable to parse as usize");
+            };
+            Some(val)
         })
         .next()
 }

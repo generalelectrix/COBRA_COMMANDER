@@ -5,7 +5,8 @@ use crate::{
 };
 use wled_json_api_library::structures::state::{Seg, State};
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 0]
 pub struct RugDoctor {
     #[channel_control]
     #[animate] // FIXME animations aren't actually used, need to fix channel patching
@@ -29,13 +30,6 @@ impl Default for RugDoctor {
             size: Unipolar::new("Size", ()).with_channel_knob(1),
             preset: IndexedSelect::new("Preset", 6, false, ()),
         }
-    }
-}
-
-impl PatchAnimatedFixture for RugDoctor {
-    const NAME: FixtureType = FixtureType("RugDoctor");
-    fn channel_count(&self) -> usize {
-        0
     }
 }
 

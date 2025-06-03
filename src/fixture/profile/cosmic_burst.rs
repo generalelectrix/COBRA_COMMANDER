@@ -1,7 +1,8 @@
 //! Control profile for the Cosmic Burst white laser moonflower.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 6]
 pub struct CosmicBurst {
     #[channel_control]
     #[animate]
@@ -21,13 +22,6 @@ impl Default for CosmicBurst {
                 .with_mirroring(true)
                 .with_channel_knob(0),
         }
-    }
-}
-
-impl PatchAnimatedFixture for CosmicBurst {
-    const NAME: FixtureType = FixtureType("CosmicBurst");
-    fn channel_count(&self) -> usize {
-        6
     }
 }
 

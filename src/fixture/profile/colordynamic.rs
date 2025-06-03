@@ -3,7 +3,8 @@
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[channel_count = 4]
 pub struct Colordynamic {
     #[channel_control]
     shutter: ChannelLevelBool<FullShutterStrobe>,
@@ -35,13 +36,6 @@ impl Default for Colordynamic {
                 .with_detent()
                 .with_channel_knob(2),
         }
-    }
-}
-
-impl PatchAnimatedFixture for Colordynamic {
-    const NAME: FixtureType = FixtureType("Colordynamic");
-    fn channel_count(&self) -> usize {
-        4
     }
 }
 
