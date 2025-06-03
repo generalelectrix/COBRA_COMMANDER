@@ -135,6 +135,7 @@ impl Patch {
             group.patch(GroupFixtureConfig {
                 universe: cfg.universe,
                 dmx_addr: cfg.addr.map(|a| a.dmx_index()),
+                channel_count: candidate.channel_count,
                 mirror: cfg.mirror,
             });
             return Ok(());
@@ -147,9 +148,9 @@ impl Patch {
             GroupFixtureConfig {
                 universe: cfg.universe,
                 dmx_addr: cfg.addr.map(|a| a.dmx_index()),
+                channel_count: candidate.channel_count,
                 mirror: cfg.mirror,
             },
-            candidate.channel_count,
             candidate.fixture,
         );
 
