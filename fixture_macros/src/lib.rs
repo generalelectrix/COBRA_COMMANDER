@@ -18,7 +18,7 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
     quote! {
         impl crate::fixture::patch::PatchAnimatedFixture for #ident {
             const NAME: FixtureType = FixtureType(#name);
-            fn channel_count(&self) -> usize {
+            fn channel_count(&self, _render_mode: Option<crate::fixture::RenderMode>) -> usize {
                 #channel_count
             }
         }
@@ -43,7 +43,7 @@ pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
     quote! {
         impl crate::fixture::patch::PatchFixture for #ident {
             const NAME: FixtureType = FixtureType(#name);
-            fn channel_count(&self) -> usize {
+            fn channel_count(&self, _render_mode: Option<crate::fixture::RenderMode>) -> usize {
                 #channel_count
             }
         }

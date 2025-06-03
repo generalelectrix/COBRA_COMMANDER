@@ -7,7 +7,7 @@ use anyhow::bail;
 use log::info;
 
 use super::fixture::{
-    AnimatedFixture, Fixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture,
+    AnimatedFixture, Fixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture, RenderMode,
 };
 use super::group::{FixtureGroup, FixtureGroupKey};
 use crate::channel::Channels;
@@ -135,6 +135,8 @@ impl Patch {
             group.patch(GroupFixtureConfig {
                 universe: cfg.universe,
                 dmx_addr: cfg.addr.map(|a| a.dmx_index()),
+                channel_count: candidate.channel_count,
+                render_mode: candidate.render_mode,
                 mirror: cfg.mirror,
             });
             return Ok(());
@@ -147,9 +149,10 @@ impl Patch {
             GroupFixtureConfig {
                 universe: cfg.universe,
                 dmx_addr: cfg.addr.map(|a| a.dmx_index()),
+                channel_count: candidate.channel_count,
+                render_mode: candidate.render_mode,
                 mirror: cfg.mirror,
             },
-            candidate.channel_count,
             candidate.fixture,
         );
 
@@ -237,6 +240,7 @@ impl Patch {
 pub struct PatchCandidate {
     fixture_type: FixtureType,
     channel_count: usize,
+    render_mode: Option<RenderMode>,
     fixture: Box<dyn Fixture>,
 }
 
@@ -253,9 +257,10 @@ pub trait PatchFixture: NonAnimatedFixture + Default + 'static {
                 return None;
             }
             match Self::new(options) {
-                Ok(fixture) => Some(Ok(PatchCandidate {
+                Ok((fixture, render_mode)) => Some(Ok(PatchCandidate {
                     fixture_type: Self::NAME,
-                    channel_count: fixture.channel_count(),
+                    channel_count: fixture.channel_count(render_mode),
+                    render_mode,
                     fixture: Box::new(fixture),
                 })),
                 Err(e) => Some(Err(e)),
@@ -264,13 +269,16 @@ pub trait PatchFixture: NonAnimatedFixture + Default + 'static {
     }
 
     /// The number of contiguous DMX channels used by the fixture.
-    fn channel_count(&self) -> usize;
+    ///
+    /// A render mode is provided for fixtures that may have different channel
+    /// counts for different individual specific fixtures.
+    fn channel_count(&self, render_mode: Option<RenderMode>) -> usize;
 
     /// Create a new instance of the fixture from the provided options.
     /// Non-customizable fixtures will fall back to using default.
     /// This can be overridden for fixtures that are customizable.
-    fn new(_options: &Options) -> Result<Self> {
-        Ok(Self::default())
+    fn new(_options: &Options) -> Result<(Self, Option<RenderMode>)> {
+        Ok((Self::default(), None))
     }
 }
 
@@ -285,9 +293,10 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Default + 'static {
                 return None;
             }
             match Self::new(options) {
-                Ok(fixture) => Some(Ok(PatchCandidate {
+                Ok((fixture, render_mode)) => Some(Ok(PatchCandidate {
                     fixture_type: Self::NAME,
-                    channel_count: fixture.channel_count(),
+                    channel_count: fixture.channel_count(render_mode),
+                    render_mode,
                     fixture: Box::new(FixtureWithAnimations {
                         fixture,
                         animations: Default::default(),
@@ -299,12 +308,15 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Default + 'static {
     }
 
     /// The number of contiguous DMX channels used by the fixture.
-    fn channel_count(&self) -> usize;
+    ///
+    /// A render mode is provided for fixtures that may have different channel
+    /// counts for different individual specific fixtures.
+    fn channel_count(&self, render_mode: Option<RenderMode>) -> usize;
 
     /// Create a new instance of the fixture from the provided options.
     /// Non-customizable fixtures will fall back to using default.
     /// This can be overridden for fixtures that are customizable.
-    fn new(_options: &Options) -> Result<Self> {
-        Ok(Self::default())
+    fn new(_options: &Options) -> Result<(Self, Option<RenderMode>)> {
+        Ok((Self::default(), None))
     }
 }

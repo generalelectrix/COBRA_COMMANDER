@@ -3,8 +3,13 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, Result};
+use log::error;
+use strum_macros::VariantArray;
 
-use crate::{fixture::prelude::*, osc::OscControlMessage};
+use crate::{
+    fixture::{fixture::EnumRenderModel, prelude::*},
+    osc::OscControlMessage,
+};
 
 #[derive(Debug, Control, EmitState)]
 pub struct Color {
@@ -17,9 +22,6 @@ pub struct Color {
     #[channel_control]
     #[animate]
     val: ChannelLevelUnipolar<Unipolar<()>>,
-    #[skip_emit]
-    #[skip_control]
-    model: Model,
 }
 
 impl Default for Color {
@@ -28,21 +30,19 @@ impl Default for Color {
             hue: PhaseControl::new("Hue", ()).with_channel_knob(0),
             sat: Unipolar::new("Sat", ()).at_full().with_channel_knob(1),
             val: Unipolar::new("Val", ()).with_channel_level(),
-            model: Default::default(),
         }
     }
 }
 
 impl PatchAnimatedFixture for Color {
     const NAME: FixtureType = FixtureType("Color");
-    fn channel_count(&self) -> usize {
-        self.model.channel_count()
+    fn channel_count(&self, render_mode: Option<crate::fixture::RenderMode>) -> usize {
+        Model::model_for_mode(render_mode).unwrap().channel_count()
     }
 
-    fn new(options: &HashMap<String, String>) -> Result<Self> {
-        let mut c = Self::default();
-        if let Some(kind) = options.get("kind") {
-            c.model = match kind.as_str() {
+    fn new(options: &HashMap<String, String>) -> Result<(Self, Option<RenderMode>)> {
+        let render_mode = if let Some(kind) = options.get("kind") {
+            let model = match kind.as_str() {
                 "rgb" => Model::Rgb,
                 "DimmerRgb" => Model::DimmerRgb,
                 "rgbw" => Model::Rgbw,
@@ -53,16 +53,19 @@ impl PatchAnimatedFixture for Color {
                     bail!("unknown color model \"{}\"", other);
                 }
             };
-        }
-        Ok(c)
+            Some(model.render_mode())
+        } else {
+            None
+        };
+        Ok((Self::default(), render_mode))
     }
 }
 
 crate::register!(Color);
 
 impl Color {
-    pub fn render_without_animations(&self, dmx_buf: &mut [u8]) {
-        self.model.render(
+    pub fn render_without_animations(&self, model: Model, dmx_buf: &mut [u8]) {
+        model.render(
             dmx_buf,
             self.hue.control.val(),
             self.sat.control.val(),
@@ -75,7 +78,7 @@ impl AnimatedFixture for Color {
     type Target = AnimationTarget;
     fn render_with_animations(
         &self,
-        _group_controls: &FixtureGroupControls,
+        group_controls: &FixtureGroupControls,
         animation_vals: TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
@@ -91,7 +94,14 @@ impl AnimatedFixture for Color {
                 Val => val += anim_val,
             }
         }
-        self.model.render(
+        let model = match Model::model_for_mode(group_controls.render_mode) {
+            Ok(m) => m,
+            Err(err) => {
+                error!("failed to render Color: {err}");
+                return;
+            }
+        };
+        model.render(
             dmx_buf,
             Phase::new(hue),
             UnipolarFloat::new(sat),
@@ -135,8 +145,9 @@ impl OscControl<()> for Color {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, VariantArray)]
 pub enum Model {
+    #[default]
     Rgb,
     DimmerRgb,
     Rgbw,
@@ -145,11 +156,7 @@ pub enum Model {
     Rgbwau,
 }
 
-impl Default for Model {
-    fn default() -> Self {
-        Self::Rgb
-    }
-}
+impl EnumRenderModel for Model {}
 
 impl Model {
     fn channel_count(&self) -> usize {

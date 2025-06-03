@@ -32,7 +32,7 @@ const PATTERN_DMX_VALS: [u8; 10] = [12, 35, 65, 85, 112, 140, 165, 190, 212, 240
 
 impl PatchFixture for Comet {
     const NAME: FixtureType = FixtureType("Comet");
-    fn channel_count(&self) -> usize {
+    fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
         5
     }
 }

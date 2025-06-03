@@ -11,7 +11,7 @@ use number::{Phase, UnipolarFloat};
 use serde::{Deserialize, Serialize};
 
 use super::animation_target::ControllableTargetedAnimation;
-use super::fixture::{Fixture, FixtureType};
+use super::fixture::{Fixture, FixtureType, RenderMode};
 use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
 use crate::dmx::DmxBuffer;
@@ -24,8 +24,6 @@ pub struct FixtureGroup {
     key: FixtureGroupKey,
     /// The configurations for the fixtures in the group.
     fixture_configs: Vec<GroupFixtureConfig>,
-    /// The number of DMX channels used by this fixture.
-    channel_count: usize,
     /// The inner implementation of the fixture.
     fixture: Box<dyn Fixture>,
 }
@@ -35,13 +33,11 @@ impl FixtureGroup {
     pub fn new(
         key: FixtureGroupKey,
         fixture_config: GroupFixtureConfig,
-        channel_count: usize,
         fixture: Box<dyn Fixture>,
     ) -> Self {
         Self {
             key,
             fixture_configs: vec![fixture_config],
-            channel_count,
             fixture,
         }
     }
@@ -130,12 +126,13 @@ impl FixtureGroup {
                 continue;
             };
             let phase_offset = phase_offset_per_fixture * i as f64;
-            let dmx_buf = &mut dmx_buffers[cfg.universe][dmx_addr..dmx_addr + self.channel_count];
+            let dmx_buf = &mut dmx_buffers[cfg.universe][dmx_addr..dmx_addr + cfg.channel_count];
             self.fixture.render(
                 phase_offset,
                 &FixtureGroupControls {
                     master_controls,
                     mirror: cfg.mirror,
+                    render_mode: cfg.render_mode,
                 },
                 dmx_buf,
             );
@@ -157,8 +154,13 @@ pub struct GroupFixtureConfig {
     pub dmx_addr: Option<usize>,
     /// The universe that this fixture is patched in.
     pub universe: usize,
+    /// The number of DMX channels used by this fixture.
+    /// Should be set to 0 for non-DMX fixtures.
+    pub channel_count: usize,
     /// True if the fixture should be mirrored in mirror mode.
     pub mirror: bool,
+    /// Render mode index for fixtures that support more than one render mode.
+    pub render_mode: Option<RenderMode>,
 }
 
 /// Uniquely identify a specific fixture group.

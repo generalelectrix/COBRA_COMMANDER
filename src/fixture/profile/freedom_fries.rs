@@ -2,7 +2,7 @@
 //! Freedom Stick.
 
 //! Control profle for the Chauvet Rotosphere Q3, aka Son Of Spherion.
-use super::color::Color;
+use super::color::{Color, Model as ColorModel};
 
 use crate::fixture::prelude::*;
 
@@ -46,7 +46,8 @@ impl AnimatedFixture for FreedomFries {
             .render(animation_vals.filter(&AnimationTarget::Dimmer), dmx_buf);
         self.speed
             .render(animation_vals.filter(&AnimationTarget::Speed), dmx_buf);
-        self.color.render_without_animations(&mut dmx_buf[1..4]);
+        self.color
+            .render_without_animations(ColorModel::Rgb, &mut dmx_buf[1..4]);
         dmx_buf[4] = 0;
         self.strobe
             .render_with_group(group_controls, std::iter::empty(), dmx_buf);

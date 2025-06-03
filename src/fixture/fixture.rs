@@ -3,8 +3,10 @@ use std::fmt::{Debug, Display};
 use std::ops::Deref;
 use std::time::Duration;
 
+use anyhow::{bail, Result};
 use number::{Phase, UnipolarFloat};
 use serde::{Deserialize, Serialize};
+use strum::VariantArray;
 
 use super::animation_target::{
     ControllableTargetedAnimation, TargetedAnimationValues, TargetedAnimations, N_ANIM,
@@ -15,6 +17,7 @@ use crate::fixture::animation_target::AnimationTarget;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 
+/// Statically-defined fixture type name.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FixtureType(pub &'static str);
 
@@ -28,6 +31,47 @@ impl Deref for FixtureType {
 impl Display for FixtureType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.0)
+    }
+}
+
+// NOTE: do NOT derive Serialize or Deserialize for this type! We do not want
+// instances of this to end up escaping the process, since these identifiers
+// would not be stable if the state of the show were written to disk and then
+// later loaded by a version of the software with a fixture patch that has
+// re-ordered, re-numbered, or otherwise messed with the render modes.
+//
+// This entire mechanism is a hack around the fact that each fixture group
+// maintains a single fixture model, but we may want to render that same model
+// to fixtures that require a different rendering mode.
+/// Index of multiple render modes for fixtures that support them.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+pub struct RenderMode(pub u8);
+
+/// Provide helper methods to a enum that represents different fixture rendering modes.
+///
+/// The strum VariantArray trait is used to refer to variants by index.
+pub trait EnumRenderModel: VariantArray + PartialEq + Debug + Clone {
+    /// Get the render mode index for this model.
+    fn render_mode(&self) -> RenderMode {
+        assert!(Self::VARIANTS.len() <= 255);
+        RenderMode(Self::VARIANTS.iter().position(|m| m == self).unwrap() as u8)
+    }
+
+    /// Get the render model referred to by the provided render mode.
+    ///
+    /// Return an error if render_mode is None or out of range.
+    fn model_for_mode(render_mode: Option<RenderMode>) -> Result<Self> {
+        let Some(render_mode) = render_mode else {
+            bail!("missing render mode for {}", std::any::type_name::<Self>());
+        };
+        let Some(model) = Self::VARIANTS.get(render_mode.0 as usize) else {
+            bail!(
+                "render mode {} is out of range for {}",
+                render_mode.0,
+                std::any::type_name::<Self>()
+            );
+        };
+        Ok(model.clone())
     }
 }
 
@@ -86,7 +130,8 @@ pub trait Fixture: ControllableFixture {
     /// Render into the provided DMX buffer.
     /// The buffer will be pre-sized to the fixture's channel count and offset
     /// to the fixture's start address.
-    /// The master controls are provided to potentially alter the render process.
+    /// Control parameters specific to an individual fixture in the group are
+    /// provided.
     /// An animation phase offset is provided.
     fn render(
         &self,

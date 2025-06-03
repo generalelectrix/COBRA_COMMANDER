@@ -13,7 +13,7 @@ pub struct Faderboard {
 
 impl PatchFixture for Faderboard {
     const NAME: FixtureType = FixtureType("Faderboard");
-    fn channel_count(&self) -> usize {
+    fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
         self.channel_count
     }
 }
