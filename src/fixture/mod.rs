@@ -8,7 +8,7 @@ mod group;
 mod patch;
 mod profile;
 
-pub use fixture::{Control, EmitState};
+pub use fixture::{Control, EmitState, RenderMode};
 pub use group::{FixtureGroup, FixtureGroupKey, GroupName};
 pub use patch::Patch;
 pub use profile::*;
@@ -20,6 +20,8 @@ pub struct FixtureGroupControls<'a> {
     master_controls: &'a MasterControls,
     /// True if the fixture should render in mirrored mode.
     mirror: bool,
+    /// Optional render mode index for fixtures that support more than one.
+    render_mode: Option<RenderMode>,
 }
 
 impl<'a> FixtureGroupControls<'a> {
@@ -30,7 +32,7 @@ impl<'a> FixtureGroupControls<'a> {
 
 pub mod prelude {
     pub use super::fixture::{
-        AnimatedFixture, ControllableFixture, FixtureType, NonAnimatedFixture,
+        AnimatedFixture, ControllableFixture, FixtureType, NonAnimatedFixture, RenderMode,
     };
     pub use super::patch::{PatchAnimatedFixture, PatchFixture};
     pub use super::FixtureGroupControls;

@@ -11,9 +11,10 @@
 use std::str::FromStr;
 
 use anyhow::Context;
-use strum_macros::EnumString;
+use log::error;
+use strum_macros::{EnumString, VariantArray};
 
-use crate::fixture::prelude::*;
+use crate::fixture::{fixture::EnumRenderModel, prelude::*};
 
 #[derive(Debug, EmitState, Control)]
 pub struct Leko {
@@ -26,9 +27,6 @@ pub struct Leko {
     #[channel_control]
     #[animate]
     gobo2: ChannelKnobBipolar<Bipolar<()>>,
-    #[skip_control]
-    #[skip_emit]
-    model: Model,
 }
 
 impl Default for Leko {
@@ -37,26 +35,23 @@ impl Default for Leko {
             level: Unipolar::full_channel("Level", 0).with_channel_level(),
             gobo1: Bipolar::new("Gobo1", ()).with_detent().with_channel_knob(0),
             gobo2: Bipolar::new("Gobo2", ()).with_detent().with_channel_knob(1),
-            model: Model::Dimmer,
         }
     }
 }
 
 impl PatchAnimatedFixture for Leko {
     const NAME: FixtureType = FixtureType("Leko");
-    fn channel_count(&self) -> usize {
-        self.model.channel_count()
+    fn channel_count(&self, render_mode: Option<RenderMode>) -> usize {
+        Model::model_for_mode(render_mode).unwrap().channel_count()
     }
 
-    fn new(options: &crate::config::Options) -> anyhow::Result<Self> {
+    fn new(options: &crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
         let Some(kind) = options.get("kind") else {
             bail!("lekos must specify the \"kind\" option");
         };
-        Ok(Self {
-            model: Model::from_str(kind)
-                .with_context(|| format!("invalid leko kind: \"{kind}\""))?,
-            ..Default::default()
-        })
+        let model =
+            Model::from_str(kind).with_context(|| format!("invalid leko kind: \"{kind}\""))?;
+        Ok((Default::default(), Some(model.render_mode())))
     }
 }
 
@@ -67,11 +62,18 @@ impl AnimatedFixture for Leko {
 
     fn render_with_animations(
         &self,
-        _group_controls: &FixtureGroupControls,
+        group_controls: &FixtureGroupControls,
         animation_vals: TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        match self.model {
+        let model = match Model::model_for_mode(group_controls.render_mode) {
+            Ok(m) => m,
+            Err(err) => {
+                error!("failed to render Leko: {err}");
+                return;
+            }
+        };
+        match model {
             Model::Dimmer => {
                 self.level
                     .render(animation_vals.filter(&AnimationTarget::Level), dmx_buf);
@@ -111,15 +113,18 @@ impl AnimatedFixture for Leko {
 impl ControllableFixture for Leko {}
 
 /// Which model of gobo rotator is installed in this leko, or is this the dimmer.
-#[derive(Debug, EnumString)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, EnumString, VariantArray)]
 enum Model {
     /// Dimmer channel.
+    #[default]
     Dimmer,
     /// DHA Varispeed controlled using the GOBO SPINNAZ module.
     GoboSpinnaz,
     /// DHA Varispeed controlled using the DHA DMX DC controller.
     DhaVarispeed,
 }
+
+impl EnumRenderModel for Model {}
 
 impl Model {
     fn channel_count(&self) -> usize {

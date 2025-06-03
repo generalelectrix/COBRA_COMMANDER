@@ -11,7 +11,7 @@ use number::{Phase, UnipolarFloat};
 use serde::{Deserialize, Serialize};
 
 use super::animation_target::ControllableTargetedAnimation;
-use super::fixture::{Fixture, FixtureType};
+use super::fixture::{Fixture, FixtureType, RenderMode};
 use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
 use crate::dmx::DmxBuffer;
@@ -132,6 +132,7 @@ impl FixtureGroup {
                 &FixtureGroupControls {
                     master_controls,
                     mirror: cfg.mirror,
+                    render_mode: cfg.render_mode,
                 },
                 dmx_buf,
             );
@@ -158,6 +159,8 @@ pub struct GroupFixtureConfig {
     pub channel_count: usize,
     /// True if the fixture should be mirrored in mirror mode.
     pub mirror: bool,
+    /// Render mode index for fixtures that support more than one render mode.
+    pub render_mode: Option<RenderMode>,
 }
 
 /// Uniquely identify a specific fixture group.

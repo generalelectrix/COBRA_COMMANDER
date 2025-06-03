@@ -29,16 +29,16 @@ impl Default for Radiance {
 
 impl PatchAnimatedFixture for Radiance {
     const NAME: FixtureType = FixtureType("Radiance");
-    fn channel_count(&self) -> usize {
+    fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
         2
     }
 
-    fn new(options: &HashMap<String, String>) -> Result<Self> {
+    fn new(options: &HashMap<String, String>) -> Result<(Self, Option<RenderMode>)> {
         let mut s = Self::default();
         if options.contains_key("use_timer") {
             s.timer = Some(Timer::from_options(options)?);
         }
-        Ok(s)
+        Ok((s, None))
     }
 }
 
