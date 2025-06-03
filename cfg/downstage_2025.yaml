@@ -26,13 +26,3 @@ fixtures:
   - name: H2O
     addr: 200
     channel: True
-  - name: Color
-    addr: 300
-    channel: True
-    options:
-      kind: rgb
-  - name: Color
-    addr: 303
-    channel: True
-    options:
-      kind: DimmerRgb

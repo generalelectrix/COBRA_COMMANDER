@@ -20,6 +20,7 @@ pub enum Device {
     #[allow(unused)]
     Apc20(AkaiApc20),
     LaunchControlXL(NovationLaunchControlXL),
+    LaunchControlXLSecondWing(NovationLaunchControlXL),
 }
 
 impl Display for Device {
@@ -33,6 +34,7 @@ impl MidiDevice for Device {
         match self {
             Self::Apc20(d) => d.device_name(),
             Self::LaunchControlXL(d) => d.device_name(),
+            Self::LaunchControlXLSecondWing(_) => "Launch Control XL Second Wing",
         }
     }
 
@@ -40,6 +42,7 @@ impl MidiDevice for Device {
         match self {
             Self::Apc20(d) => d.init_midi(out),
             Self::LaunchControlXL(d) => d.init_midi(out),
+            Self::LaunchControlXLSecondWing(d) => d.init_midi(out),
         }
     }
 }
@@ -50,6 +53,7 @@ impl Device {
         vec![
             // Self::Apc20(AkaiApc20 { channel_offset: 0 }),
             Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 0 }),
+            Self::LaunchControlXLSecondWing(NovationLaunchControlXL { channel_offset: 8 }),
         ]
     }
 }
@@ -59,6 +63,7 @@ impl MidiHandler for Device {
         match self {
             Self::Apc20(d) => d.interpret(event),
             Self::LaunchControlXL(d) => d.interpret(event),
+            Self::LaunchControlXLSecondWing(d) => d.interpret(event),
         }
     }
 
@@ -66,6 +71,7 @@ impl MidiHandler for Device {
         match self {
             Self::Apc20(d) => d.emit_channel_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_channel_control(msg, output),
+            Self::LaunchControlXLSecondWing(d) => d.emit_channel_control(msg, output),
         }
     }
 
@@ -73,6 +79,7 @@ impl MidiHandler for Device {
         match self {
             Self::Apc20(d) => d.emit_master_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_master_control(msg, output),
+            Self::LaunchControlXLSecondWing(d) => d.emit_master_control(msg, output),
         }
     }
 }
