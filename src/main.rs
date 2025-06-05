@@ -1,5 +1,7 @@
-use anyhow::bail;
+use anyhow::{bail, Result};
+use channel::Channels;
 use clock_service::prompt_start_clock_service;
+use fixture::Patch;
 use local_ip_address::local_ip;
 use log::info;
 use log::LevelFilter;
@@ -34,10 +36,10 @@ mod show;
 mod util;
 mod wled;
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     let config_path = env::args()
-        .nth(1)
-        .expect("Provide config path as first arg.");
+        .last()
+        .expect("Provide config path as final arg.");
     let mut cfg = Config::load(&config_path)?;
     let log_level = if cfg.debug {
         LevelFilter::Debug
@@ -46,6 +48,13 @@ fn main() -> anyhow::Result<()> {
     };
 
     SimpleLogger::init(log_level, LogConfig::default())?;
+
+    if let Some(first_arg) = env::args().nth(1) {
+        if first_arg == "--check-patch" {
+            return check_patch(cfg);
+        }
+    }
+
     let clocks = if let Some(clock_service) = prompt_start_clock_service(Context::new())? {
         Clocks::Service(clock_service)
     } else {
@@ -88,5 +97,12 @@ fn main() -> anyhow::Result<()> {
 
     show.run(&mut dmx_ports);
 
+    Ok(())
+}
+
+fn check_patch(cfg: Config) -> Result<()> {
+    let mut channels = Channels::new();
+    Patch::patch_all(&mut channels, cfg.fixtures)?;
+    println!("Patch is OK.");
     Ok(())
 }

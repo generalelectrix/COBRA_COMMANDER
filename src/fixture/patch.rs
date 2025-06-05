@@ -64,6 +64,18 @@ impl Patch {
         }
     }
 
+    /// Initialize a patch from a collection of fixtures.
+    pub fn patch_all(
+        channels: &mut Channels,
+        fixtures: impl IntoIterator<Item = FixtureGroupConfig>,
+    ) -> Result<Self> {
+        let mut patch = Self::new();
+        for fixture in fixtures {
+            patch.patch(channels, fixture)?;
+        }
+        Ok(patch)
+    }
+
     /// Patch a fixture group config - either a single address or a range.
     pub fn patch(
         &mut self,

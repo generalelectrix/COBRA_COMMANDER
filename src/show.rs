@@ -93,14 +93,10 @@ const UPDATE_INTERVAL: Duration = Duration::from_millis(20);
 
 impl Show {
     pub fn new(cfg: Config, clocks: Clocks) -> Result<Self> {
-        let mut channels = Channels::new();
-        let mut patch = Patch::new();
-
         let controller = Controller::from_config(&cfg)?;
 
-        for fixture in cfg.fixtures.into_iter() {
-            patch.patch(&mut channels, fixture)?;
-        }
+        let mut channels = Channels::new();
+        let patch = Patch::patch_all(&mut channels, cfg.fixtures)?;
 
         let master_controls = MasterControls::new();
         let initial_channel = channels.current_channel();
