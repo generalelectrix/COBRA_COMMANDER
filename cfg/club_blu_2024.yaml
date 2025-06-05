@@ -1,0 +1,28 @@
+controllers:
+  - 192.168.1.1:8000
+fixtures:
+  - name: Color
+    group: Front
+    addr:
+      start: 1
+      count: 6
+    channel: True
+  - name: Color
+    group: Top
+    addr:
+      start: 19
+      count: 6
+    channel: True
+  - name: Color
+    group: Back
+    addr:
+      start: 400
+      count: 18
+    channel: True
+  - name: WizardExtreme
+    addr: 128
+    channel: True
+  - name: WizardExtreme
+    addr: 144
+    channel: True
+    mirror: True
