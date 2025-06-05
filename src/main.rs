@@ -37,6 +37,7 @@ mod util;
 mod wled;
 
 fn main() -> Result<()> {
+    println!("args: {:?}", env::args().collect::<Vec<_>>());
     let config_path = env::args()
         .last()
         .expect("Provide config path as final arg.");
@@ -49,10 +50,8 @@ fn main() -> Result<()> {
 
     SimpleLogger::init(log_level, LogConfig::default())?;
 
-    if let Some(first_arg) = env::args().nth(1) {
-        if first_arg == "--check-patch" {
-            return check_patch(cfg);
-        }
+    if env::args().any(|arg| arg == "--check-patch") {
+        return check_patch(cfg);
     }
 
     let clocks = if let Some(clock_service) = prompt_start_clock_service(Context::new())? {
