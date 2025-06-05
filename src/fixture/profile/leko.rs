@@ -106,6 +106,13 @@ impl AnimatedFixture for Leko {
                     &mut dmx_buf[2..4],
                 );
             }
+            Model::DcRotator => {
+                let animated = self
+                    .gobo1
+                    .control
+                    .val_with_anim(animation_vals.filter(&AnimationTarget::Gobo1));
+                dmx_buf[0] = unipolar_to_range(0, 255, animated.abs());
+            }
         }
     }
 }
@@ -122,6 +129,8 @@ enum Model {
     GoboSpinnaz,
     /// DHA Varispeed controlled using the DHA DMX DC controller.
     DhaVarispeed,
+    /// Dimmer channel controlling a DC wall wart, such as TwinSpin OG or film FX.
+    DcRotator,
 }
 
 impl EnumRenderModel for Model {}
@@ -132,6 +141,7 @@ impl Model {
             Self::Dimmer => 1,
             Self::GoboSpinnaz => 4,
             Self::DhaVarispeed => 4,
+            Self::DcRotator => 1,
         }
     }
 }
