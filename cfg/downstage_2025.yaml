@@ -1,28 +1,62 @@
-debug: True
+debug: False
 fixtures:
+  # Fronts Roto
   - name: Leko
-    addr: 1
+    group: FrontRoto
+    addr: 13
     channel: True
     options:
       kind: Dimmer
   - name: Leko
-    addr: 400
+    group: FrontRoto
+    addr: 1
+    channel: True
+    options:
+      kind: DhaVarispeed
+  # Fronts Scroller
+  - name: Leko
+    group: FrontScroller
+    addr: 14
+    channel: True
+    options:
+      kind: Dimmer
+  - name: Leko
+    group: FrontScroller
+    addr: 15
+    channel: True
+    options:
+      kind: DcRotator
+  # Trees
+  - name: Leko
+    group: Trees
+    addr: 10
+    channel: True
+    options:
+      kind: Dimmer
+  - name: Leko
+    group: Trees
+    addr: 440
     channel: True
     options:
       kind: GoboSpinnaz
   - name: Leko
-    addr: 2
+    group: Trees
+    addr: 11
     channel: True
     options:
       kind: Dimmer
   - name: Leko
-    addr: 404
+    group: Trees
+    addr: 444
     channel: True
     options:
-      kind: DhaVarispeed
+      kind: GoboSpinnaz
   - name: Astera
     addr: 100
     channel: True
   - name: H2O
     addr: 200
+    channel: True
+  - name: H2O
+    addr: 210
     channel: True
