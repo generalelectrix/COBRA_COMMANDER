@@ -163,7 +163,7 @@ fn render_varispeed(val: BipolarFloat, dmx_buf: &mut [u8]) {
         // If we're spinning at all, start from DMX value 6, and range up to 250.
         speed_int += 5;
     }
-    if val > BipolarFloat::ZERO {
+    if val < BipolarFloat::ZERO {
         dmx_buf[0] = speed_int;
         dmx_buf[1] = 0;
     } else {
