@@ -1,5 +1,15 @@
 debug: False
 fixtures:
+  # Fronts house left
+  - name: Dimmer
+    group: FrontHouseLeft
+    addr: 128
+    channel: True
+  # Fronts house right
+  - name: Dimmer
+    group: FrontHouseRight
+    addr: 129
+    channel: True
   # Fronts Roto
   - name: Leko
     group: FrontRoto
@@ -59,4 +69,10 @@ fixtures:
     channel: True
   - name: H2O
     addr: 210
+    channel: True
+  - name: WizardExtreme
+    addr: 256
+    channel: True
+  - name: WizardExtreme
+    addr: 288
     channel: True
