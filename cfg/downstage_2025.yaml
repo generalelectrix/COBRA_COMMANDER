@@ -36,6 +36,15 @@ fixtures:
     channel: True
     options:
       kind: DcRotator
+  - name: H2O
+    addr: 200
+    channel: True
+  - name: H2O
+    addr: 210
+    channel: True
+  - name: Astera
+    addr: 100
+    channel: True
   # Trees
   - name: Leko
     group: Trees
@@ -61,18 +70,12 @@ fixtures:
     channel: True
     options:
       kind: GoboSpinnaz
-  - name: Astera
-    addr: 100
-    channel: True
-  - name: H2O
-    addr: 200
-    channel: True
-  - name: H2O
-    addr: 210
-    channel: True
   - name: WizardExtreme
     addr: 256
     channel: True
   - name: WizardExtreme
     addr: 288
     channel: True
+  - name: Dimmer
+    group: Stick
+    addr: 130
