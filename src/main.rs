@@ -54,16 +54,30 @@ fn main() -> Result<()> {
         return check_patch(cfg);
     }
 
+    let audio_device = prompt_audio()?
+        .map(|device_name| AudioInput::new(Some(device_name)))
+        .transpose()?;
+
     let clocks = if let Some(clock_service) = prompt_start_clock_service(Context::new())? {
-        Clocks::Service(clock_service)
+        if let Some(audio_input) = audio_device {
+            let mut audio_controls = GroupControlMap::default();
+            crate::osc::audio::map_controls(&mut audio_controls);
+            // Local audio input, remote clocks.
+            Clocks::Mixed {
+                service: clock_service,
+                audio_input,
+                audio_controls,
+            }
+        } else {
+            Clocks::Service(clock_service)
+        }
     } else {
-        let audio_input = AudioInput::new(prompt_audio()?)?;
         let clocks = ClockBank::default();
         let mut audio_controls = GroupControlMap::default();
         crate::osc::audio::map_controls(&mut audio_controls);
         Clocks::Internal {
             clocks,
-            audio_input,
+            audio_input: audio_device.unwrap_or_else(|| AudioInput::new(None).unwrap()),
             audio_controls,
         }
     };

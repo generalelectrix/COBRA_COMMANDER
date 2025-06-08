@@ -36,7 +36,15 @@ pub struct Show {
 
 #[allow(clippy::large_enum_variant)]
 pub enum Clocks {
+    /// Full remote control of clocks and audio envelope.
     Service(ClockService),
+    /// Clocks come from the service but the audio input is local.
+    Mixed {
+        service: ClockService,
+        audio_input: AudioInput,
+        audio_controls: GroupControlMap<tunnels::audio::ControlMessage>,
+    },
+    /// No control over clocks. Local audio input.
     Internal {
         clocks: ClockBank,
         audio_input: AudioInput,
@@ -48,6 +56,17 @@ impl Clocks {
     pub fn get(&self) -> SharedClockData {
         match self {
             Self::Service(service) => service.get(),
+            Self::Mixed {
+                service,
+                audio_input,
+                ..
+            } => {
+                let clock_bank = service.get().clock_bank;
+                SharedClockData {
+                    clock_bank,
+                    audio_envelope: audio_input.envelope(),
+                }
+            }
             Self::Internal {
                 clocks,
                 audio_input,
@@ -238,21 +257,27 @@ impl Show {
                     },
                 )
             }
-            crate::osc::audio::GROUP => {
-                let Clocks::Internal {
+            crate::osc::audio::GROUP => match &mut self.clocks {
+                Clocks::Internal {
                     audio_input,
                     audio_controls,
                     ..
-                } = &mut self.clocks
-                else {
+                }
+                | Clocks::Mixed {
+                    audio_input,
+                    audio_controls,
+                    ..
+                } => {
+                    let Some((msg, _talkback)) = audio_controls.handle(msg)? else {
+                        return Ok(());
+                    };
+                    audio_input.control(msg, &mut self.controller);
+                    Ok(())
+                }
+                Clocks::Service(_) => {
                     bail!("cannot handle audio control message because no audio input is configured\n{msg:?}");
-                };
-                let Some((msg, _talkback)) = audio_controls.handle(msg)? else {
-                    return Ok(());
-                };
-                audio_input.control(msg, &mut self.controller);
-                Ok(())
-            }
+                }
+            },
             // Assume any other group is the name of a fixture.
             fixture_type => {
                 let Some(fixture_type) = self.patch.lookup_fixture_type(fixture_type) else {
