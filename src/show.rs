@@ -110,17 +110,11 @@ impl Clocks {
             }
             Self::Mixed { audio_input, .. } => {
                 audio_input.update_state(delta_t, controller);
-                let audio_envelope = audio_input.envelope();
-                clocks.update_state(delta_t, audio_envelope, controller);
+                // FIXME: when running in this mode we can't actually use audio
+                // envelope to influence clock evolution.
             }
             Self::Service(_) => (),
         }
-        if let Clocks::Internal {
-            clocks,
-            audio_input,
-            ..
-        } = self
-        {}
     }
 }
 
