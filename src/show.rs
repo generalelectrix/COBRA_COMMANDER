@@ -200,6 +200,13 @@ impl Show {
                     },
                 )
             }
+            ShowControlMessage::Clock(msg) => {
+                let Clocks::Internal { clocks, .. } = &mut self.clocks else {
+                    bail!("cannot handle clock control message because using external clock service\n{msg:?}");
+                };
+                clocks.control(msg, &mut self.controller);
+                Ok(())
+            }
         }
     }
 
@@ -344,4 +351,6 @@ pub enum ShowControlMessage {
     Channel(crate::channel::ControlMessage),
     #[allow(unused)]
     Animation(crate::animation::ControlMessage),
+    #[allow(unused)]
+    Clock(tunnels::clock_bank::ControlMessage),
 }

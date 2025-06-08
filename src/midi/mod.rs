@@ -1,7 +1,7 @@
 //! Define midi devices and handle midi controls.
 
 use anyhow::Result;
-use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
+use device::{apc20::AkaiApc20, cmd_mm1::BehringerCmdMM1, launch_control_xl::NovationLaunchControlXL};
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{channel::StateChange as ChannelStateChange, show::ShowControlMessage};
@@ -19,6 +19,7 @@ mod mapping;
 pub enum Device {
     #[allow(unused)]
     Apc20(AkaiApc20),
+    CmdMM1(BehringerCmdMM1),
     LaunchControlXL(NovationLaunchControlXL),
     LaunchControlXLSecondWing(NovationLaunchControlXL),
 }
@@ -33,6 +34,7 @@ impl MidiDevice for Device {
     fn device_name(&self) -> &str {
         match self {
             Self::Apc20(d) => d.device_name(),
+            Self::CmdMM1(d) => d.device_name(),
             Self::LaunchControlXL(d) => d.device_name(),
             Self::LaunchControlXLSecondWing(_) => "Launch Control XL Second Wing",
         }
@@ -41,6 +43,7 @@ impl MidiDevice for Device {
     fn init_midi(&self, out: &mut tunnels::midi::Output<Self>) -> Result<()> {
         match self {
             Self::Apc20(d) => d.init_midi(out),
+            Self::CmdMM1(d) => d.init_midi(out),
             Self::LaunchControlXL(d) => d.init_midi(out),
             Self::LaunchControlXLSecondWing(d) => d.init_midi(out),
         }
@@ -52,6 +55,7 @@ impl Device {
     pub fn all() -> Vec<Self> {
         vec![
             // Self::Apc20(AkaiApc20 { channel_offset: 0 }),
+            Self::CmdMM1(BehringerCmdMM1),
             Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 0 }),
             Self::LaunchControlXLSecondWing(NovationLaunchControlXL { channel_offset: 8 }),
         ]
@@ -62,6 +66,7 @@ impl MidiHandler for Device {
     fn interpret(&self, event: &Event) -> Option<ShowControlMessage> {
         match self {
             Self::Apc20(d) => d.interpret(event),
+            Self::CmdMM1(d) => d.interpret(event),
             Self::LaunchControlXL(d) => d.interpret(event),
             Self::LaunchControlXLSecondWing(d) => d.interpret(event),
         }
@@ -70,6 +75,7 @@ impl MidiHandler for Device {
     fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output<Device>) {
         match self {
             Self::Apc20(d) => d.emit_channel_control(msg, output),
+            Self::CmdMM1(d) => d.emit_channel_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_channel_control(msg, output),
             Self::LaunchControlXLSecondWing(d) => d.emit_channel_control(msg, output),
         }
@@ -78,8 +84,18 @@ impl MidiHandler for Device {
     fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output<Device>) {
         match self {
             Self::Apc20(d) => d.emit_master_control(msg, output),
+            Self::CmdMM1(d) => d.emit_master_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_master_control(msg, output),
             Self::LaunchControlXLSecondWing(d) => d.emit_master_control(msg, output),
+        }
+    }
+
+    fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut Output<Device>) {
+        match self {
+            Self::Apc20(_) => {},
+            Self::CmdMM1(d) => d.emit_clock_control(msg, output),
+            Self::LaunchControlXL(_) => {},
+            Self::LaunchControlXLSecondWing(_) => {},
         }
     }
 }
@@ -96,6 +112,10 @@ pub trait MidiHandler {
     /// Send MIDI state to handle the provided master state change.
     #[allow(unused)]
     fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output<Device>) {}
+
+    /// Send MIDI state to handle the provided clock state change.
+    #[allow(unused)]
+    fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut Output<Device>) {}
 }
 
 pub struct MidiControlMessage {
@@ -135,6 +155,15 @@ impl MidiController {
             device.emit_master_control(msg, output);
         }
     }
+
+    /// Handle a clock state change message.
+    pub fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange) {
+        for output in self.0.borrow_mut().outputs() {
+            // FIXME: tunnels devices are inside-out/stateless
+            let device = *output.device();
+            device.emit_clock_control(msg, output);
+        }
+    }
 }
 
 impl EmitMidiChannelMessage for MidiController {
@@ -149,10 +178,20 @@ impl EmitMidiMasterMessage for MidiController {
     }
 }
 
+impl EmitMidiClockMessage for MidiController {
+    fn emit_midi_clock_message(&self, msg: &tunnels::clock_bank::StateChange) {
+        self.emit_clock_control(msg);
+    }
+}
+
 pub trait EmitMidiChannelMessage {
     fn emit_midi_channel_message(&self, msg: &ChannelStateChange);
 }
 
 pub trait EmitMidiMasterMessage {
     fn emit_midi_master_message(&self, msg: &crate::master::StateChange);
+}
+
+pub trait EmitMidiClockMessage {
+    fn emit_midi_clock_message(&self, msg: &tunnels::clock_bank::StateChange);
 }

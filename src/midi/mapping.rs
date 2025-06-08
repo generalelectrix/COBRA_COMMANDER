@@ -8,6 +8,7 @@ use super::{
             AkaiApc20, Apc20ChannelButtonType, Apc20ChannelControlEvent, Apc20ControlEvent,
             Apc20StateChange,
         },
+        cmd_mm1::BehringerCmdMM1,
         launch_control_xl::{
             LaunchControlXLChannelButton, LaunchControlXLChannelControlEvent,
             LaunchControlXLChannelStateChange, LaunchControlXLControlEvent,
@@ -131,5 +132,20 @@ impl MidiHandler for NovationLaunchControlXL {
             }
             ChannelStateChange::ChannelLabels(_) => (),
         }
+    }
+}
+
+impl MidiHandler for BehringerCmdMM1 {
+    fn interpret(&self, event: &tunnels::midi::Event) -> Option<ShowControlMessage> {
+        let control_event = self.parse(event)?;
+        Some(control_event.to_show_control_message())
+    }
+
+    fn emit_clock_control(
+        &self,
+        msg: &tunnels::clock_bank::StateChange,
+        output: &mut tunnels::midi::Output<super::Device>,
+    ) {
+        self.emit(msg.channel.into(), &msg.change, output);
     }
 }
