@@ -80,16 +80,20 @@ impl Clocks {
 
     /// Emit all current audio and clock state.
     pub fn emit_state(&self, emitter: &mut Controller) {
-        let Self::Internal {
-            clocks,
-            audio_input,
-            ..
-        } = self
-        else {
-            return;
-        };
-        audio_input.emit_state(emitter);
-        clocks.emit_state(emitter);
+        match self {
+            Self::Internal {
+                clocks,
+                audio_input,
+                ..
+            } => {
+                audio_input.emit_state(emitter);
+                clocks.emit_state(emitter);
+            }
+            Self::Mixed { audio_input, .. } => {
+                audio_input.emit_state(emitter);
+            }
+            Self::Service(_) => (),
+        }
     }
 
     /// Update clock state.
