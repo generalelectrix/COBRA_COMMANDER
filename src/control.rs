@@ -79,7 +79,7 @@ impl Controller {
     pub fn sender_with_metadata<'a>(
         &'a mut self,
         sender_id: Option<&'a OscClientId>,
-    ) -> ControlMessageWithMetadataSender<'_> {
+    ) -> ControlMessageWithMetadataSender<'a> {
         ControlMessageWithMetadataSender {
             sender_id,
             controller: self,
@@ -104,19 +104,21 @@ impl tunnels::audio::EmitStateChange for Controller {
 
 impl tunnels::clock_bank::EmitStateChange for Controller {
     fn emit_clock_bank_state_change(&mut self, sc: tunnels::clock_bank::StateChange) {
+        let emitter = &ControlMessageWithMetadataSender {
+            sender_id: None,
+            controller: self,
+        };
+        
         // Emit to OSC
         crate::osc::clock::emit_osc_state_change(
             &sc,
             &ScopedControlEmitter {
                 entity: crate::osc::clock::GROUP,
-                emitter: &ControlMessageWithMetadataSender {
-                    sender_id: None,
-                    controller: self,
-                },
+                emitter,
             },
         );
         // Emit to MIDI
-        self.midi.emit_clock_control(&sc);
+        emitter.emit_midi_clock_message(&sc);
     }
 }
 
