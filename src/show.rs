@@ -98,16 +98,29 @@ impl Clocks {
 
     /// Update clock state.
     pub fn update(&mut self, delta_t: Duration, controller: &mut Controller) {
+        match self {
+            Self::Internal {
+                clocks,
+                audio_input,
+                ..
+            } => {
+                audio_input.update_state(delta_t, controller);
+                let audio_envelope = audio_input.envelope();
+                clocks.update_state(delta_t, audio_envelope, controller);
+            }
+            Self::Mixed { audio_input, .. } => {
+                audio_input.update_state(delta_t, controller);
+                let audio_envelope = audio_input.envelope();
+                clocks.update_state(delta_t, audio_envelope, controller);
+            }
+            Self::Service(_) => (),
+        }
         if let Clocks::Internal {
             clocks,
             audio_input,
             ..
         } = self
-        {
-            audio_input.update_state(delta_t, controller);
-            let audio_envelope = audio_input.envelope();
-            clocks.update_state(delta_t, audio_envelope, controller);
-        }
+        {}
     }
 }
 
