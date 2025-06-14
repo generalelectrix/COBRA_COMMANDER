@@ -64,6 +64,7 @@ impl AnimationUIState {
                 2 => Some(Square),
                 3 => Some(Sawtooth),
                 4 => Some(Constant),
+                5 => Some(Perlin),
                 _ => None,
             }
             .map(|waveform| WrapAnimation(Set(Waveform(waveform))))
@@ -149,6 +150,7 @@ impl AnimationUIState {
                     Square => 2,
                     Sawtooth => 3,
                     Constant => 4,
+                    Perlin => 5,
                 },
                 emitter,
             ),
