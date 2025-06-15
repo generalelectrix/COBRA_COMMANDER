@@ -136,6 +136,7 @@ pub trait Fixture: ControllableFixture {
     fn render(
         &self,
         phase_offset: Phase,
+        offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     );
@@ -158,6 +159,7 @@ where
     fn render(
         &self,
         _phase_offset: Phase,
+        _offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     ) {
@@ -223,6 +225,7 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
     fn render(
         &self,
         phase_offset: Phase,
+        offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     ) {
@@ -232,6 +235,7 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
             animation_vals[i] = (
                 ta.animation.get_value(
                     phase_offset,
+                    offset_index,
                     &group_controls.master_controls.clock_state,
                     group_controls.master_controls.audio_envelope,
                 ),
