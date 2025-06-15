@@ -129,6 +129,7 @@ impl FixtureGroup {
             let dmx_buf = &mut dmx_buffers[cfg.universe][dmx_addr..dmx_addr + cfg.channel_count];
             self.fixture.render(
                 phase_offset,
+                i,
                 &FixtureGroupControls {
                     master_controls,
                     mirror: cfg.mirror,
