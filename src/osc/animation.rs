@@ -63,8 +63,8 @@ impl AnimationUIState {
                 1 => Some(Triangle),
                 2 => Some(Square),
                 3 => Some(Sawtooth),
-                4 => Some(Constant),
-                5 => Some(Noise),
+                4 => Some(Noise),
+                5 => Some(Constant),
                 _ => None,
             }
             .map(|waveform| WrapAnimation(Set(Waveform(waveform))))
