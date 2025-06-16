@@ -28,7 +28,7 @@ impl<'a, T: PartialEq + Sized + 'static> TargetedAnimationValues<'a, T> {
     }
 
     /// Iterate over all animation values matching the provided target.
-    pub fn filter(&'a self, target: &'a T) -> impl Iterator<Item = f64> + '_ {
+    pub fn filter(&'a self, target: &'a T) -> impl Iterator<Item = f64> + 'a {
         self.0
             .iter()
             .filter_map(move |(v, t)| (*t == *target).then_some(*v))

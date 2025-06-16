@@ -4,7 +4,8 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, Context, Result};
-use log::error;
+use hsluv::hsluv_to_rgb;
+use log::{error, warn};
 use strum_macros::{EnumString, VariantArray};
 
 use crate::{
@@ -82,7 +83,22 @@ impl PatchAnimatedFixture for Color {
 
 crate::register!(Color);
 
+const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.323);
+const HSLUV_LIGHTNESS_BOOST_SCALE: UnipolarFloat = UnipolarFloat::new(0.677);
+
 impl Color {
+    /// Return a lightness value for HSLuv.
+    /// Return 0 if we unexpectedly don't have a lightness boost control configured.
+    /// This does NOT include the rescaling from the overall level fader.
+    fn hsluv_lightness(&self) -> UnipolarFloat {
+        let Some(lightness_boost) = &self.lightness_boost else {
+            error!("No lightness boost control configured for HSLuv color.");
+            return UnipolarFloat::ZERO;
+        };
+
+        HSLUV_LIGHTNESS_OFFSET + HSLUV_LIGHTNESS_BOOST_SCALE * lightness_boost.control.val()
+    }
+
     pub fn render_without_animations(&self, model: Model, dmx_buf: &mut [u8]) {
         match self.space {
             ColorSpace::Hsv => model.render(
@@ -91,6 +107,14 @@ impl Color {
                     hue: self.hue.control.val(),
                     sat: self.sat.control.val(),
                     val: self.val.control.val(),
+                },
+            ),
+            ColorSpace::Hsluv => model.render(
+                dmx_buf,
+                HsluvRenderer {
+                    hue: self.hue.control.val(),
+                    sat: self.sat.control.val(),
+                    lightness: self.hsluv_lightness() * self.val.control.val(),
                 },
             ),
         }
@@ -131,6 +155,14 @@ impl AnimatedFixture for Color {
                     hue: Phase::new(hue),
                     sat: UnipolarFloat::new(sat),
                     val: UnipolarFloat::new(val),
+                },
+            ),
+            ColorSpace::Hsluv => model.render(
+                dmx_buf,
+                HsluvRenderer {
+                    hue: Phase::new(hue),
+                    sat: UnipolarFloat::new(sat),
+                    lightness: self.hsluv_lightness() * UnipolarFloat::new(val),
                 },
             ),
         }
@@ -175,8 +207,12 @@ impl OscControl<()> for Color {
 /// Control and color models for different color spaces.
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString)]
 enum ColorSpace {
+    /// Standard HSV color space.
     #[default]
     Hsv,
+    /// HSLuv perceptually uniform color space.
+    /// www.hsluv.org
+    Hsluv,
 }
 
 /// An entity that can render an abstract color into various output spaces.
@@ -212,6 +248,38 @@ impl RenderColor for HsvRenderer {
             unit_to_u8(self.sat.val()),
             unit_to_u8(self.val.val()),
         ]
+    }
+}
+
+/// Render an HSLuv color into output spaces.
+pub struct HsluvRenderer {
+    pub hue: Phase,
+    pub sat: UnipolarFloat,
+    pub lightness: UnipolarFloat,
+}
+
+impl RenderColor for HsluvRenderer {
+    fn rgb(&self) -> ColorRgb {
+        // HSLuv library uses degrees for phase and percent for other two components.
+        let (r, g, b) = hsluv_to_rgb(
+            self.hue.val() * 360.,
+            self.sat.val() * 100.,
+            self.lightness.val() * 100.,
+        );
+        [unit_to_u8(r), unit_to_u8(g), unit_to_u8(b)]
+    }
+
+    fn rgbw(&self) -> ColorRgbw {
+        // TODO: we have lots of rich info about our input color, we should be
+        // able to make good use of the white diode.
+        // Inspiration: https://blog.saikoled.com/post/44677718712/how-to-convert-from-hsi-to-rgb-white
+        let [r, g, b] = self.rgb();
+        [r, g, b, 0]
+    }
+
+    fn hsv(&self) -> ColorHsv {
+        warn!("HSV output rendering is not implemented for HSLuv");
+        [0, 0, 0]
     }
 }
 
