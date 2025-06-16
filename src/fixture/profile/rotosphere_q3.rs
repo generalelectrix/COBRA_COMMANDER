@@ -1,7 +1,7 @@
 //! Control profle for the Chauvet Rotosphere Q3, aka Son Of Spherion.
 use super::color::Model::Rgbw;
 
-use crate::fixture::prelude::*;
+use crate::fixture::{color::HsvRenderer, prelude::*};
 
 #[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
 #[channel_count = 9]
@@ -47,15 +47,20 @@ impl AnimatedFixture for RotosphereQ3 {
     ) {
         Rgbw.render(
             &mut dmx_buf[0..4],
-            self.hue
-                .control
-                .val_with_anim(animation_vals.filter(&AnimationTarget::Hue)),
-            self.sat
-                .control
-                .val_with_anim(animation_vals.filter(&AnimationTarget::Sat)),
-            self.val
-                .control
-                .val_with_anim(animation_vals.filter(&AnimationTarget::Val)),
+            HsvRenderer {
+                hue: self
+                    .hue
+                    .control
+                    .val_with_anim(animation_vals.filter(&AnimationTarget::Hue)),
+                sat: self
+                    .sat
+                    .control
+                    .val_with_anim(animation_vals.filter(&AnimationTarget::Sat)),
+                val: self
+                    .val
+                    .control
+                    .val_with_anim(animation_vals.filter(&AnimationTarget::Val)),
+            },
         );
         self.strobe
             .render_with_group(group_controls, std::iter::empty(), dmx_buf);

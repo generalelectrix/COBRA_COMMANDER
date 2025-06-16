@@ -31,3 +31,4 @@ rand = { version = "0.8", features = ["small_rng"] }
 wled-json-api-library = "0.1.7"
 reqwest = "0.12.9"
 linkme = "0.3.33"
+hsluv = "0.3.1"
