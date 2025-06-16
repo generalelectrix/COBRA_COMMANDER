@@ -28,12 +28,12 @@ where
     /// of the source of the control message. Examples where this is useful:
     ///
     /// - a level fader controlling a boolean shutter would want to echo the exact
-    ///     channel control message, since we'd want virtual faders to track
-    ///     each other and not snap to a boolean value
+    ///   channel control message, since we'd want virtual faders to track
+    ///   each other and not snap to a boolean value
     /// - a hardware device may represent all knob inputs as unipolar, but these
-    ///     could be connected to a bipolar control parameter, or vice versa.
-    ///     In this case, we'd want to echo out the control value in the bipolar
-    ///     domain, to things like indicator rings can be set correctly.
+    ///   could be connected to a bipolar control parameter, or vice versa.
+    ///   In this case, we'd want to echo out the control value in the bipolar
+    ///   domain, to things like indicator rings can be set correctly.
     exact_echo: bool,
     phantom: PhantomData<T>,
 }
