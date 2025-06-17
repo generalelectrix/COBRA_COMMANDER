@@ -27,7 +27,7 @@ pub struct Color {
     val: ChannelLevelUnipolar<Unipolar<()>>,
     /// Extra third knob for controlling HSLuv; set to zero, this sets the
     /// overall lightness to the value that includes all primary colors in the
-    /// output gamut (L = 0.322).
+    /// output gamut.
     /// Larger values span the rest of the lightness range.
     #[channel_control]
     #[optional]
