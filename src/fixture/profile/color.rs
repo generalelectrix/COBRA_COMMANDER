@@ -212,11 +212,14 @@ impl OscControl<()> for Color {
 /// Control and color models for different color spaces.
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString)]
 enum ColorSpace {
-    /// Standard HSV color space.
+    /// HSV color space with green shifted to hue = 0.
     #[default]
     Hsv,
-    /// HSLuv perceptually uniform color space.
+    /// HSLuv perceptually uniform color space, green shifted to hue = 0.
     /// www.hsluv.org
+    ///
+    /// Hue coordinates are slightly re-scaled to put primaries exactly 120
+    /// degrees apart.
     Hsluv,
 }
 
@@ -248,7 +251,9 @@ impl RenderColor for HsvRenderer {
         [r, g, b, w]
     }
     fn hsv(&self) -> ColorHsv {
-        // We set green as hue = 0; everything else has red = 0.  Shift.
+        // This controller defines green as hue = 0.
+        // Shift hue back into the standard HSV expectation where the hue for
+        // red = 0.
         let shifted_hue = self.hue + 1. / 3.;
         [
             unit_to_u8(shifted_hue.val()),
