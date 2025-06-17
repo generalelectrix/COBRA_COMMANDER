@@ -1,7 +1,7 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, Expr, Field, Fields, Lit, Meta};
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Expr, Field, Fields, Ident, Lit, Meta};
 
 /// Derive the PatchAnimatedFixture trait on a fixture struct.
 /// Use the channel_count attribute to specify the DMX channel count.
@@ -58,7 +58,10 @@ pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
 /// Fields that do not have an emit_state method can be skipped with #[skip_emit].
 /// Fields that implement OscControl as well as EmitState can be forced to emit
 /// with the OscControl method with the #[force_osc_control] attribute.
-#[proc_macro_derive(EmitState, attributes(skip_emit, force_osc_control))]
+/// Fields that may or may not be present depending on configuration can be
+/// defined as an `Option<T>` and marked with the #[optional] attribute, which
+/// will handle the optionality.
+#[proc_macro_derive(EmitState, attributes(skip_emit, force_osc_control, optional))]
 pub fn derive_emit_state(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
 
@@ -76,17 +79,25 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
         let Some(ident) = &field.ident else {
             continue;
         };
-        if field_has_attr(field, "force_osc_control") {
-            lines = quote! {
-                #lines
-                crate::fixture::control::OscControl::emit_state(&self.#ident, emitter);
+
+        // Assume we have bound the field to a local with the same identifier.
+        let emit_state_call = if field_has_attr(field, "force_osc_control") {
+            quote! {
+                crate::fixture::control::OscControl::emit_state(#ident, emitter);
             }
         } else {
-            lines = quote! {
-                #lines
-                self.#ident.emit_state(emitter);
+            quote! {
+                #ident.emit_state(emitter);
             }
-        }
+        };
+
+        lines = insert_optional_call(
+            field_has_attr(field, "optional"),
+            false,
+            ident,
+            emit_state_call,
+            lines,
+        );
     }
     quote! {
         impl crate::fixture::EmitState for #ident {
@@ -113,9 +124,19 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 ///
 /// Fields may declare a named method on the implementing struct to call when
 /// a change happens to the control.
+///
+/// Fields that may be absent (defined as an Option) can set #[optional] to
+/// conditionally handle if Some.
 #[proc_macro_derive(
     Control,
-    attributes(skip_control, force_osc_control, channel_control, animate, on_change)
+    attributes(
+        skip_control,
+        force_osc_control,
+        channel_control,
+        animate,
+        on_change,
+        optional
+    )
 )]
 pub fn derive_control(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
@@ -138,6 +159,7 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
         let Some(ident) = &field.ident else {
             continue;
         };
+
         let on_change = get_attr_and_payload(&field.attrs, "on_change")
             .map(|method| {
                 let method = format_ident!("{method}");
@@ -146,31 +168,43 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
                 }
             })
             .unwrap_or_default();
-        if field_has_attr(field, "force_osc_control") {
-            control_lines = quote! {
-                #control_lines
-                if crate::fixture::control::OscControl::control(&mut self.#ident, msg, emitter)? {
+
+        // We'll bind the field mutably to a local named #ident.
+        let control_call = if field_has_attr(field, "force_osc_control") {
+            quote! {
+                if crate::fixture::control::OscControl::control(#ident, msg, emitter)? {
                     #on_change
                     return Ok(true);
                 }
             }
         } else {
-            control_lines = quote! {
-                #control_lines
-                if self.#ident.control(msg, emitter)? {
+            quote! {
+                if #ident.control(msg, emitter)? {
                     #on_change
                     return Ok(true);
                 }
             }
-        }
+        };
+
+        let optional = field_has_attr(field, "optional");
+
+        control_lines = insert_optional_call(optional, true, ident, control_call, control_lines);
+
         if field_has_attr(field, "channel_control") {
-            channel_control_lines = quote! {
-                #channel_control_lines
-                if self.#ident.control_from_channel(msg, emitter)? {
+            let channel_control_call = quote! {
+                if #ident.control_from_channel(msg, emitter)? {
                     #on_change
                     return Ok(true);
                 }
-            }
+            };
+
+            channel_control_lines = insert_optional_call(
+                optional,
+                true,
+                ident,
+                channel_control_call,
+                channel_control_lines,
+            );
         }
 
         if field_has_attr(field, "animate") {
@@ -227,6 +261,31 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
         #anim_target_enum
     }
     .into()
+}
+
+fn insert_optional_call(
+    optional: bool,
+    mutable: bool,
+    ident: &Ident,
+    call: proc_macro2::TokenStream,
+    into: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let ref_token = if mutable { quote!(&mut) } else { quote!(&) };
+    if optional {
+        return quote! {
+            #into
+            if let Some(#ident) = #ref_token self.#ident {
+                #call
+            }
+        };
+    }
+    quote! {
+        #into
+        {
+            let #ident = #ref_token self.#ident;
+            #call
+        }
+    }
 }
 
 fn field_has_attr(field: &Field, ident: &str) -> bool {

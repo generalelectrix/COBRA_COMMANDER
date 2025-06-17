@@ -39,7 +39,7 @@ mod wled;
 fn main() -> Result<()> {
     println!("args: {:?}", env::args().collect::<Vec<_>>());
     let config_path = env::args()
-        .last()
+        .next_back()
         .expect("Provide config path as final arg.");
     let mut cfg = Config::load(&config_path)?;
     let log_level = if cfg.debug {

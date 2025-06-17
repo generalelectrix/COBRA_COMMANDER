@@ -78,7 +78,7 @@ impl Controller {
     pub fn sender_with_metadata<'a>(
         &'a mut self,
         sender_id: Option<&'a OscClientId>,
-    ) -> ControlMessageWithMetadataSender<'_> {
+    ) -> ControlMessageWithMetadataSender<'a> {
         ControlMessageWithMetadataSender {
             sender_id,
             controller: self,
