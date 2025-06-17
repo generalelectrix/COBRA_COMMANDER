@@ -1,15 +1,8 @@
-debug: False
-controllers:
-  - 192.168.1.1:8000
 fixtures:
-  - name: WizardExtreme
-    addr: 1
-    channel: True
-  - name: Aquarius
-    addr: 20
-    channel: True
   - name: Color
     addr:
-      start: 30
-      count: 10
+      start: 1
+      count: 64
     channel: True
+    options:
+      control_color_space: Hsluv

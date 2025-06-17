@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, Context, Result};
+use colored::Colorize;
 use hsluv::hsluv_to_rgb;
 use log::{error, warn};
 use strum_macros::{EnumString, VariantArray};
@@ -26,11 +27,11 @@ pub struct Color {
     val: ChannelLevelUnipolar<Unipolar<()>>,
     /// Extra third knob for controlling HSLuv; set to zero, this sets the
     /// overall lightness to the value that includes all primary colors in the
-    /// output gamut (L = 0.323).
+    /// output gamut (L = 0.322).
     /// Larger values span the rest of the lightness range.
     #[channel_control]
     #[optional]
-    lightness_boost: Option<ChannelLevelUnipolar<Unipolar<()>>>,
+    lightness_boost: Option<ChannelKnobUnipolar<Unipolar<()>>>,
 
     #[skip_control]
     #[skip_emit]
@@ -56,35 +57,39 @@ impl PatchAnimatedFixture for Color {
     }
 
     fn new(options: &HashMap<String, String>) -> Result<(Self, Option<RenderMode>)> {
-        let render_mode = if let Some(kind) = options.get("kind") {
-            let model: Model = kind
-                .parse()
-                .with_context(|| format!("unknown color output model \"{kind}\""))?;
-            Some(model.render_mode())
-        } else {
-            None
+        let render_mode = options
+            .get("kind")
+            .map(|kind| {
+                kind.parse::<Model>()
+                    .with_context(|| format!("unknown color output model \"{kind}\""))
+            })
+            .transpose()?
+            .unwrap_or_default()
+            .render_mode();
+        let space = options
+            .get("control_color_space")
+            .map(|space| {
+                space
+                    .parse::<ColorSpace>()
+                    .with_context(|| format!("unknown color control space \"{space}\""))
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let mut c = Self {
+            space,
+            ..Default::default()
         };
-        let space = if let Some(space) = options.get("control_color_space") {
-            space
-                .parse::<ColorSpace>()
-                .with_context(|| format!("unknown color control space \"{space}\""))?
-        } else {
-            Default::default()
-        };
-        Ok((
-            Self {
-                space,
-                ..Default::default()
-            },
-            render_mode,
-        ))
+        if space == ColorSpace::Hsluv {
+            c.lightness_boost = Some(Unipolar::new("LightnessBoost", ()).with_channel_knob(2));
+        }
+        Ok((c, Some(render_mode)))
     }
 }
 
 crate::register!(Color);
 
-const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.323);
-const HSLUV_LIGHTNESS_BOOST_SCALE: UnipolarFloat = UnipolarFloat::new(0.677);
+const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.3225);
+const HSLUV_LIGHTNESS_BOOST_SCALE: UnipolarFloat = UnipolarFloat::new(1.0 - 0.3225);
 
 impl Color {
     /// Return a lightness value for HSLuv.
@@ -261,8 +266,44 @@ pub struct HsluvRenderer {
 impl RenderColor for HsluvRenderer {
     fn rgb(&self) -> ColorRgb {
         // HSLuv library uses degrees for phase and percent for other two components.
+        // Primary and secondary hues at base lightness (renders primary blue) are:
+        // (r, y, g, c, b, m): (12.2, 85.8, 127.7, 191.6, 265.87, 307.7)
+        // Subtracting 127.7 to shift primary green to 0 gives:
+        // (r, y, g, c, b, m): (244.5, 318.1, 0.0, 63.9, 138.17, 180.0)
+
+        // Observations:
+        // - each primary and opposing secondary are actually 180 degrees apart
+        // - the primary to primary distance and primary to secondary distance
+        //   varies quite a bit, presumably due to our ability to resolve subtle
+        //   hue variations in each range differently. This isn't great for art,
+        //   though, since too much of our hue range is dedicated to shades of
+        //   green. Rescale the ranges to give each subset an equal share of
+        //   the hue range.
+
+        // Perform operations in the unit range.
+        const RED: f64 = 244.5 / 360.;
+        const GREEN: f64 = 0.;
+        const BLUE: f64 = 138.17 / 360.;
+        const ONE_THIRD: f64 = 1. / 3.;
+        const TWO_THIRD: f64 = 2. / 3.;
+        const CYAN_SHIFT: f64 = (BLUE - GREEN) / ONE_THIRD;
+        const MAGENTA_SHIFT: f64 = (RED - BLUE) / ONE_THIRD;
+        const YELLOW_SHIFT: f64 = (1. - RED) / ONE_THIRD;
+
+        let hue = self.hue.val();
+
+        // Shift hue ranges.
+        let rescaled_hue = if hue < ONE_THIRD {
+            hue * CYAN_SHIFT
+        } else if hue < TWO_THIRD {
+            ((hue - ONE_THIRD) * MAGENTA_SHIFT) + BLUE
+        } else {
+            ((hue - TWO_THIRD) * YELLOW_SHIFT) + RED
+        };
+        // Convert to degrees and shift up by 127.7 to place green at 0.
+        let hue_degrees = rescaled_hue * 360. + 127.7;
         let (r, g, b) = hsluv_to_rgb(
-            self.hue.val() * 360.,
+            hue_degrees,
             self.sat.val() * 100.,
             self.lightness.val() * 100.,
         );
@@ -318,6 +359,7 @@ impl Model {
         match self {
             Self::Rgb => {
                 let [r, g, b] = renderer.rgb();
+                print!("{}", "▮".truecolor(r, g, b).on_truecolor(r, g, b));
                 buf[0] = r;
                 buf[1] = g;
                 buf[2] = b;
