@@ -144,7 +144,6 @@ impl FixtureGroup {
                 dmx_buf
             );
         }
-        println!();
     }
 }
 

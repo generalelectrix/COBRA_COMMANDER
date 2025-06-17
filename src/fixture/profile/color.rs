@@ -361,7 +361,6 @@ impl Model {
         match self {
             Self::Rgb => {
                 let [r, g, b] = renderer.rgb();
-                print!("{}", "▮".truecolor(r, g, b).on_truecolor(r, g, b));
                 buf[0] = r;
                 buf[1] = g;
                 buf[2] = b;
@@ -394,6 +393,14 @@ impl Model {
             }
         }
     }
+}
+
+/// Print a brick of color to stdout.
+///
+/// This can be used for debugging color output.
+#[allow(unused)]
+fn print_color([r, g, b]: ColorRgb) {
+    print!("{}", "▮".truecolor(r, g, b).on_truecolor(r, g, b));
 }
 
 /// An HSV color in an output 24-bit space.
