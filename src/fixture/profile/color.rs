@@ -41,7 +41,7 @@ pub struct Color {
 impl Default for Color {
     fn default() -> Self {
         Self {
-            hue: PhaseControl::new("Hue", ()).with_channel_knob(0),
+            hue: PhaseControl::new("Hue", ()).at_half().with_channel_knob(0),
             sat: Unipolar::new("Sat", ()).at_full().with_channel_knob(1),
             val: Unipolar::new("Val", ()).with_channel_level(),
             lightness_boost: None,
@@ -248,8 +248,10 @@ impl RenderColor for HsvRenderer {
         [r, g, b, w]
     }
     fn hsv(&self) -> ColorHsv {
+        // We set green as hue = 0; everything else has red = 0.  Shift.
+        let shifted_hue = self.hue + 1. / 3.;
         [
-            unit_to_u8(self.hue.val()),
+            unit_to_u8(shifted_hue.val()),
             unit_to_u8(self.sat.val()),
             unit_to_u8(self.val.val()),
         ]
@@ -407,7 +409,12 @@ type ColorRgb = [u8; 3];
 type ColorRgbw = [u8; 4];
 
 /// Convert unit-scaled HSV into a 24-bit RGB color.
+///
+/// NOTE: we shift the hue coordinate by 1/3, to put green at zero instead of red.
+/// This makes it easy to turn a knob between yellow, red, and magenta without
+/// passing through green.
 pub fn hsv_to_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> ColorRgb {
+    let hue = hue + 1. / 3.;
     if sat == 0.0 {
         let v = unit_to_u8(val.val());
         return [v, v, v];

@@ -49,6 +49,12 @@ impl<R: RenderToDmx<Phase>> PhaseControl<R> {
         Phase::new(val)
     }
 
+    /// Set the initial value of this control to 0.5.
+    pub fn at_half(mut self) -> Self {
+        self.val = Phase::new(0.5);
+        self
+    }
+
     /// Decorate this control with a channel knob of the provided index.
     pub fn with_channel_knob(self, index: KnobIndex) -> ChannelKnobPhase<Self> {
         let label = self.name.clone();

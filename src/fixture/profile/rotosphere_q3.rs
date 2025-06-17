@@ -24,7 +24,7 @@ pub struct RotosphereQ3 {
 impl Default for RotosphereQ3 {
     fn default() -> Self {
         Self {
-            hue: PhaseControl::new("Hue", ()).with_channel_knob(0),
+            hue: PhaseControl::new("Hue", ()).at_half().with_channel_knob(0),
             sat: Unipolar::new("Sat", ()).at_full().with_channel_knob(1),
             val: Unipolar::new("Val", ()).with_channel_level(),
             strobe: Strobe::channel("Strobe", 4, 1, 250, 0),
