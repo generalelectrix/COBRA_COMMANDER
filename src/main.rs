@@ -43,29 +43,34 @@ mod wled;
 #[derive(Parser, Debug)]
 #[command(about)]
 struct Args {
+    /// Check that the provided patch file is valid and quit.
     #[arg(long)]
     check_patch: bool,
 
+    /// The port on which to listen for OSC messages.
     #[arg(long, default_value_t = 8000)]
-    receive_port: u16,
+    osc_receive_port: u16,
 
+    /// URL to use to communicate with a WLED instance.
     #[arg(long)]
     wled_addr: Option<Url>,
 
+    /// If true, provide verbose logging.
     #[arg(long)]
     debug: bool,
 
-    patch: PathBuf,
+    /// Path to a YAML file containing the fixture patch.
+    patch_file: PathBuf,
 }
 
 fn main() -> Result<()> {
     let args = Args::try_parse()?;
 
     let patch = {
-        let patch_file = File::open(&args.patch).with_context(|| {
+        let patch_file = File::open(&args.patch_file).with_context(|| {
             format!(
                 "unable to read patch file \"{}\"",
-                args.patch.to_string_lossy()
+                args.patch_file.to_string_lossy()
             )
         })?;
         let fixtures = serde_yaml::from_reader(patch_file)?;
@@ -112,11 +117,11 @@ fn main() -> Result<()> {
     };
 
     match local_ip() {
-        Ok(ip) => info!("Listening for OSC at {}:{}.", ip, args.receive_port),
+        Ok(ip) => info!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
         Err(e) => info!("Unable to fetch local IP address: {}.", e),
     }
 
-    let osc_controllers = prompt_osc_config(args.receive_port)?.unwrap_or_default();
+    let osc_controllers = prompt_osc_config(args.osc_receive_port)?.unwrap_or_default();
 
     let (midi_inputs, midi_outputs) = list_ports()?;
     let midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
@@ -125,7 +130,7 @@ fn main() -> Result<()> {
     }
 
     let controller = Controller::new(
-        args.receive_port,
+        args.osc_receive_port,
         osc_controllers,
         midi_devices,
         args.wled_addr,
