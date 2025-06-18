@@ -59,6 +59,14 @@ impl Channels {
         }
     }
 
+    pub fn from_iter(keys: impl IntoIterator<Item = FixtureGroupKey>) -> Self {
+        let mut c = Self::new();
+        for k in keys {
+            c.add(k);
+        }
+        c
+    }
+
     /// Add new channel controls, wired to the specified fixture.
     pub fn add(&mut self, group: FixtureGroupKey) -> ChannelId {
         let id = ChannelId(self.channel_index.len());

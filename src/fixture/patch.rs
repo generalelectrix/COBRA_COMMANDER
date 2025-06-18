@@ -10,7 +10,6 @@ use super::fixture::{
     AnimatedFixture, Fixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture, RenderMode,
 };
 use super::group::{FixtureGroup, FixtureGroupKey};
-use crate::channel::Channels;
 use crate::config::{FixtureConfig, FixtureGroupConfig, Options};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
@@ -24,10 +23,24 @@ type UsedAddrs = HashMap<(UniverseIdx, usize), FixtureConfig>;
 /// Maintains a mapping of which DMX addresses are in use by which fixture, to
 /// prevent addressing collisions.
 pub struct Patch {
+    /// Collection of closures that patch fixture types.
+    ///
+    /// FIXME: since we have global registration now, we might be able to avoid
+    /// the need for closures and collect the actual patcher functions
+    /// themselves.
     patchers: Vec<Patcher>,
+    /// The fixture groups we've patched.
+    ///
+    /// TODO: by using a HashMap for fast key lookup, we do not have a defined
+    /// patch ordering. This implies that iterating over the patch will produce
+    /// a stable but random order. This probably isn't important.
     fixtures: HashMap<FixtureGroupKey, FixtureGroup>,
+    /// Lookup from static fixture type strings to FixtureType instances.
     fixture_type_lookup: HashMap<&'static str, FixtureType>,
+    /// Which DMX addrs already have a fixture patched in them.
     used_addrs: UsedAddrs,
+    /// The channels that fixture groups are assigned to.
+    channels: Vec<FixtureGroupKey>,
 }
 
 /// Distributed registry for things that we can patch.
@@ -61,32 +74,31 @@ impl Patch {
             fixtures: Default::default(),
             fixture_type_lookup: Default::default(),
             used_addrs: Default::default(),
+            channels: Default::default(),
         }
     }
 
     /// Initialize a patch from a collection of fixtures.
-    pub fn patch_all(
-        channels: &mut Channels,
-        fixtures: impl IntoIterator<Item = FixtureGroupConfig>,
-    ) -> Result<Self> {
+    pub fn patch_all(fixtures: impl IntoIterator<Item = FixtureGroupConfig>) -> Result<Self> {
         let mut patch = Self::new();
         for fixture in fixtures {
-            patch.patch(channels, fixture)?;
+            patch.patch(fixture)?;
         }
         Ok(patch)
     }
 
     /// Patch a fixture group config - either a single address or a range.
-    pub fn patch(
-        &mut self,
-        channels: &mut Channels,
-        cfg: FixtureGroupConfig,
-    ) -> anyhow::Result<()> {
+    pub fn patch(&mut self, cfg: FixtureGroupConfig) -> anyhow::Result<()> {
         let candidate = self.get_candidate(&cfg.name, &cfg.options)?;
         for fixture_cfg in cfg.fixture_configs(candidate.channel_count) {
-            self.patch_one(channels, fixture_cfg)?;
+            self.patch_one(fixture_cfg)?;
         }
         Ok(())
+    }
+
+    /// Iterate over the fixture group keys assigned to each channel.
+    pub fn channels(&self) -> impl Iterator<Item = FixtureGroupKey> + '_ {
+        self.channels.iter().cloned()
     }
 
     fn get_candidate(&self, name: &str, options: &Options) -> Result<PatchCandidate> {
@@ -107,7 +119,7 @@ impl Patch {
     }
 
     /// Patch a single fixture config.
-    fn patch_one(&mut self, channels: &mut Channels, cfg: FixtureConfig) -> anyhow::Result<()> {
+    fn patch_one(&mut self, cfg: FixtureConfig) -> anyhow::Result<()> {
         let candidate = self.get_candidate(&cfg.name, &cfg.options)?;
         self.used_addrs = self.check_collision(&candidate, &cfg)?;
         // Add channel mapping index if provided.  Ensure this is an animatable fixture.
@@ -154,7 +166,9 @@ impl Patch {
             return Ok(());
         }
         // No existing group; create a new one.
-        cfg.channel.then(|| channels.add(key.clone()));
+        if cfg.channel {
+            self.channels.push(key.clone());
+        }
 
         let group = FixtureGroup::new(
             key.clone(),

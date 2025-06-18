@@ -1,5 +1,6 @@
+use anyhow::Context as _;
 use anyhow::{bail, Result};
-use channel::Channels;
+use clap::Parser;
 use clock_service::prompt_start_clock_service;
 use fixture::Patch;
 use local_ip_address::local_ip;
@@ -8,10 +9,12 @@ use log::LevelFilter;
 use midi::Device;
 use osc::prompt_osc_config;
 use osc::GroupControlMap;
+use reqwest::Url;
 use rust_dmx::select_port;
 use show::Clocks;
 use simplelog::{Config as LogConfig, SimpleLogger};
-use std::env;
+use std::fs::File;
+use std::path::PathBuf;
 use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
 use tunnels::clock_bank::ClockBank;
@@ -19,7 +22,8 @@ use tunnels::midi::list_ports;
 use tunnels::midi::prompt_midi;
 use zmq::Context;
 
-use crate::config::Config;
+use crate::config::FixtureGroupConfig;
+use crate::control::Controller;
 use crate::show::Show;
 
 mod animation;
@@ -36,23 +40,48 @@ mod show;
 mod util;
 mod wled;
 
+#[derive(Parser, Debug)]
+#[command(about)]
+struct Args {
+    #[arg(long)]
+    check_patch: bool,
+
+    #[arg(long, default_value_t = 8000)]
+    receive_port: u16,
+
+    #[arg(long)]
+    wled_addr: Option<Url>,
+
+    #[arg(long)]
+    debug: bool,
+
+    patch: PathBuf,
+}
+
 fn main() -> Result<()> {
-    println!("args: {:?}", env::args().collect::<Vec<_>>());
-    let config_path = env::args()
-        .next_back()
-        .expect("Provide config path as final arg.");
-    let mut cfg = Config::load(&config_path)?;
-    let log_level = if cfg.debug {
+    let args = Args::try_parse()?;
+
+    let patch = {
+        let patch_file = File::open(&args.patch).with_context(|| {
+            format!(
+                "unable to read patch file \"{}\"",
+                args.patch.to_string_lossy()
+            )
+        })?;
+        let fixtures = serde_yaml::from_reader(patch_file)?;
+        if args.check_patch {
+            return check_patch(fixtures);
+        }
+        Patch::patch_all(fixtures)?
+    };
+
+    let log_level = if args.debug {
         LevelFilter::Debug
     } else {
-        LevelFilter::Info
+        LevelFilter::Warn
     };
 
     SimpleLogger::init(log_level, LogConfig::default())?;
-
-    if env::args().any(|arg| arg == "--check-patch") {
-        return check_patch(cfg);
-    }
 
     let audio_device = prompt_audio()?
         .map(|device_name| AudioInput::new(Some(device_name)))
@@ -83,22 +112,26 @@ fn main() -> Result<()> {
     };
 
     match local_ip() {
-        Ok(ip) => info!("Listening for OSC at {}:{}.", ip, cfg.receive_port),
+        Ok(ip) => info!("Listening for OSC at {}:{}.", ip, args.receive_port),
         Err(e) => info!("Unable to fetch local IP address: {}.", e),
     }
 
-    if let Some(clients) = prompt_osc_config(cfg.receive_port)? {
-        cfg.controllers = clients;
-    }
+    let osc_controllers = prompt_osc_config(args.receive_port)?.unwrap_or_default();
+
     let (midi_inputs, midi_outputs) = list_ports()?;
-    cfg.midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
-    if cfg.controllers.is_empty() && cfg.midi_devices.is_empty() {
+    let midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
+    if osc_controllers.is_empty() && midi_devices.is_empty() {
         bail!("No OSC or midi clients were registered or manually configured.");
     }
 
-    let mut show = Show::new(cfg, clocks)?;
+    let controller = Controller::new(
+        args.receive_port,
+        osc_controllers,
+        midi_devices,
+        args.wled_addr,
+    )?;
 
-    let universe_count = show.universe_count();
+    let universe_count = patch.universe_count();
     println!("This show requires {universe_count} universes.");
 
     let mut dmx_ports = Vec::new();
@@ -108,14 +141,15 @@ fn main() -> Result<()> {
         dmx_ports.push(select_port()?);
     }
 
+    let mut show = Show::new(patch, controller, clocks)?;
+
     show.run(&mut dmx_ports);
 
     Ok(())
 }
 
-fn check_patch(cfg: Config) -> Result<()> {
-    let mut channels = Channels::new();
-    Patch::patch_all(&mut channels, cfg.fixtures)?;
+fn check_patch(fixtures: Vec<FixtureGroupConfig>) -> Result<()> {
+    Patch::patch_all(fixtures)?;
     println!("Patch is OK.");
     Ok(())
 }
