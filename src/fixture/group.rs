@@ -1,14 +1,12 @@
 //! Define groups of fixtures, sharing a common fixture
 
 use anyhow::{ensure, Context};
+use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
-use std::ops::Deref;
-use std::sync::Arc;
 use std::time::Duration;
 
 use log::debug;
 use number::{Phase, UnipolarFloat};
-use serde::{Deserialize, Serialize};
 
 use super::animation_target::ControllableTargetedAnimation;
 use super::fixture::{Fixture, FixtureType, RenderMode};
@@ -20,7 +18,9 @@ use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 
 pub struct FixtureGroup {
-    /// The unique identifier of this group.
+    /// The fixture type of this group.
+    fixture_type: FixtureType,
+    /// The unique identifier of this group. Often identical to the fixture type.
     key: FixtureGroupKey,
     /// The configurations for the fixtures in the group.
     fixture_configs: Vec<GroupFixtureConfig>,
@@ -31,11 +31,13 @@ pub struct FixtureGroup {
 impl FixtureGroup {
     /// Create a fixture group, containing a single fixture config.
     pub fn new(
+        fixture_type: FixtureType,
         key: FixtureGroupKey,
         fixture_config: GroupFixtureConfig,
         fixture: Box<dyn Fixture>,
     ) -> Self {
         Self {
+            fixture_type,
             key,
             fixture_configs: vec![fixture_config],
             fixture,
@@ -47,15 +49,19 @@ impl FixtureGroup {
         self.fixture_configs.push(cfg);
     }
 
-    pub fn key(&self) -> &FixtureGroupKey {
-        &self.key
-    }
-    pub fn fixture_type(&self) -> &FixtureType {
-        &self.key.fixture
-    }
+    // pub fn key(&self) -> &FixtureGroupKey {
+    //     &self.key
+    // }
 
-    pub fn name(&self) -> Option<&GroupName> {
-        self.key.group.as_ref()
+    /// Return a struct that can write the qualified name of this group.
+    ///
+    /// This will be just the fixture type name if the key is identical.
+    /// Otherwise, it will be the key followed by the fixture type in parentheses.
+    pub fn qualified_name(&self) -> FixtureGroupQualifiedNameFormatter<'_> {
+        FixtureGroupQualifiedNameFormatter {
+            fixture_type: self.fixture_type,
+            key: &self.key.0,
+        }
     }
 
     pub fn get_animation_mut(
@@ -88,11 +94,11 @@ impl FixtureGroup {
         let handled = self
             .fixture
             .control(msg, &FixtureStateEmitter::new(&self.key, emitter))
-            .with_context(|| self.key.clone())?;
+            .with_context(|| self.qualified_name().to_string())?;
         ensure!(
             handled,
             "{} unexpectedly did not handle OSC message: {msg:?}",
-            self.key
+            self.qualified_name()
         );
         Ok(())
     }
@@ -137,12 +143,7 @@ impl FixtureGroup {
                 },
                 dmx_buf,
             );
-            debug!(
-                "{} ({}): {:?}",
-                self.fixture_type(),
-                self.name().map(|g| g.0.as_str()).unwrap_or("none"),
-                dmx_buf
-            );
+            debug!("{}: {:?}", self.qualified_name(), dmx_buf);
         }
     }
 }
@@ -166,41 +167,32 @@ pub struct GroupFixtureConfig {
 
 /// Uniquely identify a specific fixture group.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct FixtureGroupKey {
-    pub fixture: FixtureType,
-    pub group: Option<GroupName>,
-}
+pub struct FixtureGroupKey(pub String);
 
 impl Display for FixtureGroupKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}({})",
-            self.group.as_ref().map(|g| g.0.as_str()).unwrap_or("none"),
-            self.fixture
-        )
+        Display::fmt(&self.0, f)
     }
 }
 
-/// User-provided name for a particular fixture group.
-#[derive(Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct GroupName(Arc<String>);
-
-impl GroupName {
-    pub fn new<S: Into<String>>(v: S) -> Self {
-        Self(Arc::new(v.into()))
+impl Borrow<str> for FixtureGroupKey {
+    fn borrow(&self) -> &str {
+        &self.0
     }
 }
 
-impl Deref for GroupName {
-    type Target = str;
-    fn deref(&self) -> &Self::Target {
-        self.0.as_str()
-    }
+/// Format the qualified name of a fixture group without allocating.
+pub struct FixtureGroupQualifiedNameFormatter<'a> {
+    fixture_type: FixtureType,
+    key: &'a str,
 }
 
-impl Display for GroupName {
+impl<'a> Display for FixtureGroupQualifiedNameFormatter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        if self.key == self.fixture_type.0 {
+            f.write_str(&self.fixture_type)
+        } else {
+            write!(f, "{}({})", self.key, self.fixture_type)
+        }
     }
 }

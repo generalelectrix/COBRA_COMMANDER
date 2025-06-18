@@ -1,6 +1,7 @@
 //! Types and traits related to patching fixtures.
 use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
 use anyhow::bail;
@@ -29,8 +30,6 @@ pub struct Patch {
     /// patch ordering. This implies that iterating over the patch will produce
     /// a stable but random order. This probably isn't important.
     fixtures: HashMap<FixtureGroupKey, FixtureGroup>,
-    /// Lookup from static fixture type strings to FixtureType instances.
-    fixture_type_lookup: HashMap<&'static str, FixtureType>,
     /// Which DMX addrs already have a fixture patched in them.
     used_addrs: UsedAddrs,
     /// The channels that fixture groups are assigned to.
@@ -50,7 +49,6 @@ impl Patch {
         assert!(!PATCHERS.is_empty());
         Self {
             fixtures: Default::default(),
-            fixture_type_lookup: Default::default(),
             used_addrs: Default::default(),
             channels: Default::default(),
         }
@@ -136,10 +134,10 @@ impl Patch {
             );
         }
 
-        let key = FixtureGroupKey {
-            fixture: candidate.fixture_type,
-            group: cfg.group,
-        };
+        let key = FixtureGroupKey(
+            cfg.group
+                .unwrap_or_else(|| candidate.fixture_type.to_string()),
+        );
         // Either identify an existing appropriate group or create a new one.
         if let Some(group) = self.fixtures.get_mut(&key) {
             group.patch(GroupFixtureConfig {
@@ -157,6 +155,7 @@ impl Patch {
         }
 
         let group = FixtureGroup::new(
+            candidate.fixture_type,
             key.clone(),
             GroupFixtureConfig {
                 universe: cfg.universe,
@@ -168,7 +167,6 @@ impl Patch {
             candidate.fixture,
         );
 
-        self.fixture_type_lookup.insert(key.fixture.0, key.fixture);
         self.fixtures.insert(key, group);
 
         Ok(())
@@ -219,28 +217,36 @@ impl Patch {
         Ok(used_addrs)
     }
 
-    /// Look up the static version of a fixture type registered with the patch.
-    pub fn lookup_fixture_type(&self, t: &str) -> Option<FixtureType> {
-        self.fixture_type_lookup.get(t).copied()
-    }
-
     /// Get the fixture/channel patched with this key.
-    pub fn get(&self, key: &FixtureGroupKey) -> Result<&FixtureGroup> {
+    pub fn get<Q>(&self, key: &Q) -> Result<&FixtureGroup>
+    where
+        Q: std::hash::Hash + Eq + ?Sized + std::fmt::Display,
+        FixtureGroupKey: Borrow<Q>,
+    {
         self.fixtures
             .get(key)
-            .ok_or_else(|| anyhow!("fixture {key:?} not found in patch"))
+            .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
     }
 
     /// Get the fixture/channel patched with this key, mutably.
-    pub fn get_mut(&mut self, key: &FixtureGroupKey) -> Result<&mut FixtureGroup> {
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Result<&mut FixtureGroup>
+    where
+        Q: std::hash::Hash + Eq + ?Sized + std::fmt::Display,
+        FixtureGroupKey: Borrow<Q>,
+    {
         self.fixtures
             .get_mut(key)
-            .ok_or_else(|| anyhow!("fixture {key:?} not found in patch"))
+            .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
     }
 
     /// Iterate over all patched fixtures.
     pub fn iter(&self) -> impl Iterator<Item = &FixtureGroup> {
         self.fixtures.values()
+    }
+
+    /// Iterate over all patched fixtures along with their keys.
+    pub fn iter_with_keys(&self) -> impl Iterator<Item = (&FixtureGroupKey, &FixtureGroup)> {
+        self.fixtures.iter()
     }
 
     /// Iterate over all patched fixtures, mutably.
