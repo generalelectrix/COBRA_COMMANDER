@@ -49,10 +49,6 @@ impl FixtureGroup {
         self.fixture_configs.push(cfg);
     }
 
-    // pub fn key(&self) -> &FixtureGroupKey {
-    //     &self.key
-    // }
-
     /// Return a struct that can write the qualified name of this group.
     ///
     /// This will be just the fixture type name if the key is identical.
