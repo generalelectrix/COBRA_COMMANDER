@@ -1,5 +1,5 @@
 //! Types and traits related to patching fixtures.
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 
@@ -46,8 +46,6 @@ pub static PATCHERS: [Patcher];
 
 impl Patch {
     /// Initialize a new fixture patch.
-    ///
-    /// The patchers are initialized from the global registry.
     pub fn new() -> Self {
         assert!(!PATCHERS.is_empty());
         Self {
@@ -85,9 +83,10 @@ impl Patch {
         let mut candidates = PATCHERS
             .iter()
             .flat_map(|p| p(name, options))
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()
+            .with_context(|| format!("patching {name}"))?;
         let candidate = match candidates.len() {
-            0 => bail!("unable to patch {name}"),
+            0 => bail!("unrecognized fixture type {name}"),
             1 => candidates.pop().unwrap(),
             _ => bail!(
                 "multiple fixture patch candidates: {:?}",
@@ -99,7 +98,15 @@ impl Patch {
 
     /// Patch a single fixture config.
     fn patch_one(&mut self, cfg: FixtureConfig) -> anyhow::Result<()> {
-        let candidate = self.get_candidate(&cfg.name, &cfg.options)?;
+        let candidate = self
+            .get_candidate(&cfg.fixture, &cfg.options)
+            .with_context(|| {
+                if let Some(dmx_addr) = cfg.addr {
+                    format!("address {dmx_addr} (universe {})", cfg.universe)
+                } else {
+                    String::new()
+                }
+            })?;
         self.used_addrs = self.check_collision(&candidate, &cfg)?;
         // Add channel mapping index if provided.  Ensure this is an animatable fixture.
         if cfg.channel {
@@ -112,19 +119,19 @@ impl Patch {
         if let Some(addr) = cfg.addr {
             info!(
                 "Controlling {} at {} (group: {}).",
-                cfg.name,
+                cfg.fixture,
                 addr,
                 cfg.group.as_deref().unwrap_or("none")
             );
         } else {
             ensure!(
                 candidate.channel_count == 0,
-                "No DMX address provided for DMX-controlled fixture {}",
+                "no DMX address provided for DMX-controlled fixture {}",
                 candidate.fixture_type
             );
             info!(
                 "Controlling {} (non-DMX fixture) (group: {}).",
-                cfg.name,
+                cfg.fixture,
                 cfg.group.as_deref().unwrap_or("none")
             );
         }
@@ -195,11 +202,11 @@ impl Patch {
                 Some(existing_fixture) => {
                     bail!(
                         "{} at {} overlaps at DMX address {} in universe {} with {} at {}.",
-                        cfg.name,
+                        cfg.fixture,
                         dmx_addr,
                         addr + 1,
                         cfg.universe,
-                        existing_fixture.name,
+                        existing_fixture.fixture,
                         // Existing fixtures must have an address to have ended up in used_addrs.
                         existing_fixture.addr.unwrap(),
                     );
@@ -260,13 +267,23 @@ pub trait PatchFixture: NonAnimatedFixture + Default + 'static {
         if *name != *Self::NAME {
             return None;
         }
-        match Self::new(options) {
-            Ok((fixture, render_mode)) => Some(Ok(PatchCandidate {
-                fixture_type: Self::NAME,
-                channel_count: fixture.channel_count(render_mode),
-                render_mode,
-                fixture: Box::new(fixture),
-            })),
+        let mut options = options.clone();
+        match Self::new(&mut options) {
+            Ok((fixture, render_mode)) => {
+                // Ensure the fixture processed all of the options.
+                if !options.is_empty() {
+                    return Some(Err(anyhow!(
+                        "unhandled options: {}",
+                        options.keys().join(", ")
+                    )));
+                }
+                Some(Ok(PatchCandidate {
+                    fixture_type: Self::NAME,
+                    channel_count: fixture.channel_count(render_mode),
+                    render_mode,
+                    fixture: Box::new(fixture),
+                }))
+            }
             Err(e) => Some(Err(e)),
         }
     }
@@ -280,7 +297,10 @@ pub trait PatchFixture: NonAnimatedFixture + Default + 'static {
     /// Create a new instance of the fixture from the provided options.
     /// Non-customizable fixtures will fall back to using default.
     /// This can be overridden for fixtures that are customizable.
-    fn new(_options: &Options) -> Result<(Self, Option<RenderMode>)> {
+    ///
+    /// Fixtures should remove all recognized items from Options.
+    /// Any unhandled options remaining will result in a patch error.
+    fn new(_options: &mut Options) -> Result<(Self, Option<RenderMode>)> {
         Ok((Self::default(), None))
     }
 }
@@ -294,16 +314,26 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Default + 'static {
         if *name != *Self::NAME {
             return None;
         }
-        match Self::new(options) {
-            Ok((fixture, render_mode)) => Some(Ok(PatchCandidate {
-                fixture_type: Self::NAME,
-                channel_count: fixture.channel_count(render_mode),
-                render_mode,
-                fixture: Box::new(FixtureWithAnimations {
-                    fixture,
-                    animations: Default::default(),
-                }),
-            })),
+        let mut options = options.clone();
+        match Self::new(&mut options) {
+            Ok((fixture, render_mode)) => {
+                // Ensure the fixture processed all of the options.
+                if !options.is_empty() {
+                    return Some(Err(anyhow!(
+                        "unknown options: {}",
+                        options.keys().join(", ")
+                    )));
+                }
+                Some(Ok(PatchCandidate {
+                    fixture_type: Self::NAME,
+                    channel_count: fixture.channel_count(render_mode),
+                    render_mode,
+                    fixture: Box::new(FixtureWithAnimations {
+                        fixture,
+                        animations: Default::default(),
+                    }),
+                }))
+            }
             Err(e) => Some(Err(e)),
         }
     }
@@ -317,7 +347,10 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Default + 'static {
     /// Create a new instance of the fixture from the provided options.
     /// Non-customizable fixtures will fall back to using default.
     /// This can be overridden for fixtures that are customizable.
-    fn new(_options: &Options) -> Result<(Self, Option<RenderMode>)> {
+    ///
+    /// Fixtures should remove all recognized items from Options.
+    /// Any unhandled options remaining will result in a patch error.
+    fn new(_options: &mut Options) -> Result<(Self, Option<RenderMode>)> {
         Ok((Self::default(), None))
     }
 }

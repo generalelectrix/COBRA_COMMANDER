@@ -62,7 +62,8 @@ impl FixtureGroupConfig {
 /// A single instance of a fixture to patch, produced by a FixtureGroupConfig.
 #[derive(Clone, Debug)]
 pub struct FixtureConfig {
-    pub name: String,
+    /// The type of fixture to patch.
+    pub fixture: String,
     /// The DMX address to patch this fixture at.
     /// If no address it provided, assume this fixture doesn't need to render.
     pub addr: Option<DmxAddr>,
@@ -82,7 +83,7 @@ pub struct FixtureConfig {
 impl FixtureConfig {
     fn from_group_config(group: &FixtureGroupConfig, addr: Option<DmxAddr>) -> Self {
         Self {
-            name: group.fixture.clone(),
+            fixture: group.fixture.clone(),
             addr,
             universe: group.universe,
             mirror: group.mirror,

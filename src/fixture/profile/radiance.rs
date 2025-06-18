@@ -1,9 +1,9 @@
 //! Control profile for a Radiance hazer.
 //! Probably fine for any generic 2-channel hazer.
 use anyhow::Result;
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
-use crate::fixture::prelude::*;
+use crate::{config::Options, fixture::prelude::*};
 
 #[derive(Debug, EmitState, Control)]
 pub struct Radiance {
@@ -33,9 +33,9 @@ impl PatchAnimatedFixture for Radiance {
         2
     }
 
-    fn new(options: &HashMap<String, String>) -> Result<(Self, Option<RenderMode>)> {
+    fn new(options: &mut Options) -> Result<(Self, Option<RenderMode>)> {
         let mut s = Self::default();
-        if options.contains_key("use_timer") {
+        if options.remove("use_timer").is_some() {
             s.timer = Some(Timer::from_options(options)?);
         }
         Ok((s, None))

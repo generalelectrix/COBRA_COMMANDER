@@ -1,8 +1,4 @@
 //! Flexible control profile for a single-color fixture.
-//! Supports several color space options:
-
-use std::collections::HashMap;
-
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
 use hsluv::hsluv_to_rgb;
@@ -10,6 +6,7 @@ use log::{error, warn};
 use strum_macros::{EnumString, VariantArray};
 
 use crate::{
+    config::Options,
     fixture::{fixture::EnumRenderModel, prelude::*},
     osc::OscControlMessage,
 };
@@ -56,9 +53,9 @@ impl PatchAnimatedFixture for Color {
         Model::model_for_mode(render_mode).unwrap().channel_count()
     }
 
-    fn new(options: &HashMap<String, String>) -> Result<(Self, Option<RenderMode>)> {
+    fn new(options: &mut Options) -> Result<(Self, Option<RenderMode>)> {
         let render_mode = options
-            .get("kind")
+            .remove("kind")
             .map(|kind| {
                 kind.parse::<Model>()
                     .with_context(|| format!("unknown color output model \"{kind}\""))
@@ -67,7 +64,7 @@ impl PatchAnimatedFixture for Color {
             .unwrap_or_default()
             .render_mode();
         let space = options
-            .get("control_color_space")
+            .remove("control_color_space")
             .map(|space| {
                 space
                     .parse::<ColorSpace>()
