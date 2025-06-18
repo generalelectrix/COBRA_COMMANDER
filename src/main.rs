@@ -4,7 +4,6 @@ use clap::Parser;
 use clock_service::prompt_start_clock_service;
 use fixture::Patch;
 use local_ip_address::local_ip;
-use log::info;
 use log::LevelFilter;
 use midi::Device;
 use osc::prompt_osc_config;
@@ -117,8 +116,8 @@ fn main() -> Result<()> {
     };
 
     match local_ip() {
-        Ok(ip) => info!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
-        Err(e) => info!("Unable to fetch local IP address: {}.", e),
+        Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
+        Err(e) => println!("Unable to fetch local IP address: {}.", e),
     }
 
     let osc_controllers = prompt_osc_config(args.osc_receive_port)?.unwrap_or_default();
