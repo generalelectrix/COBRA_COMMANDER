@@ -1,41 +1,7 @@
 use crate::dmx::DmxAddr;
 use crate::fixture::GroupName;
-use crate::midi::Device;
-use crate::osc::OscClientId;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
-use std::fs::File;
-use tunnels::midi::DeviceSpec;
-
-#[derive(Debug, Deserialize)]
-pub struct Config {
-    #[serde(default = "default_receive_port")]
-    pub receive_port: u16,
-    #[serde(default)]
-    pub wled_addr: Option<String>,
-    #[serde(default)]
-    pub controllers: Vec<OscClientId>,
-    #[serde(skip)]
-    pub midi_devices: Vec<DeviceSpec<Device>>,
-    #[serde(default)]
-    pub debug: bool,
-    pub fixtures: Vec<FixtureGroupConfig>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AnimationGroup {
-    pub fixture_type: String,
-    pub group: GroupName,
-}
-
-impl Config {
-    pub fn load(path: &str) -> Result<Self> {
-        let config_file = File::open(path)?;
-        let cfg: Config = serde_yaml::from_reader(config_file)?;
-        Ok(cfg)
-    }
-}
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(untagged)]
@@ -123,7 +89,3 @@ impl FixtureConfig {
 }
 
 pub type Options = HashMap<String, String>;
-
-const fn default_receive_port() -> u16 {
-    8000
-}

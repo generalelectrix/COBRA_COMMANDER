@@ -4,7 +4,6 @@ use crate::{
     animation::AnimationUIState,
     channel::{ChannelStateEmitter, Channels},
     clock_service::ClockService,
-    config::Config,
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
     fixture::{FixtureGroupKey, GroupName, Patch},
@@ -122,11 +121,8 @@ const CONTROL_TIMEOUT: Duration = Duration::from_millis(1);
 const UPDATE_INTERVAL: Duration = Duration::from_millis(20);
 
 impl Show {
-    pub fn new(cfg: Config, clocks: Clocks) -> Result<Self> {
-        let controller = Controller::from_config(&cfg)?;
-
-        let mut channels = Channels::new();
-        let patch = Patch::patch_all(&mut channels, cfg.fixtures)?;
+    pub fn new(patch: Patch, controller: Controller, clocks: Clocks) -> Result<Self> {
+        let channels = Channels::from_iter(patch.channels());
 
         let master_controls = MasterControls::new();
         let initial_channel = channels.current_channel();
@@ -142,11 +138,6 @@ impl Show {
         };
         show.refresh_ui()?;
         Ok(show)
-    }
-
-    /// Return the number of universes patched in the show.
-    pub fn universe_count(&self) -> usize {
-        self.patch.universe_count()
     }
 
     /// Run the show forever in the current thread.

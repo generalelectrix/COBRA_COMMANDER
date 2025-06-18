@@ -6,11 +6,11 @@ use std::{
 };
 
 use anyhow::{bail, Result};
+use reqwest::Url;
 use rosc::OscMessage;
-use tunnels::midi::CreateControlEvent;
+use tunnels::midi::{CreateControlEvent, DeviceSpec};
 
 use crate::{
-    config::Config,
     midi::{
         Device, EmitMidiChannelMessage, EmitMidiMasterMessage, MidiControlMessage, MidiController,
     },
@@ -48,16 +48,17 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub fn from_config(cfg: &Config) -> Result<Self> {
+    pub fn new(
+        receive_port: u16,
+        osc_controllers: Vec<OscClientId>,
+        midi_devices: Vec<DeviceSpec<Device>>,
+        wled_addr: Option<Url>,
+    ) -> Result<Self> {
         let (send, recv) = channel();
-        let wled = cfg
-            .wled_addr
-            .as_ref()
-            .map(|addr| WledController::run(addr, send.clone()))
-            .transpose()?;
+        let wled = wled_addr.map(|addr| WledController::run(addr, send.clone()));
         Ok(Self {
-            osc: OscController::new(cfg.receive_port, cfg.controllers.clone(), send.clone())?,
-            midi: MidiController::new(cfg.midi_devices.clone(), send)?,
+            osc: OscController::new(receive_port, osc_controllers, send.clone())?,
+            midi: MidiController::new(midi_devices, send)?,
             wled,
             recv,
         })

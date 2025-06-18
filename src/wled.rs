@@ -1,5 +1,4 @@
 //! Use a thread to perform asynchronous communication with a WLED instance.
-use anyhow::Result;
 use log::{error, info, warn};
 use std::{
     sync::{
@@ -9,7 +8,6 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context;
 use reqwest::Url;
 use wled_json_api_library::{structures::state::State, wled::Wled};
 
@@ -24,8 +22,7 @@ impl WledController {
     ///
     /// Polls once every 5 seconds for initial configuration until the client
     /// responds.
-    pub fn run(addr: &str, _send: Sender<ControlMessage>) -> Result<Self> {
-        let url = Url::try_from(addr).context("parsing WLED URL")?;
+    pub fn run(url: Url, _send: Sender<ControlMessage>) -> Self {
         let (send_state, recv_state) = channel();
 
         let state = Arc::new(Mutex::new(None));
@@ -74,7 +71,7 @@ impl WledController {
                 }
             }
         });
-        Ok(Self { send: send_state })
+        Self { send: send_state }
     }
 }
 
