@@ -23,12 +23,6 @@ type UsedAddrs = HashMap<(UniverseIdx, usize), FixtureConfig>;
 /// Maintains a mapping of which DMX addresses are in use by which fixture, to
 /// prevent addressing collisions.
 pub struct Patch {
-    /// Collection of closures that patch fixture types.
-    ///
-    /// FIXME: since we have global registration now, we might be able to avoid
-    /// the need for closures and collect the actual patcher functions
-    /// themselves.
-    patchers: Vec<Patcher>,
     /// The fixture groups we've patched.
     ///
     /// TODO: by using a HashMap for fast key lookup, we do not have a defined
@@ -48,7 +42,7 @@ pub struct Patch {
 /// Fixtures use the register macro to add themselves to this collection.
 /// The derive macros for the patch traits handle this.
 #[distributed_slice]
-pub static PATCHERS: [fn() -> Patcher];
+pub static PATCHERS: [Patcher];
 
 /// Register a patcher-generating function with the patch.
 #[macro_export]
@@ -58,7 +52,7 @@ macro_rules! register {
         use $crate::fixture::patch::{Patcher, PATCHERS};
 
         #[distributed_slice(PATCHERS)]
-        static PATCHER: fn() -> Patcher = <$fixture>::patcher;
+        static PATCHER: Patcher = <$fixture>::patch;
     };
 }
 
@@ -67,10 +61,8 @@ impl Patch {
     ///
     /// The patchers are initialized from the global registry.
     pub fn new() -> Self {
-        let patchers: Vec<_> = PATCHERS.iter().map(|p| p()).collect();
-        assert!(!patchers.is_empty());
+        assert!(!PATCHERS.is_empty());
         Self {
-            patchers,
             fixtures: Default::default(),
             fixture_type_lookup: Default::default(),
             used_addrs: Default::default(),
@@ -102,8 +94,7 @@ impl Patch {
     }
 
     fn get_candidate(&self, name: &str, options: &Options) -> Result<PatchCandidate> {
-        let mut candidates = self
-            .patchers
+        let mut candidates = PATCHERS
             .iter()
             .flat_map(|p| p(name, options))
             .collect::<Result<Vec<_>>>()?;
@@ -270,28 +261,26 @@ pub struct PatchCandidate {
     fixture: Box<dyn Fixture>,
 }
 
-pub type Patcher = Box<dyn Fn(&str, &Options) -> Option<Result<PatchCandidate>> + Sync>;
+pub type Patcher = fn(&str, &Options) -> Option<Result<PatchCandidate>>;
 
 /// Fixture constructor trait to handle patching non-animating fixtures.
 pub trait PatchFixture: NonAnimatedFixture + Default + 'static {
     const NAME: FixtureType;
 
-    /// Return a closure that will try to patch a fixture if it has the appropriate name.
-    fn patcher() -> Patcher {
-        Box::new(|name: &str, options: &Options| {
-            if *name != *Self::NAME {
-                return None;
-            }
-            match Self::new(options) {
-                Ok((fixture, render_mode)) => Some(Ok(PatchCandidate {
-                    fixture_type: Self::NAME,
-                    channel_count: fixture.channel_count(render_mode),
-                    render_mode,
-                    fixture: Box::new(fixture),
-                })),
-                Err(e) => Some(Err(e)),
-            }
-        })
+    /// Return a PatchCandidate for this fixture if it has the appropriate name.
+    fn patch(name: &str, options: &Options) -> Option<Result<PatchCandidate>> {
+        if *name != *Self::NAME {
+            return None;
+        }
+        match Self::new(options) {
+            Ok((fixture, render_mode)) => Some(Ok(PatchCandidate {
+                fixture_type: Self::NAME,
+                channel_count: fixture.channel_count(render_mode),
+                render_mode,
+                fixture: Box::new(fixture),
+            })),
+            Err(e) => Some(Err(e)),
+        }
     }
 
     /// The number of contiguous DMX channels used by the fixture.
@@ -312,25 +301,23 @@ pub trait PatchFixture: NonAnimatedFixture + Default + 'static {
 pub trait PatchAnimatedFixture: AnimatedFixture + Default + 'static {
     const NAME: FixtureType;
 
-    /// Return a closure that will try to patch a fixture if it has the appropriate name.
-    fn patcher() -> Patcher {
-        Box::new(|name, options| {
-            if *name != *Self::NAME {
-                return None;
-            }
-            match Self::new(options) {
-                Ok((fixture, render_mode)) => Some(Ok(PatchCandidate {
-                    fixture_type: Self::NAME,
-                    channel_count: fixture.channel_count(render_mode),
-                    render_mode,
-                    fixture: Box::new(FixtureWithAnimations {
-                        fixture,
-                        animations: Default::default(),
-                    }),
-                })),
-                Err(e) => Some(Err(e)),
-            }
-        })
+    /// Return a PatchCandidate for this fixture if it has the appropriate name.
+    fn patch(name: &str, options: &Options) -> Option<Result<PatchCandidate>> {
+        if *name != *Self::NAME {
+            return None;
+        }
+        match Self::new(options) {
+            Ok((fixture, render_mode)) => Some(Ok(PatchCandidate {
+                fixture_type: Self::NAME,
+                channel_count: fixture.channel_count(render_mode),
+                render_mode,
+                fixture: Box::new(FixtureWithAnimations {
+                    fixture,
+                    animations: Default::default(),
+                }),
+            })),
+            Err(e) => Some(Err(e)),
+        }
     }
 
     /// The number of contiguous DMX channels used by the fixture.
