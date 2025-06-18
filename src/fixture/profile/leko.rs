@@ -45,12 +45,12 @@ impl PatchAnimatedFixture for Leko {
         Model::model_for_mode(render_mode).unwrap().channel_count()
     }
 
-    fn new(options: &crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
-        let Some(kind) = options.get("kind") else {
-            bail!("lekos must specify the \"kind\" option");
+    fn new(options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
+        let Some(kind) = options.remove("kind") else {
+            bail!("missing required option: kind");
         };
         let model =
-            Model::from_str(kind).with_context(|| format!("invalid leko kind: \"{kind}\""))?;
+            Model::from_str(&kind).with_context(|| format!("invalid kind option: {kind}"))?;
         Ok((Default::default(), Some(model.render_mode())))
     }
 }
