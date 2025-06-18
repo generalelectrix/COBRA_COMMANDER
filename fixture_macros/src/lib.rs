@@ -3,6 +3,23 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, Attribute, Data, DeriveInput, Expr, Field, Fields, Ident, Lit, Meta};
 
+/// Register a fixture with the global patch registry.
+#[proc_macro]
+pub fn register_patcher(input: TokenStream) -> TokenStream {
+    let ident = parse_macro_input!(input as Ident);
+    register_patcher_impl(&ident).into()
+}
+
+fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
+    quote! {
+        use linkme::distributed_slice;
+        use crate::fixture::patch::PATCHERS;
+
+        #[distributed_slice(PATCHERS)]
+        static PATCHER: crate::fixture::patch::Patcher = <#ident>::patch;
+    }
+}
+
 /// Derive the PatchAnimatedFixture trait on a fixture struct.
 /// Use the channel_count attribute to specify the DMX channel count.
 /// Registers the fixture type with the patch.
@@ -15,6 +32,8 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
 
     let name = ident.to_string();
 
+    let register = register_patcher_impl(&ident);
+
     quote! {
         impl crate::fixture::patch::PatchAnimatedFixture for #ident {
             const NAME: FixtureType = FixtureType(#name);
@@ -23,7 +42,7 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
             }
         }
 
-        crate::register!(#ident);
+        #register
     }
     .into()
 }
@@ -40,6 +59,8 @@ pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
 
     let name = ident.to_string();
 
+    let register = register_patcher_impl(&ident);
+
     quote! {
         impl crate::fixture::patch::PatchFixture for #ident {
             const NAME: FixtureType = FixtureType(#name);
@@ -48,7 +69,7 @@ pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
             }
         }
 
-        crate::register!(#ident);
+        #register
     }
     .into()
 }

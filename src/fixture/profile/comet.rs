@@ -37,7 +37,7 @@ impl PatchFixture for Comet {
     }
 }
 
-crate::register!(Comet);
+register_patcher!(Comet);
 
 impl NonAnimatedFixture for Comet {
     fn render(&self, _group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {

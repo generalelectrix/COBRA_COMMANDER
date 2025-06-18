@@ -18,7 +18,7 @@ impl PatchFixture for Faderboard {
     }
 }
 
-crate::register!(Faderboard);
+register_patcher!(Faderboard);
 
 const DEFAULT_CHANNEL_COUNT: usize = 16;
 
