@@ -1,8 +1,0 @@
-receive_port: 8000
-controllers:
-  - host: 192.168.1.248
-    port: 9000
-debug: False
-fixtures:
-  - name: Lumasphere
-    addr: 1

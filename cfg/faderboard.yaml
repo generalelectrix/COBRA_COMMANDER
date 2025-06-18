@@ -1,4 +1,0 @@
-debug: True
-fixtures:
-  - name: Faderboard
-    addr: 11

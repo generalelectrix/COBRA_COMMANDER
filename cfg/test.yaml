@@ -1,8 +1,0 @@
-fixtures:
-  - name: Color
-    addr:
-      start: 1
-      count: 64
-    channel: True
-    options:
-      control_color_space: Hsluv
