@@ -1,4 +1,4 @@
-- name: Color
+- fixture: Color
   addr:
     start: 1
     count: 64

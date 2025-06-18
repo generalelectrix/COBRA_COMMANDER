@@ -69,7 +69,7 @@ impl Patch {
 
     /// Patch a fixture group config - either a single address or a range.
     pub fn patch(&mut self, cfg: FixtureGroupConfig) -> anyhow::Result<()> {
-        let candidate = self.get_candidate(&cfg.name, &cfg.options)?;
+        let candidate = self.get_candidate(&cfg.fixture, &cfg.options)?;
         for fixture_cfg in cfg.fixture_configs(candidate.channel_count) {
             self.patch_one(fixture_cfg)?;
         }

@@ -14,9 +14,10 @@ pub enum DmxAddrConfig {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct FixtureGroupConfig {
-    pub name: String,
+    /// The type of fixture to patch.
+    pub fixture: String,
     /// The DMX address configuration to patch this fixture at.
-    /// If no address it provided, assume this fixture doesn't need to render.
+    /// If no address is provided, assume this fixture doesn't need to render.
     #[serde(default)]
     pub addr: Option<DmxAddrConfig>,
     /// The universe this fixture is patched in.
@@ -81,7 +82,7 @@ pub struct FixtureConfig {
 impl FixtureConfig {
     fn from_group_config(group: &FixtureGroupConfig, addr: Option<DmxAddr>) -> Self {
         Self {
-            name: group.name.clone(),
+            name: group.fixture.clone(),
             addr,
             universe: group.universe,
             mirror: group.mirror,
