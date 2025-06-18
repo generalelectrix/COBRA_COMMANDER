@@ -33,9 +33,13 @@ pub struct FixtureGroupConfig {
     /// Additional key-value string options for configuring specific fixture types.
     #[serde(default)]
     pub options: Options,
-    /// If true, assign to a channel.
-    #[serde(default)]
+    /// If true, assign to a channel. Defaults to true.
+    #[serde(default = "_true")]
     pub channel: bool,
+}
+
+const fn _true() -> bool {
+    true
 }
 
 impl FixtureGroupConfig {
