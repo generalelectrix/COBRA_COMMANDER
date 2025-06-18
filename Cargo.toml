@@ -9,7 +9,6 @@ edition = "2021"
 serde = { version = "^1", features = ["derive", "rc"] }
 log = "0.4"
 simplelog = "0.12"
-lazy_static = "^1"
 rosc = "0.10"
 rust_dmx = "0.5"
 serde_yaml = "0.9"
@@ -17,13 +16,11 @@ local-ip-address = "0.6"
 number = { git = "https://github.com/generalelectrix/number", branch = "main" }
 strum = "0.26"
 strum_macros = "0.26"
-regex = "1.6"
 tunnels = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 zmq = "0.10"
 anyhow = { version = "1", features = ["backtrace"] }
 thiserror = "1"
-num-derive = "0.4"
 num-traits = "0.2"
 itertools = "0.13"
 fixture_macros = { path = "fixture_macros" }

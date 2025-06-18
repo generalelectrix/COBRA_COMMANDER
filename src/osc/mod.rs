@@ -97,11 +97,7 @@ impl<'a> FixtureStateEmitter<'a> {
 
 impl<'a> EmitScopedOscMessage for FixtureStateEmitter<'a> {
     fn emit_osc(&self, msg: ScopedOscMessage) {
-        let addr = if let Some(g) = &self.key.group {
-            format!("/:{}/{}/{}", g, self.key.fixture, msg.control)
-        } else {
-            format!("/{}/{}", self.key.fixture, msg.control)
-        };
+        let addr = format!("/{}/{}", self.key, msg.control);
         self.channel_emitter.emit_osc(OscMessage {
             addr,
             args: vec![msg.arg],

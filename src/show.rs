@@ -6,7 +6,7 @@ use crate::{
     clock_service::ClockService,
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
-    fixture::{FixtureGroupKey, GroupName, Patch},
+    fixture::Patch,
     master::MasterControls,
     midi::{MidiControlMessage, MidiHandler},
     osc::{GroupControlMap, OscControlMessage, ScopedControlEmitter},
@@ -228,7 +228,7 @@ impl Show {
     fn handle_osc_message(&mut self, msg: &OscControlMessage) -> Result<()> {
         let sender = self.controller.sender_with_metadata(Some(&msg.client_id));
 
-        match msg.entity_type() {
+        match msg.group() {
             "Meta" => {
                 if msg.control() == "RefreshUI" {
                     if msg.get_bool()? {
@@ -280,26 +280,11 @@ impl Show {
                     bail!("cannot handle audio control message because no audio input is configured\n{msg:?}");
                 }
             },
-            // Assume any other group is the name of a fixture.
-            fixture_type => {
-                let Some(fixture_type) = self.patch.lookup_fixture_type(fixture_type) else {
-                    bail!(
-                        "entity type \"{}\" not registered with patch, from OSC message {msg:?}",
-                        msg.entity_type()
-                    );
-                };
-                let group_key = FixtureGroupKey {
-                    fixture: fixture_type,
-                    group: msg.group().map(GroupName::new),
-                };
-                self.patch.get_mut(&group_key)?.control(
-                    msg,
-                    ChannelStateEmitter::new(
-                        self.channels.channel_for_fixture(&group_key),
-                        &sender,
-                    ),
-                )
-            }
+            // Assume any other control group is referring to a ficture group.
+            fixture_group => self.patch.get_mut(fixture_group)?.control(
+                msg,
+                ChannelStateEmitter::new(self.channels.channel_for_fixture(fixture_group), &sender),
+            ),
         }
     }
 
@@ -333,9 +318,9 @@ impl Show {
     /// Send messages to refresh all UI state.
     fn refresh_ui(&mut self) -> anyhow::Result<()> {
         let emitter = &self.controller.sender_with_metadata(None);
-        for group in self.patch.iter() {
+        for (key, group) in self.patch.iter_with_keys() {
             group.emit_state(ChannelStateEmitter::new(
-                self.channels.channel_for_fixture(group.key()),
+                self.channels.channel_for_fixture(key),
                 emitter,
             ));
         }

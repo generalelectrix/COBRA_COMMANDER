@@ -100,7 +100,7 @@ impl Channels {
     }
 
     /// Look up a channel ID by fixture group key.
-    pub fn channel_for_fixture(&self, group: &FixtureGroupKey) -> Option<ChannelId> {
+    pub fn channel_for_fixture(&self, group: &str) -> Option<ChannelId> {
         self.fixture_channel_index.get(group).cloned()
     }
 
@@ -115,10 +115,7 @@ impl Channels {
                     None
                 }
             })
-            .map(move |g| match g.name() {
-                None => g.fixture_type().to_string(),
-                Some(name) => format!("{name}({})", g.fixture_type()),
-            })
+            .map(move |g| g.qualified_name().to_string())
     }
 
     /// Get a fixture group by channel ID.

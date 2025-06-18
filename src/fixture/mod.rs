@@ -9,7 +9,7 @@ mod patch;
 mod profile;
 
 pub use fixture::{Control, EmitState, RenderMode};
-pub use group::{FixtureGroup, FixtureGroupKey, GroupName};
+pub use group::{FixtureGroup, FixtureGroupKey};
 pub use patch::Patch;
 pub use profile::*;
 

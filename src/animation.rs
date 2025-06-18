@@ -109,11 +109,10 @@ impl AnimationUIState {
         group: &'a mut FixtureGroup,
     ) -> Result<(&'a mut dyn ControllableTargetedAnimation, usize)> {
         let animation_index = self.animation_index_for_channel(channel);
-        let key = group.key().clone();
-        if let Some(anim) = group.get_animation_mut(animation_index) {
-            return Ok((anim, animation_index));
-        }
-        bail!("{key:?} does not have animations");
+        let Some(anim) = group.get_animation_mut(animation_index) else {
+            bail!("the group in channel {channel} did not return an animator for index {animation_index}");
+        };
+        Ok((anim, animation_index))
     }
 
     fn current_animation_with_index<'a>(
@@ -122,11 +121,10 @@ impl AnimationUIState {
         group: &'a FixtureGroup,
     ) -> Result<(&'a dyn ControllableTargetedAnimation, usize)> {
         let animation_index = self.animation_index_for_channel(channel);
-        let key = group.key().clone();
-        if let Some(anim) = group.get_animation(animation_index) {
-            return Ok((anim, animation_index));
-        }
-        bail!("{key:?} does not have animations");
+        let Some(anim) = group.get_animation(animation_index) else {
+            bail!("the group in channel {channel} did not return an animator for index {animation_index}");
+        };
+        Ok((anim, animation_index))
     }
 
     fn current_animation<'a>(
