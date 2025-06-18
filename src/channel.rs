@@ -1,6 +1,6 @@
 //! State and control definitions for fixture group channels.
 
-use std::{borrow::Borrow, collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display};
 
 use anyhow::{anyhow, bail, Context, Result};
 use log::{debug, error};
@@ -100,11 +100,7 @@ impl Channels {
     }
 
     /// Look up a channel ID by fixture group key.
-    pub fn channel_for_fixture<Q>(&self, group: &Q) -> Option<ChannelId>
-    where
-        Q: std::hash::Hash + Eq + ?Sized + std::fmt::Display,
-        FixtureGroupKey: Borrow<Q>,
-    {
+    pub fn channel_for_fixture(&self, group: &str) -> Option<ChannelId> {
         self.fixture_channel_index.get(group).cloned()
     }
 

@@ -3,6 +3,7 @@
 use anyhow::{ensure, Context};
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
+use std::ops::Deref;
 use std::time::Duration;
 
 use log::debug;
@@ -173,6 +174,13 @@ impl Display for FixtureGroupKey {
 
 impl Borrow<str> for FixtureGroupKey {
     fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for FixtureGroupKey {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }

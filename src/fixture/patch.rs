@@ -1,7 +1,6 @@
 //! Types and traits related to patching fixtures.
 use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
-use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
 use anyhow::bail;
@@ -218,22 +217,14 @@ impl Patch {
     }
 
     /// Get the fixture/channel patched with this key.
-    pub fn get<Q>(&self, key: &Q) -> Result<&FixtureGroup>
-    where
-        Q: std::hash::Hash + Eq + ?Sized + std::fmt::Display,
-        FixtureGroupKey: Borrow<Q>,
-    {
+    pub fn get(&self, key: &str) -> Result<&FixtureGroup> {
         self.fixtures
             .get(key)
             .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
     }
 
     /// Get the fixture/channel patched with this key, mutably.
-    pub fn get_mut<Q>(&mut self, key: &Q) -> Result<&mut FixtureGroup>
-    where
-        Q: std::hash::Hash + Eq + ?Sized + std::fmt::Display,
-        FixtureGroupKey: Borrow<Q>,
-    {
+    pub fn get_mut(&mut self, key: &str) -> Result<&mut FixtureGroup> {
         self.fixtures
             .get_mut(key)
             .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
