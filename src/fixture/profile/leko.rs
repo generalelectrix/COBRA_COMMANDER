@@ -55,7 +55,7 @@ impl PatchAnimatedFixture for Leko {
     }
 }
 
-crate::register!(Leko);
+register_patcher!(Leko);
 
 impl AnimatedFixture for Leko {
     type Target = AnimationTarget;

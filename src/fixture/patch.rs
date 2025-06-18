@@ -39,22 +39,10 @@ pub struct Patch {
 
 /// Distributed registry for things that we can patch.
 ///
-/// Fixtures use the register macro to add themselves to this collection.
 /// The derive macros for the patch traits handle this.
+/// Use the register_patcher macro for fixtures that cannot derive patch.
 #[distributed_slice]
 pub static PATCHERS: [Patcher];
-
-/// Register a patcher-generating function with the patch.
-#[macro_export]
-macro_rules! register {
-    ($fixture:ty) => {
-        use linkme::distributed_slice;
-        use $crate::fixture::patch::{Patcher, PATCHERS};
-
-        #[distributed_slice(PATCHERS)]
-        static PATCHER: Patcher = <$fixture>::patch;
-    };
-}
 
 impl Patch {
     /// Initialize a new fixture patch.
