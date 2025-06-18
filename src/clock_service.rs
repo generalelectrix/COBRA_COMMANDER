@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use log::error;
 use tunnels::clock_server::{clock_subscriber, SharedClockData};
 use tunnels_lib::prompt::{prompt_bool, prompt_parse};
@@ -29,11 +29,13 @@ pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> 
         return Ok(None);
     }
     println!("Browsing for clock providers...");
-    let service = clock_subscriber(ctx);
+    let service = clock_subscriber(ctx.clone());
     thread::sleep(Duration::from_secs(2));
     let providers = service.list();
     if providers.is_empty() {
-        bail!("No clock providers found.");
+        println!("No clock providers found.");
+        // Recurse and ask again.
+        return prompt_start_clock_service(ctx);
     }
     println!("Available clock providers:");
     for provider in &providers {
