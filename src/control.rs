@@ -12,7 +12,8 @@ use tunnels::midi::{CreateControlEvent, DeviceSpec};
 
 use crate::{
     midi::{
-        Device, EmitMidiChannelMessage, EmitMidiMasterMessage, MidiControlMessage, MidiController,
+        Device, EmitMidiChannelMessage, EmitMidiClockMessage, EmitMidiMasterMessage, 
+        MidiControlMessage, MidiController,
     },
     osc::{
         EmitOscMessage, EmitScopedOscMessage, OscClientId, OscControlMessage, OscControlResponse,
@@ -30,12 +31,12 @@ impl<T> EmitScopedControlMessage for T where T: EmitScopedOscMessage {}
 /// Emit control messages.
 /// Will be extended in the future to potentially cover more cases.
 pub trait EmitControlMessage:
-    EmitOscMessage + EmitMidiChannelMessage + EmitMidiMasterMessage + EmitWledControlMessage
+    EmitOscMessage + EmitMidiChannelMessage + EmitMidiMasterMessage + EmitMidiClockMessage + EmitWledControlMessage
 {
 }
 
 impl<T> EmitControlMessage for T where
-    T: EmitOscMessage + EmitMidiChannelMessage + EmitMidiMasterMessage + EmitWledControlMessage
+    T: EmitOscMessage + EmitMidiChannelMessage + EmitMidiMasterMessage + EmitMidiClockMessage + EmitWledControlMessage
 {
 }
 
@@ -104,16 +105,21 @@ impl tunnels::audio::EmitStateChange for Controller {
 
 impl tunnels::clock_bank::EmitStateChange for Controller {
     fn emit_clock_bank_state_change(&mut self, sc: tunnels::clock_bank::StateChange) {
+        let emitter = &ControlMessageWithMetadataSender {
+            sender_id: None,
+            controller: self,
+        };
+        
+        // Emit to OSC
         crate::osc::clock::emit_osc_state_change(
             &sc,
             &ScopedControlEmitter {
                 entity: crate::osc::clock::GROUP,
-                emitter: &ControlMessageWithMetadataSender {
-                    sender_id: None,
-                    controller: self,
-                },
+                emitter,
             },
         );
+        // Emit to MIDI
+        emitter.emit_midi_clock_message(&sc);
     }
 }
 
@@ -150,6 +156,12 @@ impl<'a> EmitWledControlMessage for ControlMessageWithMetadataSender<'a> {
         if let Some(wled) = self.controller.wled.as_ref() {
             wled.emit_wled(msg);
         }
+    }
+}
+
+impl<'a> EmitMidiClockMessage for ControlMessageWithMetadataSender<'a> {
+    fn emit_midi_clock_message(&self, msg: &tunnels::clock_bank::StateChange) {
+        self.controller.midi.emit_clock_control(msg);
     }
 }
 
