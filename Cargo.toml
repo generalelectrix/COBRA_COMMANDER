@@ -6,30 +6,30 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serde = { version = "^1", features = ["derive", "rc"] }
+serde = { version = "1", features = ["derive", "rc"] }
 log = "0.4"
 simplelog = "0.12"
-rosc = "0.10"
+rosc = "0.11"
 rust_dmx = "0.5"
 serde_yaml = "0.9"
 local-ip-address = "0.6"
 number = { git = "https://github.com/generalelectrix/number", branch = "main" }
-strum = "0.26"
-strum_macros = "0.26"
+strum = "0.27"
+strum_macros = "0.27"
 tunnels = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 zmq = "0.10"
 anyhow = { version = "1", features = ["backtrace"] }
-thiserror = "1"
+thiserror = "2"
 num-traits = "0.2"
-itertools = "0.13"
+itertools = "0.14"
 fixture_macros = { path = "fixture_macros" }
-rand = { version = "0.8", features = ["small_rng"] }
+rand = { version = "0.9", features = ["small_rng"] }
 wled-json-api-library = "0.1.7"
-reqwest = "0.12.9"
-linkme = "0.3.33"
-hsluv = "0.3.1"
-colored = "3.0.0"
-clap = { version = "4.5.40", features = ["derive"] }
-num-derive = "0.4.2"
-ordered-float = "5.0.0"
+reqwest = "0.12"
+linkme = "0.3"
+hsluv = "0.3"
+colored = "3"
+clap = { version = "4", features = ["derive"] }
+num-derive = "0.4"
+ordered-float = "5"
