@@ -32,3 +32,4 @@ hsluv = "0.3.1"
 colored = "3.0.0"
 clap = { version = "4.5.40", features = ["derive"] }
 num-derive = "0.4.2"
+ordered-float = "5.0.0"
