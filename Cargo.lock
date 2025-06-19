@@ -442,6 +442,7 @@ dependencies = [
  "linkme",
  "local-ip-address",
  "log 0.4.22",
+ "num-derive",
  "num-traits",
  "number",
  "rand",
