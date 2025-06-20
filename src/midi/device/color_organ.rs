@@ -66,13 +66,14 @@ impl MidiHandler for ColorOrgan {
                         / (self.note_high - self.note_low) as f64,
                 );
                 // FIXME: need to push saturation and lightness control down
+                let velocity = unipolar_from_midi(event.value);
                 ControlMessage::NoteOn {
                     color: HsluvRenderer {
                         hue,
                         sat: UnipolarFloat::ONE,
-                        lightness: HSLUV_LIGHTNESS_OFFSET,
+                        lightness: HSLUV_LIGHTNESS_OFFSET * velocity,
                     },
-                    velocity: unipolar_from_midi(event.value),
+                    velocity,
                     release_id: event.mapping.control as ReleaseId,
                 }
             },
