@@ -76,7 +76,7 @@ impl AnimationUIState {
         map.add_unipolar(DUTY_CYCLE, |v| WrapAnimation(Set(DutyCycle(v))));
         map.add_unipolar(SMOOTHING, |v| WrapAnimation(Set(Smoothing(v))));
 
-        N_PERIODS_SELECT.map(map, |v| WrapAnimation(Set(NPeriods(v))));
+        N_PERIODS_SELECT.map(map, |v| WrapAnimation(Set(NPeriods(v as u16))));
         CLOCK_SOURCE.map(map, |v| {
             if v == 0 {
                 WrapAnimation(SetClockSource(None))
@@ -159,7 +159,7 @@ impl AnimationUIState {
             DutyCycle(v) => emitter.emit_float(DUTY_CYCLE, v.into()),
             Smoothing(v) => emitter.emit_float(SMOOTHING, v.into()),
 
-            NPeriods(v) => N_PERIODS_SELECT.set(v, emitter),
+            NPeriods(v) => N_PERIODS_SELECT.set(v as usize, emitter),
             ClockSource(maybe_clock) => CLOCK_SOURCE.set(
                 maybe_clock.map(|v| usize::from(v) + 1).unwrap_or(0),
                 emitter,
