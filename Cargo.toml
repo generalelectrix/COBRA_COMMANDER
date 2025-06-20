@@ -18,7 +18,7 @@ strum = "0.27"
 strum_macros = "0.27"
 tunnels = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
-color_organ = { path = "../color_organ" }                                             #{ git = "https://github.com/generalelectrix/color_organ", branch = "main" }
+color_organ = { git = "https://github.com/generalelectrix/color_organ", branch = "main" }
 zmq = "0.10"
 anyhow = { version = "1", features = ["backtrace"] }
 thiserror = "2"
@@ -35,3 +35,11 @@ clap = { version = "4", features = ["derive"] }
 num-derive = "0.4"
 ordered-float = "5"
 ordermap = "0.5.7"
+ansi-escapes = "0.2.0"
+
+[patch."https://github.com/generalelectrix/color_organ"]
+color_organ = { path = "../color_organ" }
+
+[patch."https://github.com/generalelectrix/tunnels"]
+tunnels = { path = "../tunnels/tunnels" }
+tunnels_lib = { path = "../tunnels/tunnels_lib" }

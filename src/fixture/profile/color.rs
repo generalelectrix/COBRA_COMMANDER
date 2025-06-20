@@ -383,6 +383,7 @@ impl Model {
         match self {
             Self::Rgb => {
                 let [r, g, b] = renderer.rgb();
+                print_color([r, g, b]);
                 buf[0] = r;
                 buf[1] = g;
                 buf[2] = b;

@@ -40,6 +40,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ansi-escapes"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10b98e9c74265950a28ae39c02e290858714c23071ab4f71c61d2908e2edfe44"
+
+[[package]]
 name = "anstream"
 version = "0.6.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -380,6 +386,7 @@ dependencies = [
 name = "cobra_commander"
 version = "0.1.0"
 dependencies = [
+ "ansi-escapes",
  "anyhow",
  "clap",
  "color_organ",
@@ -3513,7 +3520,6 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#064a990f0620099065fc4c821af1696bc409ddce"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -3540,7 +3546,6 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#064a990f0620099065fc4c821af1696bc409ddce"
 dependencies = [
  "anyhow",
  "derive_more 2.0.1",
@@ -4249,7 +4254,6 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#064a990f0620099065fc4c821af1696bc409ddce"
 dependencies = [
  "anyhow",
  "async-dnssd",

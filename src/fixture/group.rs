@@ -140,11 +140,15 @@ impl FixtureGroup {
         _audio_envelope: UnipolarFloat,
     ) {
         self.fixture.update(master_controls, delta_t);
+        if let Some(color_organ) = &mut self.color_organ {
+            color_organ.update(delta_t);
+        }
     }
 
     /// Render into the provided DMX universe.
     /// The master controls are provided to potentially alter the render.
     pub fn render(&self, master_controls: &MasterControls, dmx_buffers: &mut [DmxBuffer]) {
+        print!("{}", ansi_escapes::EraseLines(2));
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
             let Some(dmx_addr) = cfg.dmx_addr else {
@@ -173,6 +177,7 @@ impl FixtureGroup {
             );
             debug!("{}: {:?}", self.qualified_name(), dmx_buf);
         }
+        println!();
     }
 }
 
