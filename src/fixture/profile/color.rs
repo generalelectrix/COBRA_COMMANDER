@@ -86,7 +86,9 @@ impl PatchAnimatedFixture for Color {
 
 register_patcher!(Color);
 
-const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.3225);
+/// This is the lightness value where the gamut contains all three primary colors
+/// at the brightness equivalent to blue at maximum output.
+pub const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.3225);
 const HSLUV_LIGHTNESS_BOOST_SCALE: UnipolarFloat = UnipolarFloat::new(1.0 - 0.3225);
 
 impl Color {
