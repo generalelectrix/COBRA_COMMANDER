@@ -31,7 +31,7 @@ pub struct ColorOrgan {
 }
 
 impl ColorOrgan {
-    fn new(note_low: u8, note_high: u8, channel: u8) -> Result<Self> {
+    pub fn new(note_low: u8, note_high: u8, channel: u8) -> Result<Self> {
         ensure!(
             note_low > note_high,
             "invalid note range: {note_high} is not larger than {note_low}"

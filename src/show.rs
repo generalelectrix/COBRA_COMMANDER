@@ -122,12 +122,14 @@ const CONTROL_TIMEOUT: Duration = Duration::from_millis(1);
 const UPDATE_INTERVAL: Duration = Duration::from_millis(20);
 
 impl Show {
-    pub fn new(patch: Patch, controller: Controller, clocks: Clocks) -> Result<Self> {
-        let channels = Channels::from_iter(patch.channels());
+    pub fn new(mut patch: Patch, controller: Controller, clocks: Clocks) -> Result<Self> {
+        let channels = Channels::from_iter(patch.channels().cloned());
 
         let master_controls = MasterControls::new();
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
+
+        patch.initialize_color_organs();
 
         let mut show = Self {
             controller,
@@ -362,8 +364,12 @@ impl Show {
 /// These cover all of the fixed control features, but not fixture-specific controls.
 #[derive(Debug, Clone)]
 pub enum ShowControlMessage {
+    // Unused because show control messages only come from OSC so far.
+    #[allow(unused)]
     Master(crate::master::ControlMessage),
     Channel(crate::channel::ControlMessage),
+    // Unused because show control messages only come from OSC so far.
+    #[allow(unused)]
     Animation(crate::animation::ControlMessage),
     ColorOrgan(color_organ::ControlMessage<HsluvRenderer>),
 }

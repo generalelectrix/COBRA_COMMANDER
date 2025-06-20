@@ -34,3 +34,4 @@ colored = "3"
 clap = { version = "4", features = ["derive"] }
 num-derive = "0.4"
 ordered-float = "5"
+ordermap = "0.5.7"

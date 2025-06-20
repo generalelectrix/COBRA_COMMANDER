@@ -36,6 +36,9 @@ pub struct FixtureGroupConfig {
     /// If true, assign to a channel. Defaults to true.
     #[serde(default = "_true")]
     pub channel: bool,
+    /// If true, initialize a color organ for this group.
+    #[serde(default)]
+    pub color_organ: bool,
 }
 
 const fn _true() -> bool {
@@ -75,8 +78,6 @@ pub struct FixtureConfig {
     pub group: Option<String>,
     /// Additional key-value string options for configuring specific fixture types.
     pub options: Options,
-    /// If true, assign to a channel.
-    pub channel: bool,
 }
 
 impl FixtureConfig {
@@ -88,7 +89,6 @@ impl FixtureConfig {
             mirror: group.mirror,
             group: group.group.clone(),
             options: group.options.clone(),
-            channel: group.channel,
         }
     }
 }

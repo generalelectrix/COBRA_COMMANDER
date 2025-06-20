@@ -281,9 +281,9 @@ pub struct HsluvRenderer {
     pub lightness: UnipolarFloat,
 }
 
-impl Into<HsluvColor> for HsluvRenderer {
-    fn into(self) -> HsluvColor {
-        HsluvColor::new(self.hue, self.sat, self.lightness)
+impl From<HsluvRenderer> for HsluvColor {
+    fn from(c: HsluvRenderer) -> Self {
+        Self::new(c.hue, c.sat, c.lightness)
     }
 }
 

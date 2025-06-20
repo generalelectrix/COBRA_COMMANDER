@@ -1,9 +1,8 @@
 //! Define midi devices and handle midi controls.
 
 use anyhow::Result;
-use device::{
-    apc20::AkaiApc20, color_organ::ColorOrgan, launch_control_xl::NovationLaunchControlXL,
-};
+pub use device::color_organ::ColorOrgan;
+use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{channel::StateChange as ChannelStateChange, show::ShowControlMessage};

@@ -1,6 +1,7 @@
 //! Types and traits related to patching fixtures.
 use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
+use ordermap::{OrderMap, OrderSet};
 use std::collections::{HashMap, HashSet};
 
 use anyhow::bail;
@@ -24,15 +25,13 @@ type UsedAddrs = HashMap<(UniverseIdx, usize), FixtureConfig>;
 /// prevent addressing collisions.
 pub struct Patch {
     /// The fixture groups we've patched.
-    ///
-    /// TODO: by using a HashMap for fast key lookup, we do not have a defined
-    /// patch ordering. This implies that iterating over the patch will produce
-    /// a stable but random order. This probably isn't important.
-    fixtures: HashMap<FixtureGroupKey, FixtureGroup>,
+    fixtures: OrderMap<FixtureGroupKey, FixtureGroup>,
     /// Which DMX addrs already have a fixture patched in them.
     used_addrs: UsedAddrs,
     /// The channels that fixture groups are assigned to.
-    channels: Vec<FixtureGroupKey>,
+    channels: OrderSet<FixtureGroupKey>,
+    /// Initialize color organs for these fixture groups.
+    color_organs: OrderSet<FixtureGroupKey>,
 }
 
 /// Distributed registry for things that we can patch.
@@ -50,6 +49,7 @@ impl Patch {
             fixtures: Default::default(),
             used_addrs: Default::default(),
             channels: Default::default(),
+            color_organs: Default::default(),
         }
     }
 
@@ -65,15 +65,40 @@ impl Patch {
     /// Patch a fixture group config - either a single address or a range.
     pub fn patch(&mut self, cfg: FixtureGroupConfig) -> anyhow::Result<()> {
         let candidate = self.get_candidate(&cfg.fixture, &cfg.options)?;
+
+        if cfg.channel {
+            ensure!(
+                candidate.fixture.is_animated(),
+                "cannot assign non-animatable fixture {} to a channel",
+                candidate.fixture_type
+            );
+        }
+
         for fixture_cfg in cfg.fixture_configs(candidate.channel_count) {
-            self.patch_one(fixture_cfg)?;
+            let key = self.patch_one(fixture_cfg)?;
+            if cfg.channel {
+                self.channels.insert(key.clone());
+            }
+            if cfg.color_organ {
+                self.color_organs.insert(key.clone());
+            }
         }
         Ok(())
     }
 
     /// Iterate over the fixture group keys assigned to each channel.
-    pub fn channels(&self) -> impl Iterator<Item = FixtureGroupKey> + '_ {
-        self.channels.iter().cloned()
+    pub fn channels(&self) -> impl Iterator<Item = &FixtureGroupKey> + '_ {
+        self.channels.iter()
+    }
+
+    /// Initialize color organs for all fixtures that should have them.
+    ///
+    /// This should be called after all fixtures are patched.
+    /// TODO: update the color organ codebase to handle a change in fixture count.
+    pub fn initialize_color_organs(&mut self) {
+        for key in &self.color_organs {
+            self.fixtures[key].use_color_organ();
+        }
     }
 
     fn get_candidate(&self, name: &str, options: &Options) -> Result<PatchCandidate> {
@@ -94,7 +119,9 @@ impl Patch {
     }
 
     /// Patch a single fixture config.
-    fn patch_one(&mut self, cfg: FixtureConfig) -> anyhow::Result<()> {
+    ///
+    /// Return the group key.
+    fn patch_one(&mut self, cfg: FixtureConfig) -> anyhow::Result<FixtureGroupKey> {
         let candidate = self
             .get_candidate(&cfg.fixture, &cfg.options)
             .with_context(|| {
@@ -105,14 +132,6 @@ impl Patch {
                 }
             })?;
         self.used_addrs = self.check_collision(&candidate, &cfg)?;
-        // Add channel mapping index if provided.  Ensure this is an animatable fixture.
-        if cfg.channel {
-            ensure!(
-                candidate.fixture.is_animated(),
-                "cannot assign non-animatable fixture {} to a channel",
-                candidate.fixture_type
-            );
-        }
         if let Some(addr) = cfg.addr {
             info!(
                 "Controlling {} at {} (group: {}).",
@@ -146,13 +165,9 @@ impl Patch {
                 render_mode: candidate.render_mode,
                 mirror: cfg.mirror,
             });
-            return Ok(());
+            return Ok(key);
         }
         // No existing group; create a new one.
-        if cfg.channel {
-            self.channels.push(key.clone());
-        }
-
         let group = FixtureGroup::new(
             candidate.fixture_type,
             key.clone(),
@@ -166,9 +181,9 @@ impl Patch {
             candidate.fixture,
         );
 
-        self.fixtures.insert(key, group);
+        self.fixtures.insert(key.clone(), group);
 
-        Ok(())
+        Ok(key)
     }
 
     /// Dynamically get the universe count.
