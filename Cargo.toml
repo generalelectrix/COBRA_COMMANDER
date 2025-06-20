@@ -18,6 +18,7 @@ strum = "0.27"
 strum_macros = "0.27"
 tunnels = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
+color_organ = { git = "https://github.com/generalelectrix/color_organ", branch = "main" }
 zmq = "0.10"
 anyhow = { version = "1", features = ["backtrace"] }
 thiserror = "2"
