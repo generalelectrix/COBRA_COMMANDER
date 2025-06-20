@@ -6,7 +6,7 @@ use crate::{
     clock_service::ClockService,
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
-    fixture::Patch,
+    fixture::{color::HsluvRenderer, Patch},
     master::MasterControls,
     midi::{MidiControlMessage, MidiHandler},
     osc::{GroupControlMap, OscControlMessage, ScopedControlEmitter},
@@ -15,6 +15,7 @@ use crate::{
 
 pub use crate::channel::ChannelId;
 use anyhow::{bail, Result};
+use color_organ::IgnoreEmitter;
 use log::error;
 use number::UnipolarFloat;
 use rust_dmx::DmxPort;
@@ -197,10 +198,10 @@ impl Show {
     /// Handle a single MIDI control message.
     fn handle_midi_message(&mut self, msg: &MidiControlMessage) -> Result<()> {
         let sender = self.controller.sender_with_metadata(None);
-        let Some(channel_ctrl_msg) = msg.device.interpret(&msg.event) else {
+        let Some(show_ctrl_msg) = msg.device.interpret(&msg.event) else {
             return Ok(());
         };
-        match channel_ctrl_msg {
+        match show_ctrl_msg {
             ShowControlMessage::Channel(msg) => {
                 self.channels
                     .control(&msg, &mut self.patch, &self.animation_ui_state, &sender)
@@ -220,6 +221,16 @@ impl Show {
                         emitter: &sender,
                     },
                 )
+            }
+            ShowControlMessage::ColorOrgan(msg) => {
+                // FIXME: this is really janky and has no way to route messages.
+                for group in self.patch.iter_mut() {
+                    let Some(color_organ) = group.color_organ_mut() else {
+                        continue;
+                    };
+                    color_organ.control(msg.clone(), &IgnoreEmitter);
+                }
+                Ok(())
             }
         }
     }
@@ -351,9 +362,8 @@ impl Show {
 /// These cover all of the fixed control features, but not fixture-specific controls.
 #[derive(Debug, Clone)]
 pub enum ShowControlMessage {
-    #[allow(unused)]
     Master(crate::master::ControlMessage),
     Channel(crate::channel::ControlMessage),
-    #[allow(unused)]
     Animation(crate::animation::ControlMessage),
+    ColorOrgan(color_organ::ControlMessage<HsluvRenderer>),
 }

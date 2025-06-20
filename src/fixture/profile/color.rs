@@ -1,5 +1,6 @@
 //! Flexible control profile for a single-color fixture.
 use anyhow::{bail, Context, Result};
+use color_organ::HsluvColor;
 use colored::Colorize;
 use hsluv::hsluv_to_rgb;
 use log::{error, warn};
@@ -131,6 +132,21 @@ impl AnimatedFixture for Color {
         animation_vals: TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
+        let model = match Model::model_for_mode(group_controls.render_mode) {
+            Ok(m) => m,
+            Err(err) => {
+                error!("failed to render Color: {err}");
+                return;
+            }
+        };
+
+        // If a color override has been provided, render it scaled by the level.
+        if let Some(mut color_override) = group_controls.color.clone() {
+            color_override.lightness *= self.val.control.val();
+            model.render(dmx_buf, color_override);
+            return;
+        }
+
         let mut hue = self.hue.control.val().val();
         let mut sat = self.sat.control.val().val();
         let mut val = self.val.control.val().val();
@@ -143,13 +159,7 @@ impl AnimatedFixture for Color {
                 Val => val += anim_val,
             }
         }
-        let model = match Model::model_for_mode(group_controls.render_mode) {
-            Ok(m) => m,
-            Err(err) => {
-                error!("failed to render Color: {err}");
-                return;
-            }
-        };
+
         match self.space {
             ColorSpace::Hsv => model.render(
                 dmx_buf,
@@ -228,6 +238,7 @@ pub trait RenderColor {
 }
 
 /// Render an HSV color into output spaces.
+#[derive(Clone)]
 pub struct HsvRenderer {
     pub hue: Phase,
     pub sat: UnipolarFloat,
@@ -261,10 +272,17 @@ impl RenderColor for HsvRenderer {
 }
 
 /// Render an HSLuv color into output spaces.
+#[derive(Clone, Debug)]
 pub struct HsluvRenderer {
     pub hue: Phase,
     pub sat: UnipolarFloat,
     pub lightness: UnipolarFloat,
+}
+
+impl Into<HsluvColor> for HsluvRenderer {
+    fn into(self) -> HsluvColor {
+        HsluvColor::new(self.hue, self.sat, self.lightness)
+    }
 }
 
 impl RenderColor for HsluvRenderer {

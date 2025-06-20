@@ -1,7 +1,9 @@
 //! Define midi devices and handle midi controls.
 
 use anyhow::Result;
-use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
+use device::{
+    apc20::AkaiApc20, color_organ::ColorOrgan, launch_control_xl::NovationLaunchControlXL,
+};
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{channel::StateChange as ChannelStateChange, show::ShowControlMessage};
@@ -21,6 +23,7 @@ pub enum Device {
     Apc20(AkaiApc20),
     LaunchControlXL(NovationLaunchControlXL),
     LaunchControlXLSecondWing(NovationLaunchControlXL),
+    ColorOrgan(ColorOrgan),
 }
 
 impl Display for Device {
@@ -35,6 +38,7 @@ impl MidiDevice for Device {
             Self::Apc20(d) => d.device_name(),
             Self::LaunchControlXL(d) => d.device_name(),
             Self::LaunchControlXLSecondWing(_) => "Launch Control XL Second Wing",
+            Self::ColorOrgan(_) => "Generic MIDI Keyboard",
         }
     }
 
@@ -43,6 +47,7 @@ impl MidiDevice for Device {
             Self::Apc20(d) => d.init_midi(out),
             Self::LaunchControlXL(d) => d.init_midi(out),
             Self::LaunchControlXLSecondWing(d) => d.init_midi(out),
+            Self::ColorOrgan(_) => Ok(()),
         }
     }
 }
@@ -64,6 +69,7 @@ impl MidiHandler for Device {
             Self::Apc20(d) => d.interpret(event),
             Self::LaunchControlXL(d) => d.interpret(event),
             Self::LaunchControlXLSecondWing(d) => d.interpret(event),
+            Self::ColorOrgan(d) => d.interpret(event),
         }
     }
 
@@ -72,6 +78,7 @@ impl MidiHandler for Device {
             Self::Apc20(d) => d.emit_channel_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_channel_control(msg, output),
             Self::LaunchControlXLSecondWing(d) => d.emit_channel_control(msg, output),
+            Self::ColorOrgan(_) => (),
         }
     }
 
@@ -80,6 +87,7 @@ impl MidiHandler for Device {
             Self::Apc20(d) => d.emit_master_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_master_control(msg, output),
             Self::LaunchControlXLSecondWing(d) => d.emit_master_control(msg, output),
+            Self::ColorOrgan(_) => (),
         }
     }
 }

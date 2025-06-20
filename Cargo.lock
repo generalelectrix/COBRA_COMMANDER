@@ -413,7 +413,6 @@ dependencies = [
 [[package]]
 name = "color_organ"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/color_organ?branch=main#a0b2f676f7195cb4b24b8e992291383078543dc1"
 dependencies = [
  "log 0.4.27",
  "number",

@@ -10,7 +10,7 @@ use serde::Deserialize;
 use crate::{
     animation::AnimationUIState,
     control::EmitControlMessage,
-    fixture::{FixtureGroup, FixtureGroupKey, Patch},
+    fixture::{color::HsluvRenderer, FixtureGroup, FixtureGroupKey, Patch},
     osc::{EmitOscMessage, GroupControlMap, OscControlMessage, ScopedControlEmitter},
     wled::EmitWledControlMessage,
 };
