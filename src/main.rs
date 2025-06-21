@@ -161,8 +161,6 @@ fn main() -> Result<()> {
 
     let mut show = Show::new(patch, controller, clocks)?;
 
-    print!("{}", ansi_escapes::CursorHide);
-
     show.run(&mut dmx_ports);
 
     Ok(())
