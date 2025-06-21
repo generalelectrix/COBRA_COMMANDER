@@ -1,4 +1,7 @@
-use crate::master::{MasterControls, Strobe};
+use crate::{
+    color::Hsluv,
+    master::{MasterControls, Strobe},
+};
 
 pub mod animation_target;
 mod control;
@@ -22,6 +25,8 @@ pub struct FixtureGroupControls<'a> {
     mirror: bool,
     /// Optional render mode index for fixtures that support more than one.
     render_mode: Option<RenderMode>,
+    /// A color value for this fixture to use in rendering.
+    color: Option<Hsluv>,
 }
 
 impl<'a> FixtureGroupControls<'a> {

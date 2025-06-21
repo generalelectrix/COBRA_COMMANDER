@@ -40,6 +40,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ansi-escapes"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10b98e9c74265950a28ae39c02e290858714c23071ab4f71c61d2908e2edfe44"
+
+[[package]]
 name = "anstream"
 version = "0.6.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -380,8 +386,10 @@ dependencies = [
 name = "cobra_commander"
 version = "0.1.0"
 dependencies = [
+ "ansi-escapes",
  "anyhow",
  "clap",
+ "color_organ",
  "colored",
  "fixture_macros",
  "hsluv",
@@ -393,6 +401,7 @@ dependencies = [
  "num-traits",
  "number",
  "ordered-float",
+ "ordermap",
  "rand 0.9.1",
  "reqwest 0.12.20",
  "rosc",
@@ -410,6 +419,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "color_organ"
+version = "0.1.0"
+source = "git+https://github.com/generalelectrix/color_organ?branch=main#00470c7a608d6fe13644e2e81a84acc3bd246339"
+dependencies = [
+ "log 0.4.27",
+ "number",
+ "serde",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -421,7 +440,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -787,7 +806,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cea14ef9355e3beab063703aa9dab15afd25f0667c341310c1e5274bb1d0da18"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2133,6 +2152,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordermap"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d31b8b7a99f71bdff4235faf9ce9eada0ad3562c8fbeb7d607d9f41a6ec569d"
+dependencies = [
+ "indexmap",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2575,7 +2603,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3032,7 +3060,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3493,7 +3521,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#064a990f0620099065fc4c821af1696bc409ddce"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#798114b10afd1b814a0bccd2bd345623942a5aee"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -3520,7 +3548,7 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#064a990f0620099065fc4c821af1696bc409ddce"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#798114b10afd1b814a0bccd2bd345623942a5aee"
 dependencies = [
  "anyhow",
  "derive_more 2.0.1",
@@ -3813,7 +3841,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4229,7 +4257,7 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#064a990f0620099065fc4c821af1696bc409ddce"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#798114b10afd1b814a0bccd2bd345623942a5aee"
 dependencies = [
  "anyhow",
  "async-dnssd",

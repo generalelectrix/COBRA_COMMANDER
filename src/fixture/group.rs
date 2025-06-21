@@ -1,6 +1,8 @@
 //! Define groups of fixtures, sharing a common fixture
 
 use anyhow::{ensure, Context};
+use color_organ::ColorOrganHsluv;
+use color_organ::FixtureId;
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
 use std::ops::Deref;
@@ -13,6 +15,7 @@ use super::animation_target::ControllableTargetedAnimation;
 use super::fixture::{Fixture, FixtureType, RenderMode};
 use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
+use crate::color::Hsluv;
 use crate::dmx::DmxBuffer;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
@@ -25,6 +28,8 @@ pub struct FixtureGroup {
     key: FixtureGroupKey,
     /// The configurations for the fixtures in the group.
     fixture_configs: Vec<GroupFixtureConfig>,
+    /// A color organ for controlling the group.
+    color_organ: Option<ColorOrganHsluv>,
     /// The inner implementation of the fixture.
     fixture: Box<dyn Fixture>,
 }
@@ -41,6 +46,7 @@ impl FixtureGroup {
             fixture_type,
             key,
             fixture_configs: vec![fixture_config],
+            color_organ: None,
             fixture,
         }
     }
@@ -48,6 +54,22 @@ impl FixtureGroup {
     /// Patch an additional fixture in this group.
     pub fn patch(&mut self, cfg: GroupFixtureConfig) {
         self.fixture_configs.push(cfg);
+    }
+
+    /// Initialize the color organ for this group.
+    /// This should only be done after patching is complete, to ensure that
+    /// we don't update the number of fixtures in the group.
+    ///
+    /// TODO: we might want to consider a separate FixtureGroupBuilder to uphold
+    /// this invariant, but if we do that, it may make it more difficult to
+    /// eventually make patching dynamic.
+    pub fn use_color_organ(&mut self) {
+        self.color_organ = Some(ColorOrganHsluv::new(self.fixture_configs.len()));
+    }
+
+    /// Get a mutable reference to the group's color organ, if in use.
+    pub fn color_organ_mut(&mut self) -> Option<&mut ColorOrganHsluv> {
+        self.color_organ.as_mut()
     }
 
     /// Return a struct that can write the qualified name of this group.
@@ -118,6 +140,9 @@ impl FixtureGroup {
         _audio_envelope: UnipolarFloat,
     ) {
         self.fixture.update(master_controls, delta_t);
+        if let Some(color_organ) = &mut self.color_organ {
+            color_organ.update(delta_t);
+        }
     }
 
     /// Render into the provided DMX universe.
@@ -137,6 +162,13 @@ impl FixtureGroup {
                     master_controls,
                     mirror: cfg.mirror,
                     render_mode: cfg.render_mode,
+                    color: self.color_organ.as_ref().and_then(|color_organ| {
+                        color_organ.render(FixtureId(i as u32)).map(|color| Hsluv {
+                            hue: color.hue,
+                            sat: color.saturation,
+                            lightness: color.lightness,
+                        })
+                    }),
                 },
                 dmx_buf,
             );

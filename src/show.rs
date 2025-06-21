@@ -4,6 +4,7 @@ use crate::{
     animation::AnimationUIState,
     channel::{ChannelStateEmitter, Channels},
     clock_service::ClockService,
+    color::Hsluv,
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
     fixture::Patch,
@@ -15,6 +16,7 @@ use crate::{
 
 pub use crate::channel::ChannelId;
 use anyhow::{bail, Result};
+use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use number::UnipolarFloat;
 use rust_dmx::DmxPort;
@@ -121,12 +123,14 @@ const CONTROL_TIMEOUT: Duration = Duration::from_millis(1);
 const UPDATE_INTERVAL: Duration = Duration::from_millis(20);
 
 impl Show {
-    pub fn new(patch: Patch, controller: Controller, clocks: Clocks) -> Result<Self> {
-        let channels = Channels::from_iter(patch.channels());
+    pub fn new(mut patch: Patch, controller: Controller, clocks: Clocks) -> Result<Self> {
+        let channels = Channels::from_iter(patch.channels().cloned());
 
         let master_controls = MasterControls::new();
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
+
+        patch.initialize_color_organs();
 
         let mut show = Self {
             controller,
@@ -197,10 +201,10 @@ impl Show {
     /// Handle a single MIDI control message.
     fn handle_midi_message(&mut self, msg: &MidiControlMessage) -> Result<()> {
         let sender = self.controller.sender_with_metadata(None);
-        let Some(channel_ctrl_msg) = msg.device.interpret(&msg.event) else {
+        let Some(show_ctrl_msg) = msg.device.interpret(&msg.event) else {
             return Ok(());
         };
-        match channel_ctrl_msg {
+        match show_ctrl_msg {
             ShowControlMessage::Channel(msg) => {
                 self.channels
                     .control(&msg, &mut self.patch, &self.animation_ui_state, &sender)
@@ -220,6 +224,16 @@ impl Show {
                         emitter: &sender,
                     },
                 )
+            }
+            ShowControlMessage::ColorOrgan(msg) => {
+                // FIXME: this is really janky and has no way to route messages.
+                for group in self.patch.iter_mut() {
+                    let Some(color_organ) = group.color_organ_mut() else {
+                        continue;
+                    };
+                    color_organ.control(msg.clone(), &IgnoreEmitter);
+                }
+                Ok(())
             }
         }
     }
@@ -351,9 +365,18 @@ impl Show {
 /// These cover all of the fixed control features, but not fixture-specific controls.
 #[derive(Debug, Clone)]
 pub enum ShowControlMessage {
+    // Unused because show control messages only come from OSC so far.
     #[allow(unused)]
     Master(crate::master::ControlMessage),
     Channel(crate::channel::ControlMessage),
+    // Unused because show control messages only come from OSC so far.
     #[allow(unused)]
     Animation(crate::animation::ControlMessage),
+    ColorOrgan(color_organ::ControlMessage<Hsluv>),
+}
+
+impl From<Hsluv> for HsluvColor {
+    fn from(c: Hsluv) -> Self {
+        Self::new(c.hue, c.sat, c.lightness)
+    }
 }

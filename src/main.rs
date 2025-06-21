@@ -17,17 +17,20 @@ use std::path::PathBuf;
 use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
 use tunnels::clock_bank::ClockBank;
-use tunnels::midi::list_ports;
 use tunnels::midi::prompt_midi;
+use tunnels::midi::{list_ports, DeviceSpec};
+use tunnels_lib::prompt::{prompt_bool, prompt_indexed_value};
 use zmq::Context;
 
 use crate::config::FixtureGroupConfig;
 use crate::control::Controller;
+use crate::midi::ColorOrgan;
 use crate::show::Show;
 
 mod animation;
 mod channel;
 mod clock_service;
+mod color;
 mod config;
 mod control;
 mod dmx;
@@ -123,9 +126,20 @@ fn main() -> Result<()> {
     let osc_controllers = prompt_osc_config(args.osc_receive_port)?.unwrap_or_default();
 
     let (midi_inputs, midi_outputs) = list_ports()?;
-    let midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
+    let mut midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
+
     if osc_controllers.is_empty() && midi_devices.is_empty() {
         bail!("No OSC or midi clients were registered or manually configured.");
+    }
+
+    if prompt_bool("Use a color organ?")? {
+        let input_port_name = prompt_indexed_value("Input port:", &midi_inputs)?;
+        let output_port_name = prompt_indexed_value("Output port:", &midi_outputs)?;
+        midi_devices.push(DeviceSpec {
+            device: Device::ColorOrgan(ColorOrgan::new(0, 60, 0)?),
+            input_port_name,
+            output_port_name,
+        })
     }
 
     let controller = Controller::new(
