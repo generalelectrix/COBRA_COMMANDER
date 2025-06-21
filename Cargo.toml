@@ -36,10 +36,3 @@ num-derive = "0.4"
 ordered-float = "5"
 ordermap = "0.5.7"
 ansi-escapes = "0.2.0"
-
-[patch."https://github.com/generalelectrix/color_organ"]
-color_organ = { path = "../color_organ" }
-
-[patch."https://github.com/generalelectrix/tunnels"]
-tunnels = { path = "../tunnels/tunnels" }
-tunnels_lib = { path = "../tunnels/tunnels_lib" }

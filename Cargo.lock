@@ -421,6 +421,7 @@ dependencies = [
 [[package]]
 name = "color_organ"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/color_organ?branch=main#00470c7a608d6fe13644e2e81a84acc3bd246339"
 dependencies = [
  "log 0.4.27",
  "number",
@@ -3520,6 +3521,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#798114b10afd1b814a0bccd2bd345623942a5aee"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -3546,6 +3548,7 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#798114b10afd1b814a0bccd2bd345623942a5aee"
 dependencies = [
  "anyhow",
  "derive_more 2.0.1",
@@ -4254,6 +4257,7 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#798114b10afd1b814a0bccd2bd345623942a5aee"
 dependencies = [
  "anyhow",
  "async-dnssd",
