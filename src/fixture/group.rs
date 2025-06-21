@@ -15,7 +15,7 @@ use super::animation_target::ControllableTargetedAnimation;
 use super::fixture::{Fixture, FixtureType, RenderMode};
 use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
-use crate::color::HsluvRenderer;
+use crate::color::Hsluv;
 use crate::dmx::DmxBuffer;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
@@ -163,13 +163,11 @@ impl FixtureGroup {
                     mirror: cfg.mirror,
                     render_mode: cfg.render_mode,
                     color: self.color_organ.as_ref().and_then(|color_organ| {
-                        color_organ
-                            .render(FixtureId(i as u32))
-                            .map(|color| HsluvRenderer {
-                                hue: color.hue,
-                                sat: color.saturation,
-                                lightness: color.lightness,
-                            })
+                        color_organ.render(FixtureId(i as u32)).map(|color| Hsluv {
+                            hue: color.hue,
+                            sat: color.saturation,
+                            lightness: color.lightness,
+                        })
                     }),
                 },
                 dmx_buf,

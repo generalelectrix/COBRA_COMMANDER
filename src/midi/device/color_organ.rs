@@ -9,7 +9,7 @@ use tunnels::{
 };
 
 use crate::{
-    color::{HsluvRenderer, HSLUV_LIGHTNESS_OFFSET},
+    color::{Hsluv, HSLUV_LIGHTNESS_OFFSET},
     midi::MidiHandler,
     show::ShowControlMessage,
 };
@@ -68,7 +68,7 @@ impl MidiHandler for ColorOrgan {
                 // FIXME: need to push saturation and lightness control down
                 let velocity = unipolar_from_midi(event.value);
                 ControlMessage::NoteOn {
-                    color: HsluvRenderer {
+                    color: Hsluv {
                         hue,
                         sat: UnipolarFloat::ONE,
                         lightness: HSLUV_LIGHTNESS_OFFSET * velocity,

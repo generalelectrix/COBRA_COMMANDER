@@ -101,7 +101,7 @@ impl Color {
         match self.space {
             ColorSpace::Hsv => model.render(
                 dmx_buf,
-                HsvRenderer {
+                Hsv {
                     hue: self.hue.control.val(),
                     sat: self.sat.control.val(),
                     val: self.val.control.val(),
@@ -109,7 +109,7 @@ impl Color {
             ),
             ColorSpace::Hsluv => model.render(
                 dmx_buf,
-                HsluvRenderer {
+                Hsluv {
                     hue: self.hue.control.val(),
                     sat: self.sat.control.val(),
                     lightness: self.hsluv_lightness() * self.val.control.val(),
@@ -158,7 +158,7 @@ impl AnimatedFixture for Color {
         match self.space {
             ColorSpace::Hsv => model.render(
                 dmx_buf,
-                HsvRenderer {
+                Hsv {
                     hue: Phase::new(hue),
                     sat: UnipolarFloat::new(sat),
                     val: UnipolarFloat::new(val),
@@ -166,7 +166,7 @@ impl AnimatedFixture for Color {
             ),
             ColorSpace::Hsluv => model.render(
                 dmx_buf,
-                HsluvRenderer {
+                Hsluv {
                     hue: Phase::new(hue),
                     sat: UnipolarFloat::new(sat),
                     lightness: self.hsluv_lightness() * UnipolarFloat::new(val),

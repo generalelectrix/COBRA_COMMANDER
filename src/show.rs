@@ -4,7 +4,7 @@ use crate::{
     animation::AnimationUIState,
     channel::{ChannelStateEmitter, Channels},
     clock_service::ClockService,
-    color::HsluvRenderer,
+    color::Hsluv,
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
     fixture::Patch,
@@ -16,7 +16,7 @@ use crate::{
 
 pub use crate::channel::ChannelId;
 use anyhow::{bail, Result};
-use color_organ::IgnoreEmitter;
+use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use number::UnipolarFloat;
 use rust_dmx::DmxPort;
@@ -372,5 +372,11 @@ pub enum ShowControlMessage {
     // Unused because show control messages only come from OSC so far.
     #[allow(unused)]
     Animation(crate::animation::ControlMessage),
-    ColorOrgan(color_organ::ControlMessage<HsluvRenderer>),
+    ColorOrgan(color_organ::ControlMessage<Hsluv>),
+}
+
+impl From<Hsluv> for HsluvColor {
+    fn from(c: Hsluv) -> Self {
+        Self::new(c.hue, c.sat, c.lightness)
+    }
 }

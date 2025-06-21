@@ -1,6 +1,5 @@
 //! Things related to color spaces, color models, rendering colors, etc.
 
-use color_organ::HsluvColor;
 use colored::Colorize;
 use hsluv::hsluv_to_rgb;
 use log::warn;
@@ -21,22 +20,24 @@ pub enum ColorSpace {
     Hsluv,
 }
 
-/// An entity that can render an abstract color into various output spaces.
+/// Render a specific color out into various integer-based output spaces.
 pub trait RenderColor {
     fn rgb(&self) -> ColorRgb;
     fn rgbw(&self) -> ColorRgbw;
     fn hsv(&self) -> ColorHsv;
 }
 
-/// Render an HSV color into output spaces.
+/// A color in the HSV color space.
+///
+/// The hue coordinate is adjusted to put green at 0.
 #[derive(Clone)]
-pub struct HsvRenderer {
+pub struct Hsv {
     pub hue: Phase,
     pub sat: UnipolarFloat,
     pub val: UnipolarFloat,
 }
 
-impl RenderColor for HsvRenderer {
+impl RenderColor for Hsv {
     fn rgb(&self) -> ColorRgb {
         hsv_to_rgb(self.hue, self.sat, self.val)
     }
@@ -62,21 +63,19 @@ impl RenderColor for HsvRenderer {
     }
 }
 
-/// Render an HSLuv color into output spaces.
+/// A color in the HSLuv color space.
+///
+/// The behavior of hue is tweaked compared to the reference implementation.
+/// Green is at hue = 0.
+/// The primaries are adjusted to be exactly 120 degrees apart.
 #[derive(Clone, Debug)]
-pub struct HsluvRenderer {
+pub struct Hsluv {
     pub hue: Phase,
     pub sat: UnipolarFloat,
     pub lightness: UnipolarFloat,
 }
 
-impl From<HsluvRenderer> for HsluvColor {
-    fn from(c: HsluvRenderer) -> Self {
-        Self::new(c.hue, c.sat, c.lightness)
-    }
-}
-
-impl RenderColor for HsluvRenderer {
+impl RenderColor for Hsluv {
     fn rgb(&self) -> ColorRgb {
         // HSLuv library uses degrees for phase and percent for other two components.
         // Primary and secondary hues at base lightness (renders primary blue) are:

@@ -1,5 +1,5 @@
 use crate::{
-    color::HsluvRenderer,
+    color::Hsluv,
     master::{MasterControls, Strobe},
 };
 
@@ -26,7 +26,7 @@ pub struct FixtureGroupControls<'a> {
     /// Optional render mode index for fixtures that support more than one.
     render_mode: Option<RenderMode>,
     /// A color value for this fixture to use in rendering.
-    color: Option<HsluvRenderer>,
+    color: Option<Hsluv>,
 }
 
 impl<'a> FixtureGroupControls<'a> {
