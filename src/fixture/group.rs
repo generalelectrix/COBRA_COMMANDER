@@ -15,8 +15,8 @@ use super::animation_target::ControllableTargetedAnimation;
 use super::fixture::{Fixture, FixtureType, RenderMode};
 use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
+use crate::color::HsluvRenderer;
 use crate::dmx::DmxBuffer;
-use crate::fixture::color::HsluvRenderer;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
@@ -148,7 +148,6 @@ impl FixtureGroup {
     /// Render into the provided DMX universe.
     /// The master controls are provided to potentially alter the render.
     pub fn render(&self, master_controls: &MasterControls, dmx_buffers: &mut [DmxBuffer]) {
-        print!("{}", ansi_escapes::EraseLines(2));
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
             let Some(dmx_addr) = cfg.dmx_addr else {
@@ -177,7 +176,6 @@ impl FixtureGroup {
             );
             debug!("{}: {:?}", self.qualified_name(), dmx_buf);
         }
-        println!();
     }
 }
 

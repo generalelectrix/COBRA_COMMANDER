@@ -9,7 +9,7 @@ use tunnels::{
 };
 
 use crate::{
-    fixture::color::{HsluvRenderer, HSLUV_LIGHTNESS_OFFSET},
+    color::{HsluvRenderer, HSLUV_LIGHTNESS_OFFSET},
     midi::MidiHandler,
     show::ShowControlMessage,
 };

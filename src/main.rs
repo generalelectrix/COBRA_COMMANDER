@@ -30,6 +30,7 @@ use crate::show::Show;
 mod animation;
 mod channel;
 mod clock_service;
+mod color;
 mod config;
 mod control;
 mod dmx;

@@ -1,5 +1,5 @@
 use crate::{
-    fixture::color::HsluvRenderer,
+    color::HsluvRenderer,
     master::{MasterControls, Strobe},
 };
 

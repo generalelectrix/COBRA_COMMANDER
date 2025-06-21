@@ -1,5 +1,5 @@
 //! Control profile for Astera LEDs running in RC Wireless mode.
-use crate::fixture::{color::hsv_to_rgb, prelude::*};
+use crate::{color::hsv_to_rgb, fixture::prelude::*};
 
 #[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
 #[channel_count = 20]
