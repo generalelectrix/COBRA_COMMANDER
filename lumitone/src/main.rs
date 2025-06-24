@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::{debug, info};
+use log::info;
 
 fn main() -> Result<()> {
     simple_logger::init_with_env()?;
@@ -26,42 +26,58 @@ fn main() -> Result<()> {
     };
     info!("Sending test patterns to {}", controller.addr);
 
-    info!("Test pattern: ramp brightness from 0 to full over a few seconds.");
-
     let mut timing = vec![];
-    let send = |msg, timing: &mut Vec<Duration>| {
-        debug!("Sending message: {msg:?}");
-        let start = Instant::now();
-        controller.send(&msg)?;
-        let end = start.elapsed();
-        timing.push(end);
-        anyhow::Ok(())
-    };
+
+    info!("Test pattern: ramp brightness from 0 to full over a few seconds, sending a single parameter update every 20 ms.");
 
     for b in 0..=255 {
-        send(Command::Brightness(b), &mut timing)?;
-        thread::sleep(Duration::from_millis(10));
+        let command = [Command::Brightness(b)];
+        send(&controller, command, &mut timing)?;
+        thread::sleep(Duration::from_millis(20));
     }
 
-    info!("Test pattern: ramp speed similarly.");
-    for s in 0..=255 {
-        send(Command::Speed(s), &mut timing)?;
-        thread::sleep(Duration::from_millis(10));
-    }
-
-    info!("Select palettes, let each run for 10 seconds.");
-    for p in 0..4 {
-        send(Command::SelectPalette(p), &mut timing)?;
-        thread::sleep(Duration::from_secs(10));
-    }
     log_timing(&timing);
     timing.clear();
-    info!("Stress test: spew messages as fast as possible.");
+
+    info!("Test pattern: ramp brightness from 0 to full over a few seconds, sending a full update every 20 ms.");
     for b in 0..=255 {
-        send(Command::Brightness(b), &mut timing)?;
+        let command = [
+            Command::Speed(100),
+            Command::Brightness(b),
+            Command::SelectPalette(2),
+        ];
+        send(&controller, command, &mut timing)?;
+        thread::sleep(Duration::from_millis(20));
     }
+
+    log_timing(&timing);
+    timing.clear();
+
+    info!("Test pattern: update all parameters at 50 fps.");
+    for b in 0..=255 {
+        let command = [
+            Command::Speed(b),
+            Command::Brightness(b),
+            Command::SelectPalette((b % 4) as usize),
+        ];
+        send(&controller, command, &mut timing)?;
+        thread::sleep(Duration::from_millis(20));
+    }
+
     log_timing(&timing);
     info!("Done.");
+    Ok(())
+}
+
+fn send(
+    controller: &Lumitone,
+    msgs: impl IntoIterator<Item = Command>,
+    timing: &mut Vec<Duration>,
+) -> std::io::Result<()> {
+    let start = Instant::now();
+    controller.send(msgs)?;
+    let end = start.elapsed();
+    timing.push(end);
     Ok(())
 }
 
@@ -76,9 +92,9 @@ impl Command {
     /// Write this command's payload into the provided writer.
     pub fn write(&self, mut w: impl Write) -> std::io::Result<()> {
         match self {
-            Self::SelectPalette(v) => write!(w, "NEW_TUNING g_iWifiColorPal={v}\n\n"),
-            Self::Brightness(v) => write!(w, "NEW_TUNING g_iWifiBrightness={v}\n\n"),
-            Self::Speed(v) => write!(w, "NEW_TUNING g_iWifiSpeed={v}\n\n"),
+            Self::SelectPalette(v) => writeln!(w, "NEW_TUNING g_iWifiColorPal={v}"),
+            Self::Brightness(v) => writeln!(w, "NEW_TUNING g_iWifiBrightness={v}"),
+            Self::Speed(v) => writeln!(w, "NEW_TUNING g_iWifiSpeed={v}"),
         }
     }
 }
@@ -88,9 +104,12 @@ pub struct Lumitone {
 }
 
 impl Lumitone {
-    pub fn send(&self, msg: &Command) -> std::io::Result<()> {
+    pub fn send(&self, msgs: impl IntoIterator<Item = Command>) -> std::io::Result<()> {
         let mut stream = TcpStream::connect(self.addr)?;
-        msg.write(&mut stream)?;
+        for msg in msgs {
+            msg.write(&mut stream)?;
+        }
+        writeln!(&mut stream)?;
         stream.flush()?;
         Ok(())
     }
