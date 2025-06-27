@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::Context;
-use log::error;
+use log::{error, info};
 
 use crate::{
     color::{ColorRgb, ColorSpace},
@@ -64,9 +64,14 @@ impl PatchFixture for Lumitone {
         let Some(addr) = options.remove("socket") else {
             bail!("missing required option: socket");
         };
-        let addr = addr
-            .parse::<SocketAddr>()
-            .context("failed to parse socket")?;
+        let addr = if addr == "debug" {
+            None
+        } else {
+            Some(
+                addr.parse::<SocketAddr>()
+                    .context("failed to parse socket")?,
+            )
+        };
         let (send, recv) = channel();
 
         let l = Self {
@@ -215,7 +220,9 @@ impl Palette {
 
 /// Handle sending messages to Lumitone, ensuring we don't send too frequently.
 struct LumitoneSender {
-    addr: SocketAddr,
+    /// Socket address to send messages to.
+    /// If None, log send events instead of sending.
+    addr: Option<SocketAddr>,
     recv: Receiver<Message>,
     pending_state: Option<State>,
     pending_palette: Option<Palette>,
@@ -262,17 +269,33 @@ impl LumitoneSender {
     ///
     /// If the send succeeds, wipe that state.
     fn send(&mut self) -> std::io::Result<()> {
-        let mut stream = TcpStream::connect(self.addr)?;
-        if let Some(state) = &self.pending_state {
-            state.write(&mut stream)?;
+        if let Some(addr) = &self.addr {
+            self.write_into(TcpStream::connect(addr)?)?;
+        } else {
+            let mut buf = vec![];
+            self.write_into(&mut buf)?;
+            info!(
+                "Lumitone control message: {}",
+                String::from_utf8(buf).unwrap_or_default()
+            );
         }
-        if let Some(palette) = &self.pending_palette {
-            palette.write(&mut stream)?;
-        }
-        writeln!(&mut stream)?;
-        stream.flush()?;
         self.pending_state = None;
         self.pending_palette = None;
+        Ok(())
+    }
+
+    /// Write the current Lumitone control state into the provided writer.
+    ///
+    /// Flushes the writer.
+    fn write_into(&self, mut w: impl Write) -> std::io::Result<()> {
+        if let Some(state) = &self.pending_state {
+            state.write(&mut w)?;
+        }
+        if let Some(palette) = &self.pending_palette {
+            palette.write(&mut w)?;
+        }
+        writeln!(&mut w)?;
+        w.flush()?;
         Ok(())
     }
 
