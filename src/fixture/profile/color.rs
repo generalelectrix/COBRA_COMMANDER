@@ -34,18 +34,6 @@ pub struct Color {
     space: ColorSpace,
 }
 
-impl Default for Color {
-    fn default() -> Self {
-        Self {
-            hue: PhaseControl::new("Hue", ()).at_half().with_channel_knob(0),
-            sat: Unipolar::new("Sat", ()).at_full().with_channel_knob(1),
-            val: Unipolar::new("Val", ()).with_channel_level(),
-            lightness_boost: None,
-            space: ColorSpace::Hsv,
-        }
-    }
-}
-
 impl PatchAnimatedFixture for Color {
     const NAME: FixtureType = FixtureType("Color");
     fn channel_count(&self, render_mode: Option<crate::fixture::RenderMode>) -> usize {
@@ -71,13 +59,7 @@ impl PatchAnimatedFixture for Color {
             })
             .transpose()?
             .unwrap_or_default();
-        let mut c = Self {
-            space,
-            ..Default::default()
-        };
-        if space == ColorSpace::Hsluv {
-            c.lightness_boost = Some(Unipolar::new("LightnessBoost", ()).with_channel_knob(2));
-        }
+        let c = Self::for_subcontrol(None, space);
         Ok((c, Some(render_mode)))
     }
 }
@@ -85,6 +67,29 @@ impl PatchAnimatedFixture for Color {
 register_patcher!(Color);
 
 impl Color {
+    /// Construct a color whose OSC controls are optionally suffixed.
+    pub fn for_subcontrol(control_suffix: Option<usize>, space: ColorSpace) -> Self {
+        let suffixed = |control: &str| {
+            let Some(suffix) = control_suffix else {
+                return control.to_string();
+            };
+            format!("{control}{suffix}")
+        };
+
+        Self {
+            hue: PhaseControl::new(suffixed("Hue"), ())
+                .at_half()
+                .with_channel_knob(0),
+            sat: Unipolar::new(suffixed("Sat"), ())
+                .at_full()
+                .with_channel_knob(1),
+            val: Unipolar::new(suffixed("Val"), ()).with_channel_level(),
+            lightness_boost: (space == ColorSpace::Hsluv)
+                .then_some(Unipolar::new(suffixed("LightnessBoost"), ()).with_channel_knob(2)),
+            space,
+        }
+    }
+
     /// Return a lightness value for HSLuv.
     /// Return 0 if we unexpectedly don't have a lightness boost control configured.
     /// This does NOT include the rescaling from the overall level fader.
