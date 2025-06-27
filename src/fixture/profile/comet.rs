@@ -2,7 +2,8 @@ use std::{collections::VecDeque, time::Duration};
 
 use crate::{fixture::prelude::*, osc::OscControlMessage, util::unipolar_to_range};
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, PatchFixture)]
+#[channel_count = 5]
 pub struct Comet {
     shutter_open: BoolChannel,
     trigger_state: TriggerState,
@@ -29,15 +30,6 @@ impl Default for Comet {
 }
 
 const PATTERN_DMX_VALS: [u8; 10] = [12, 35, 65, 85, 112, 140, 165, 190, 212, 240];
-
-impl PatchFixture for Comet {
-    const NAME: FixtureType = FixtureType("Comet");
-    fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
-        5
-    }
-}
-
-register_patcher!(Comet);
 
 impl NonAnimatedFixture for Comet {
     fn render(&self, _group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {

@@ -263,7 +263,7 @@ pub struct PatchCandidate {
 pub type Patcher = fn(&str, &Options) -> Option<Result<PatchCandidate>>;
 
 /// Fixture constructor trait to handle patching non-animating fixtures.
-pub trait PatchFixture: NonAnimatedFixture + Default + 'static {
+pub trait PatchFixture: NonAnimatedFixture + Sized + 'static {
     const NAME: FixtureType;
 
     /// Return a PatchCandidate for this fixture if it has the appropriate name.
@@ -299,18 +299,14 @@ pub trait PatchFixture: NonAnimatedFixture + Default + 'static {
     fn channel_count(&self, render_mode: Option<RenderMode>) -> usize;
 
     /// Create a new instance of the fixture from the provided options.
-    /// Non-customizable fixtures will fall back to using default.
-    /// This can be overridden for fixtures that are customizable.
     ///
     /// Fixtures should remove all recognized items from Options.
     /// Any unhandled options remaining will result in a patch error.
-    fn new(_options: &mut Options) -> Result<(Self, Option<RenderMode>)> {
-        Ok((Self::default(), None))
-    }
+    fn new(options: &mut Options) -> Result<(Self, Option<RenderMode>)>;
 }
 
 /// Fixture constructor trait to handle patching non-animating fixtures.
-pub trait PatchAnimatedFixture: AnimatedFixture + Default + 'static {
+pub trait PatchAnimatedFixture: AnimatedFixture + Sized + 'static {
     const NAME: FixtureType;
 
     /// Return a PatchCandidate for this fixture if it has the appropriate name.
@@ -349,12 +345,8 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Default + 'static {
     fn channel_count(&self, render_mode: Option<RenderMode>) -> usize;
 
     /// Create a new instance of the fixture from the provided options.
-    /// Non-customizable fixtures will fall back to using default.
-    /// This can be overridden for fixtures that are customizable.
     ///
     /// Fixtures should remove all recognized items from Options.
     /// Any unhandled options remaining will result in a patch error.
-    fn new(_options: &mut Options) -> Result<(Self, Option<RenderMode>)> {
-        Ok((Self::default(), None))
-    }
+    fn new(options: &mut Options) -> Result<(Self, Option<RenderMode>)>;
 }

@@ -16,6 +16,10 @@ impl PatchFixture for Faderboard {
     fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
         self.channel_count
     }
+
+    fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
+        Ok((Self::default(), None))
+    }
 }
 
 register_patcher!(Faderboard);

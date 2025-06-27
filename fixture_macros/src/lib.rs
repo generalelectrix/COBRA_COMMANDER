@@ -21,6 +21,7 @@ fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
 }
 
 /// Derive the PatchAnimatedFixture trait on a fixture struct.
+/// The fixture must implement Default.
 /// Use the channel_count attribute to specify the DMX channel count.
 /// Registers the fixture type with the patch.
 #[proc_macro_derive(PatchAnimatedFixture, attributes(channel_count))]
@@ -40,6 +41,9 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
             fn channel_count(&self, _render_mode: Option<crate::fixture::RenderMode>) -> usize {
                 #channel_count
             }
+            fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
+                Ok((Self::default(), None))
+            }
         }
 
         #register
@@ -48,6 +52,7 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
 }
 
 /// Derive the PatchFixture trait on a fixture struct.
+/// The fixture must implement Default.
 /// Use the channel_count attribute to specify the DMX channel count.
 /// Registers the fixture type with the patch.
 #[proc_macro_derive(PatchFixture, attributes(channel_count))]
@@ -66,6 +71,9 @@ pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
             const NAME: FixtureType = FixtureType(#name);
             fn channel_count(&self, _render_mode: Option<crate::fixture::RenderMode>) -> usize {
                 #channel_count
+            }
+            fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
+                Ok((Self::default(), None))
             }
         }
 
