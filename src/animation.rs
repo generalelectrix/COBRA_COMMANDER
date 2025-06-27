@@ -1,5 +1,5 @@
 //! Maintain UI state for animations.
-use anyhow::{bail, Result};
+use anyhow::bail;
 use std::collections::HashMap;
 use tunnels::animation::{Animation, EmitStateChange as EmitAnimationStateChange};
 
@@ -62,12 +62,18 @@ impl AnimationUIState {
     ) -> anyhow::Result<()> {
         match msg {
             ControlMessage::Animation(msg) => {
-                self.current_animation(channel, group)?
-                    .anim_mut()
+                let Some(anim) = self.current_animation(channel, group) else {
+                    // Selected group is not animated. Ignore.
+                    return Ok(());
+                };
+                anim.anim_mut()
                     .control(msg, &mut InnerAnimationEmitter(emitter));
             }
             ControlMessage::Target(msg) => {
-                let anim = self.current_animation(channel, group)?;
+                let Some(anim) = self.current_animation(channel, group) else {
+                    // Selected group is not animated. Ignore.
+                    return Ok(());
+                };
                 if anim.target() == msg {
                     return Ok(());
                 }
@@ -82,10 +88,16 @@ impl AnimationUIState {
                 self.emit_state(channel, group, emitter);
             }
             ControlMessage::Copy => {
-                self.clipboard = self.current_animation(channel, group)?.anim().clone();
+                let Some(anim) = self.current_animation(channel, group) else {
+                    return Ok(());
+                };
+                self.clipboard = anim.anim().clone();
             }
             ControlMessage::Paste => {
-                *self.current_animation(channel, group)?.anim_mut() = self.clipboard.clone();
+                let Some(anim) = self.current_animation(channel, group) else {
+                    return Ok(());
+                };
+                *anim.anim_mut() = self.clipboard.clone();
                 self.emit_state(channel, group, emitter);
             }
         }
@@ -110,12 +122,10 @@ impl AnimationUIState {
         &self,
         channel: ChannelId,
         group: &'a mut FixtureGroup,
-    ) -> Result<(&'a mut dyn ControllableTargetedAnimation, usize)> {
+    ) -> Option<(&'a mut dyn ControllableTargetedAnimation, usize)> {
         let animation_index = self.animation_index_for_channel(channel);
-        let Some(anim) = group.get_animation_mut(animation_index) else {
-            bail!("the group in channel {channel} did not return an animator for index {animation_index}");
-        };
-        Ok((anim, animation_index))
+        let anim = group.get_animation_mut(animation_index)?;
+        Some((anim, animation_index))
     }
 
     fn current_animation_with_index<'a>(
@@ -132,9 +142,8 @@ impl AnimationUIState {
         &self,
         channel: ChannelId,
         group: &'a mut FixtureGroup,
-    ) -> Result<&'a mut dyn ControllableTargetedAnimation> {
-        let (ta, _) = self.current_animation_with_index_mut(channel, group)?;
-        Ok(ta)
+    ) -> Option<&'a mut dyn ControllableTargetedAnimation> {
+        Some(self.current_animation_with_index_mut(channel, group)?.0)
     }
 
     fn animation_index_for_channel(&self, channel: ChannelId) -> usize {
