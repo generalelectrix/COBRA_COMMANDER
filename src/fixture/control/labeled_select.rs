@@ -98,29 +98,19 @@ impl OscControl<&str> for LabeledSelect {
         if msg.control() != self.name {
             return Ok(false);
         }
+
+        // Ignore button release messages.
+        if msg.arg == OscType::Float(0.0) {
+            return Ok(true);
+        }
+
         let name = msg
             .addr_payload()
             .split('/')
             .nth(1)
             .ok_or_else(|| msg.err("command is missing variant specifier"))?;
-        let Some(i) = self
-            .labels()
-            .enumerate()
-            .filter_map(|(i, label)| (label == name).then_some(i))
-            .next()
-        else {
-            bail!(
-                "the label {name} did not match any valid option for {}:\n{}",
-                self.name,
-                self.labels().join(", ")
-            );
-        };
-        // If selected is same as current, do nothing.
-        if i == self.selected {
-            return Ok(true);
-        }
-        self.selected = i;
-        self.emit_state(emitter);
+
+        self.control_direct(name, emitter)?;
         Ok(true)
     }
 

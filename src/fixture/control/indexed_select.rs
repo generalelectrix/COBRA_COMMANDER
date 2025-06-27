@@ -122,6 +122,11 @@ impl<R: RenderToDmx<usize>> OscControl<usize> for IndexedSelect<R> {
             return Ok(false);
         }
 
+        // Ignore button release messages.
+        if msg.arg == OscType::Float(0.0) {
+            return Ok(true);
+        }
+
         let (x, y) = parse_radio_button_indices(msg.addr_payload())?;
         let (primary, secondary) = if self.x_primary_coordinate {
             (x, y)
@@ -138,10 +143,6 @@ impl<R: RenderToDmx<usize>> OscControl<usize> for IndexedSelect<R> {
             "secondary index for {} unexpectedly non-zero: {secondary}",
             self.name
         );
-        // Ignore button release messages.
-        if msg.arg == OscType::Float(0.0) {
-            return Ok(true);
-        }
 
         self.control_direct(primary, emitter)?;
         Ok(true)
