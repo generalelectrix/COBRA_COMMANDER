@@ -233,7 +233,7 @@ impl Channels {
                         entity: crate::osc::animation::GROUP,
                         emitter,
                     },
-                )?;
+                );
             }
             ControlMessage::Control { channel_id, msg } => {
                 let channel_id = if let Some(id) = channel_id {

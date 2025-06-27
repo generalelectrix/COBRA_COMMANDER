@@ -5,11 +5,10 @@ use crate::{
 };
 use wled_json_api_library::structures::state::{Seg, State};
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, PatchFixture)]
 #[channel_count = 0]
 pub struct RugDoctor {
     #[channel_control]
-    #[animate] // FIXME animations aren't actually used, need to fix channel patching
     #[on_change = "update_level"]
     level: ChannelLevelUnipolar<Unipolar<()>>,
     #[channel_control]
@@ -33,16 +32,8 @@ impl Default for RugDoctor {
     }
 }
 
-impl AnimatedFixture for RugDoctor {
-    type Target = AnimationTarget;
-
-    fn render_with_animations(
-        &self,
-        _group_controls: &FixtureGroupControls,
-        _animation_vals: TargetedAnimationValues<Self::Target>,
-        _dmx_buf: &mut [u8],
-    ) {
-    }
+impl NonAnimatedFixture for RugDoctor {
+    fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}
 }
 
 impl ControllableFixture for RugDoctor {}

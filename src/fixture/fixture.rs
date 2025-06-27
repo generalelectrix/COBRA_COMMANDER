@@ -141,9 +141,6 @@ pub trait Fixture: ControllableFixture {
         dmx_buffer: &mut [u8],
     );
 
-    /// Return true if this fixture has animations.
-    fn is_animated(&self) -> bool;
-
     /// Get the animation with the provided index.
     fn get_animation(&self, index: usize) -> Option<&dyn ControllableTargetedAnimation>;
 
@@ -164,10 +161,6 @@ where
         dmx_buffer: &mut [u8],
     ) {
         self.render(group_controls, dmx_buffer)
-    }
-
-    fn is_animated(&self) -> bool {
-        false
     }
 
     fn get_animation_mut(
@@ -247,10 +240,6 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
             TargetedAnimationValues(&animation_vals),
             dmx_buffer,
         );
-    }
-
-    fn is_animated(&self) -> bool {
-        true
     }
 
     fn get_animation_mut(

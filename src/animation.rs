@@ -1,5 +1,5 @@
 //! Maintain UI state for animations.
-use anyhow::{bail, Result};
+use anyhow::bail;
 use std::collections::HashMap;
 use tunnels::animation::{Animation, EmitStateChange as EmitAnimationStateChange};
 
@@ -17,6 +17,7 @@ pub struct AnimationUIState {
     selected_animator_by_channel: HashMap<ChannelId, usize>,
     clipboard: Animation,
     controls: GroupControlMap<ControlMessage>,
+    empty_animation: EmptyAnimation,
 }
 
 impl AnimationUIState {
@@ -27,6 +28,7 @@ impl AnimationUIState {
             selected_animator_by_channel: Default::default(),
             clipboard: Default::default(),
             controls,
+            empty_animation: Default::default(),
         };
         if let Some(channel) = initial_channel {
             state.selected_animator_by_channel.insert(channel, 0);
@@ -40,13 +42,14 @@ impl AnimationUIState {
         channel: ChannelId,
         group: &FixtureGroup,
         emitter: &dyn EmitScopedControlMessage,
-    ) -> anyhow::Result<()> {
-        let (ta, index) = self.current_animation_with_index(channel, group)?;
+    ) {
+        let (ta, index) = self
+            .current_animation_with_index(channel, group)
+            .unwrap_or((&self.empty_animation, 0));
         ta.anim().emit_state(&mut InnerAnimationEmitter(emitter));
         Self::emit_osc_state_change(StateChange::Target(ta.target()), emitter);
         Self::emit_osc_state_change(StateChange::SelectAnimation(index), emitter);
         Self::emit_osc_state_change(StateChange::TargetLabels(ta.target_labels()), emitter);
-        Ok(())
     }
 
     /// Handle a control message.
@@ -59,12 +62,18 @@ impl AnimationUIState {
     ) -> anyhow::Result<()> {
         match msg {
             ControlMessage::Animation(msg) => {
-                self.current_animation(channel, group)?
-                    .anim_mut()
+                let Some(anim) = self.current_animation(channel, group) else {
+                    // Selected group is not animated. Ignore.
+                    return Ok(());
+                };
+                anim.anim_mut()
                     .control(msg, &mut InnerAnimationEmitter(emitter));
             }
             ControlMessage::Target(msg) => {
-                let anim = self.current_animation(channel, group)?;
+                let Some(anim) = self.current_animation(channel, group) else {
+                    // Selected group is not animated. Ignore.
+                    return Ok(());
+                };
                 if anim.target() == msg {
                     return Ok(());
                 }
@@ -76,14 +85,20 @@ impl AnimationUIState {
                     return Ok(());
                 }
                 self.set_current_animation(channel, n)?;
-                self.emit_state(channel, group, emitter)?;
+                self.emit_state(channel, group, emitter);
             }
             ControlMessage::Copy => {
-                self.clipboard = self.current_animation(channel, group)?.anim().clone();
+                let Some(anim) = self.current_animation(channel, group) else {
+                    return Ok(());
+                };
+                self.clipboard = anim.anim().clone();
             }
             ControlMessage::Paste => {
-                *self.current_animation(channel, group)?.anim_mut() = self.clipboard.clone();
-                self.emit_state(channel, group, emitter)?;
+                let Some(anim) = self.current_animation(channel, group) else {
+                    return Ok(());
+                };
+                *anim.anim_mut() = self.clipboard.clone();
+                self.emit_state(channel, group, emitter);
             }
         }
         Ok(())
@@ -107,33 +122,28 @@ impl AnimationUIState {
         &self,
         channel: ChannelId,
         group: &'a mut FixtureGroup,
-    ) -> Result<(&'a mut dyn ControllableTargetedAnimation, usize)> {
+    ) -> Option<(&'a mut dyn ControllableTargetedAnimation, usize)> {
         let animation_index = self.animation_index_for_channel(channel);
-        let Some(anim) = group.get_animation_mut(animation_index) else {
-            bail!("the group in channel {channel} did not return an animator for index {animation_index}");
-        };
-        Ok((anim, animation_index))
+        let anim = group.get_animation_mut(animation_index)?;
+        Some((anim, animation_index))
     }
 
     fn current_animation_with_index<'a>(
         &self,
         channel: ChannelId,
         group: &'a FixtureGroup,
-    ) -> Result<(&'a dyn ControllableTargetedAnimation, usize)> {
+    ) -> Option<(&'a dyn ControllableTargetedAnimation, usize)> {
         let animation_index = self.animation_index_for_channel(channel);
-        let Some(anim) = group.get_animation(animation_index) else {
-            bail!("the group in channel {channel} did not return an animator for index {animation_index}");
-        };
-        Ok((anim, animation_index))
+        let anim = group.get_animation(animation_index)?;
+        Some((anim, animation_index))
     }
 
     fn current_animation<'a>(
         &self,
         channel: ChannelId,
         group: &'a mut FixtureGroup,
-    ) -> Result<&'a mut dyn ControllableTargetedAnimation> {
-        let (ta, _) = self.current_animation_with_index_mut(channel, group)?;
-        Ok(ta)
+    ) -> Option<&'a mut dyn ControllableTargetedAnimation> {
+        Some(self.current_animation_with_index_mut(channel, group)?.0)
     }
 
     fn animation_index_for_channel(&self, channel: ChannelId) -> usize {
@@ -176,4 +186,29 @@ pub enum StateChange {
     Target(AnimationTargetIndex),
     SelectAnimation(usize),
     TargetLabels(Vec<String>),
+}
+
+#[derive(Default)]
+struct EmptyAnimation(Animation);
+
+impl ControllableTargetedAnimation for EmptyAnimation {
+    fn anim(&self) -> &Animation {
+        &self.0
+    }
+
+    fn anim_mut(&mut self) -> &mut Animation {
+        &mut self.0
+    }
+
+    fn set_target(&mut self, _: AnimationTargetIndex) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn target(&self) -> AnimationTargetIndex {
+        0
+    }
+
+    fn target_labels(&self) -> Vec<String> {
+        vec![]
+    }
 }
