@@ -9,7 +9,13 @@ use std::{
 use anyhow::Context;
 use log::error;
 
-use crate::fixture::prelude::*;
+use crate::{
+    color::{ColorRgb, ColorSpace},
+    fixture::{
+        color::{Color, Model},
+        prelude::*,
+    },
+};
 
 #[derive(Debug, EmitState, Control)]
 pub struct Lumitone {
@@ -24,6 +30,23 @@ pub struct Lumitone {
     speed: ChannelKnobUnipolar<Unipolar<()>>,
     #[on_change = "update_state"]
     palette: IndexedSelect<()>,
+
+    // Controls for custom palette creation.
+    #[force_osc_control]
+    #[on_change = "update_custom_palette"]
+    color0: Color,
+    #[force_osc_control]
+    #[on_change = "update_custom_palette"]
+    color1: Color,
+    #[force_osc_control]
+    #[on_change = "update_custom_palette"]
+    color2: Color,
+    #[force_osc_control]
+    #[on_change = "update_custom_palette"]
+    color3: Color,
+    #[force_osc_control]
+    #[on_change = "update_custom_palette"]
+    color4: Color,
 
     #[skip_control]
     #[skip_emit]
@@ -51,6 +74,11 @@ impl PatchFixture for Lumitone {
             hue_coarse: PhaseControl::new("HueCoarse", ()).with_channel_knob(0),
             speed: Unipolar::new("Speed", ()).with_channel_knob(1),
             palette: IndexedSelect::new("Palette", 12, false, ()),
+            color0: Color::for_subcontrol(Some(0), ColorSpace::Hsv),
+            color1: Color::for_subcontrol(Some(1), ColorSpace::Hsv),
+            color2: Color::for_subcontrol(Some(2), ColorSpace::Hsv),
+            color3: Color::for_subcontrol(Some(3), ColorSpace::Hsv),
+            color4: Color::for_subcontrol(Some(4), ColorSpace::Hsv),
             send,
         };
 
@@ -77,6 +105,8 @@ impl NonAnimatedFixture for Lumitone {
 
 impl ControllableFixture for Lumitone {}
 
+const CUSTOM_PALETTE_INDEX: usize = 12;
+
 impl Lumitone {
     /// Get the current value of the hue control based on the selected palette.
     fn current_hue(&self) -> Phase {
@@ -99,7 +129,18 @@ impl Lumitone {
     }
 
     fn update_custom_palette(&self, _emitter: &FixtureStateEmitter) {
-        if self.send.send(Message::CustomPalette(Palette {})).is_err() {
+        let mut p = Palette::default();
+        self.color0
+            .render_without_animations(Model::Rgb, &mut p.color0);
+        self.color1
+            .render_without_animations(Model::Rgb, &mut p.color1);
+        self.color2
+            .render_without_animations(Model::Rgb, &mut p.color2);
+        self.color3
+            .render_without_animations(Model::Rgb, &mut p.color3);
+        self.color4
+            .render_without_animations(Model::Rgb, &mut p.color4);
+        if self.send.send(Message::CustomPalette(p)).is_err() {
             error!("Cannot send Lumitone custom palette update; sender disconnected.");
         }
     }
@@ -139,11 +180,35 @@ fn unit_to_u8(v: f64) -> u8 {
     (255. * v).round() as u8
 }
 
-struct Palette {}
+#[derive(Default)]
+struct Palette {
+    color0: ColorRgb,
+    color1: ColorRgb,
+    color2: ColorRgb,
+    color3: ColorRgb,
+    color4: ColorRgb,
+}
 
 impl Palette {
     pub fn write(&self, mut w: impl Write) -> std::io::Result<()> {
-        // TODO
+        fn write_color(
+            heat_index: u8,
+            [r, g, b]: ColorRgb,
+            w: &mut impl Write,
+        ) -> std::io::Result<()> {
+            write!(w, "{heat_index},{r},{g},{b}")
+        }
+        write!(w, "NEW_COLOR_GRAD Index={CUSTOM_PALETTE_INDEX} PalHeat=")?;
+        write_color(0, self.color0, &mut w)?;
+        write!(w, ",")?;
+        write_color(100, self.color1, &mut w)?;
+        write!(w, ",")?;
+        write_color(150, self.color2, &mut w)?;
+        write!(w, ",")?;
+        write_color(200, self.color3, &mut w)?;
+        write!(w, ",")?;
+        write_color(255, self.color4, &mut w)?;
+        write!(w, "\n\n")?;
         Ok(())
     }
 }
@@ -243,5 +308,48 @@ impl LumitoneSender {
                 self.pending_palette = Some(palette);
             }
         };
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_state_write() {
+        let state = State {
+            level: UnipolarFloat::ONE,
+            hue: Phase::ZERO,
+            speed: UnipolarFloat::new(0.25),
+            palette: 2,
+        };
+        let mut buf = vec![];
+        state.write(&mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert_eq!(
+            "NEW_TUNING g_iWifiColorPal=2
+NEW_TUNING g_iWifiBrightness=255
+NEW_TUNING g_iWifiSpeed=64
+NEW_TUNING g_iWifiHue=0
+",
+            s,
+        );
+    }
+
+    #[test]
+    fn test_palette_write() {
+        let p = Palette {
+            color0: [1, 2, 3],
+            color1: [4, 5, 6],
+            color2: [7, 8, 9],
+            color3: [10, 11, 12],
+            color4: [13, 14, 15],
+        };
+        let mut buf = vec![];
+        p.write(&mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert_eq!(
+            "NEW_COLOR_GRAD Index=12 PalHeat=0,1,2,3,100,4,5,6,150,7,8,9,200,10,11,12,255,13,14,15\n\n",
+            s,
+        );
     }
 }
