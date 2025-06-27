@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::Context;
-use log::{error, info};
+use log::error;
 
 use crate::{
     color::{ColorRgb, ColorSpace},
@@ -104,18 +104,20 @@ impl PatchFixture for Lumitone {
     }
 }
 
+register_patcher!(Lumitone);
+
 impl NonAnimatedFixture for Lumitone {
     fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}
 }
 
 impl ControllableFixture for Lumitone {}
 
-const CUSTOM_PALETTE_INDEX: usize = 12;
+const CUSTOM_PALETTE_INDEX: usize = 11;
 
 impl Lumitone {
     /// Get the current value of the hue control based on the selected palette.
     fn current_hue(&self) -> Phase {
-        todo!()
+        self.hue_coarse.control.val()
     }
 
     fn update_state(&self, _emitter: &FixtureStateEmitter) {
@@ -274,7 +276,7 @@ impl LumitoneSender {
         } else {
             let mut buf = vec![];
             self.write_into(&mut buf)?;
-            info!(
+            println!(
                 "Lumitone control message: {}",
                 String::from_utf8(buf).unwrap_or_default()
             );
@@ -371,7 +373,7 @@ NEW_TUNING g_iWifiHue=0
         p.write(&mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert_eq!(
-            "NEW_COLOR_GRAD Index=12 PalHeat=0,1,2,3,100,4,5,6,150,7,8,9,200,10,11,12,255,13,14,15\n\n",
+            "NEW_COLOR_GRAD Index=11 PalHeat=0,1,2,3,100,4,5,6,150,7,8,9,200,10,11,12,255,13,14,15\n\n",
             s,
         );
     }

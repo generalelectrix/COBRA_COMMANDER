@@ -1,6 +1,3 @@
-- fixture: Color
-  addr:
-    start: 1
-    count: 64
+- fixture: Lumitone
   options:
-    control_color_space: Hsluv
+    socket: debug
