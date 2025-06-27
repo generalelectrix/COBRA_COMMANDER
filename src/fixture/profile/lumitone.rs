@@ -20,37 +20,45 @@ use crate::{
 #[derive(Debug, EmitState, Control)]
 pub struct Lumitone {
     #[channel_control]
-    #[on_change = "update_state"]
+    #[on_change = "send_state"]
     level: ChannelLevelUnipolar<Unipolar<()>>,
     #[channel_control]
-    #[on_change = "update_state"]
+    #[on_change = "send_state"]
     hue_coarse: ChannelKnobPhase<PhaseControl<()>>,
     #[channel_control]
-    #[on_change = "update_state"]
+    #[on_change = "send_state"]
     speed: ChannelKnobUnipolar<Unipolar<()>>,
-    #[on_change = "update_state"]
+    #[on_change = "update_for_palette_select"]
     palette: IndexedSelect<()>,
+
+    // Fine hue adjust - used for preset complex palettes.
+    #[on_change = "update_hue_fine"]
+    hue_fine: Bipolar<()>,
 
     // Controls for custom palette creation.
     #[force_osc_control]
-    #[on_change = "update_custom_palette"]
+    #[on_change = "send_custom_palette"]
     color0: Color,
     #[force_osc_control]
-    #[on_change = "update_custom_palette"]
+    #[on_change = "send_custom_palette"]
     color1: Color,
     #[force_osc_control]
-    #[on_change = "update_custom_palette"]
+    #[on_change = "send_custom_palette"]
     color2: Color,
     #[force_osc_control]
-    #[on_change = "update_custom_palette"]
+    #[on_change = "send_custom_palette"]
     color3: Color,
     #[force_osc_control]
-    #[on_change = "update_custom_palette"]
+    #[on_change = "send_custom_palette"]
     color4: Color,
 
     #[skip_control]
     #[skip_emit]
     send: Sender<Message>,
+
+    #[skip_control]
+    #[skip_emit]
+    per_palette_hue_adjust: Vec<BipolarFloat>,
 }
 
 impl PatchFixture for Lumitone {
@@ -78,7 +86,9 @@ impl PatchFixture for Lumitone {
             level: Unipolar::new("Level", ()).with_channel_level(),
             hue_coarse: PhaseControl::new("HueCoarse", ()).with_channel_knob(0),
             speed: Unipolar::new("Speed", ()).with_channel_knob(1),
-            palette: IndexedSelect::new("Palette", 12, false, ()),
+            palette: IndexedSelect::new("Palette", PALETTE_COUNT, false, ()),
+            hue_fine: Bipolar::new("HueFine", ()),
+            per_palette_hue_adjust: vec![BipolarFloat::ZERO; PALETTE_COUNT],
             color0: Color::for_subcontrol(Some(0), ColorSpace::Hsv),
             color1: Color::for_subcontrol(Some(1), ColorSpace::Hsv),
             color2: Color::for_subcontrol(Some(2), ColorSpace::Hsv),
@@ -112,15 +122,69 @@ impl NonAnimatedFixture for Lumitone {
 
 impl ControllableFixture for Lumitone {}
 
+const SIMPLE_PALETTE_INDEX: usize = 9;
+const SIMPLE_PALETTE_WITH_WHITE_INDEX: usize = 10;
 const CUSTOM_PALETTE_INDEX: usize = 11;
+const PALETTE_COUNT: usize = 12;
+const FINE_HUE_ADJUST_SCALE: f64 = 0.1;
 
 impl Lumitone {
     /// Get the current value of the hue control based on the selected palette.
     fn current_hue(&self) -> Phase {
-        self.hue_coarse.control.val()
+        match self.palette.selected() {
+            (0..SIMPLE_PALETTE_INDEX) => {
+                // complex palette; use the fine hue adjust
+                Phase::new(self.hue_fine.val().val() * FINE_HUE_ADJUST_SCALE)
+            }
+            SIMPLE_PALETTE_INDEX | SIMPLE_PALETTE_WITH_WHITE_INDEX => {
+                // simple palette; use the coarse hue adjust
+                self.hue_coarse.control.val()
+            }
+            CUSTOM_PALETTE_INDEX => {
+                // custom palette; no hue adjust
+                Phase::ZERO
+            }
+            out_of_range => {
+                error!("unexpected out of range Lumitone palette: {out_of_range}");
+                Phase::ZERO
+            }
+        }
     }
 
-    fn update_state(&self, _emitter: &FixtureStateEmitter) {
+    /// Perform necessary actions when we've selected a new palette.
+    fn update_for_palette_select(&mut self, emitter: &FixtureStateEmitter) {
+        // Load the existing fine hue adjust for this palette.
+        let fine_adjust = self
+            .per_palette_hue_adjust
+            .get(self.palette.selected())
+            .copied()
+            .unwrap_or_default();
+        let _ = self.hue_fine.control_direct(fine_adjust, emitter);
+
+        // Update the full output state.
+        self.send_state(emitter);
+    }
+
+    /// Store fine hue adjustments per-palette.
+    ///
+    /// Don't do this for palettes where we're not using fine hue adjust.
+    fn update_hue_fine(&mut self, emitter: &FixtureStateEmitter) {
+        let palette = self.palette.selected();
+        if !(0..SIMPLE_PALETTE_INDEX).contains(&palette) {
+            // Revert the fine hue control to make it clear that it isn't doing anything.
+            let _ = self.hue_fine.control_direct(BipolarFloat::ZERO, emitter);
+            return;
+        }
+        let Some(adj) = self.per_palette_hue_adjust.get_mut(self.palette.selected()) else {
+            return;
+        };
+        *adj = self.hue_fine.val();
+
+        // Update the full output state.
+        self.send_state(emitter);
+    }
+
+    fn send_state(&self, _emitter: &FixtureStateEmitter) {
         if self
             .send
             .send(Message::State(State {
@@ -135,7 +199,7 @@ impl Lumitone {
         }
     }
 
-    fn update_custom_palette(&self, _emitter: &FixtureStateEmitter) {
+    fn send_custom_palette(&self, _emitter: &FixtureStateEmitter) {
         let mut p = Palette::default();
         self.color0
             .render_without_animations(Model::Rgb, &mut p.color0);
