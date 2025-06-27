@@ -17,6 +17,7 @@ pub struct AnimationUIState {
     selected_animator_by_channel: HashMap<ChannelId, usize>,
     clipboard: Animation,
     controls: GroupControlMap<ControlMessage>,
+    empty_animation: EmptyAnimation,
 }
 
 impl AnimationUIState {
@@ -27,6 +28,7 @@ impl AnimationUIState {
             selected_animator_by_channel: Default::default(),
             clipboard: Default::default(),
             controls,
+            empty_animation: Default::default(),
         };
         if let Some(channel) = initial_channel {
             state.selected_animator_by_channel.insert(channel, 0);
@@ -40,13 +42,14 @@ impl AnimationUIState {
         channel: ChannelId,
         group: &FixtureGroup,
         emitter: &dyn EmitScopedControlMessage,
-    ) -> anyhow::Result<()> {
-        let (ta, index) = self.current_animation_with_index(channel, group)?;
+    ) {
+        let (ta, index) = self
+            .current_animation_with_index(channel, group)
+            .unwrap_or((&self.empty_animation, 0));
         ta.anim().emit_state(&mut InnerAnimationEmitter(emitter));
         Self::emit_osc_state_change(StateChange::Target(ta.target()), emitter);
         Self::emit_osc_state_change(StateChange::SelectAnimation(index), emitter);
         Self::emit_osc_state_change(StateChange::TargetLabels(ta.target_labels()), emitter);
-        Ok(())
     }
 
     /// Handle a control message.
@@ -76,14 +79,14 @@ impl AnimationUIState {
                     return Ok(());
                 }
                 self.set_current_animation(channel, n)?;
-                self.emit_state(channel, group, emitter)?;
+                self.emit_state(channel, group, emitter);
             }
             ControlMessage::Copy => {
                 self.clipboard = self.current_animation(channel, group)?.anim().clone();
             }
             ControlMessage::Paste => {
                 *self.current_animation(channel, group)?.anim_mut() = self.clipboard.clone();
-                self.emit_state(channel, group, emitter)?;
+                self.emit_state(channel, group, emitter);
             }
         }
         Ok(())
@@ -119,12 +122,10 @@ impl AnimationUIState {
         &self,
         channel: ChannelId,
         group: &'a FixtureGroup,
-    ) -> Result<(&'a dyn ControllableTargetedAnimation, usize)> {
+    ) -> Option<(&'a dyn ControllableTargetedAnimation, usize)> {
         let animation_index = self.animation_index_for_channel(channel);
-        let Some(anim) = group.get_animation(animation_index) else {
-            bail!("the group in channel {channel} did not return an animator for index {animation_index}");
-        };
-        Ok((anim, animation_index))
+        let anim = group.get_animation(animation_index)?;
+        Some((anim, animation_index))
     }
 
     fn current_animation<'a>(
@@ -176,4 +177,29 @@ pub enum StateChange {
     Target(AnimationTargetIndex),
     SelectAnimation(usize),
     TargetLabels(Vec<String>),
+}
+
+#[derive(Default)]
+struct EmptyAnimation(Animation);
+
+impl ControllableTargetedAnimation for EmptyAnimation {
+    fn anim(&self) -> &Animation {
+        &self.0
+    }
+
+    fn anim_mut(&mut self) -> &mut Animation {
+        &mut self.0
+    }
+
+    fn set_target(&mut self, _: AnimationTargetIndex) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn target(&self) -> AnimationTargetIndex {
+        0
+    }
+
+    fn target_labels(&self) -> Vec<String> {
+        vec![]
+    }
 }

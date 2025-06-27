@@ -352,7 +352,7 @@ impl Show {
                     entity: crate::osc::animation::GROUP,
                     emitter,
                 },
-            )?;
+            );
         }
 
         self.clocks.emit_state(&mut self.controller);
