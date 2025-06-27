@@ -50,9 +50,24 @@ impl NovationLaunchControlXL {
     }
 
     /// Select factory template 0.
-    pub fn init_midi<D: MidiDevice>(&self, out: &mut Output<D>) -> anyhow::Result<()> {
+    pub fn init_midi(&self, out: &mut Output<Device>) -> anyhow::Result<()> {
         debug!("Sending Launch Control XL sysex template select command (User 1).");
         out.send_raw(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x11, 0x77, TEMPLATE_ID, 0xF7])?;
+        debug!("Clearing all Launch Control XL LEDs.");
+        for channel in 0..Self::CHANNEL_COUNT {
+            for row in 0..3 {
+                self.emit(
+                    LaunchControlXLStateChange::Channel {
+                        channel,
+                        state: LaunchControlXLChannelStateChange::Knob {
+                            row,
+                            state: LedState::OFF,
+                        },
+                    },
+                    out,
+                );
+            }
+        }
         Ok(())
     }
 
