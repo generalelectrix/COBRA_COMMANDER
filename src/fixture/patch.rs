@@ -66,14 +66,6 @@ impl Patch {
     pub fn patch(&mut self, cfg: FixtureGroupConfig) -> anyhow::Result<()> {
         let candidate = self.get_candidate(&cfg.fixture, &cfg.options)?;
 
-        if cfg.channel {
-            ensure!(
-                candidate.fixture.is_animated(),
-                "cannot assign non-animatable fixture {} to a channel",
-                candidate.fixture_type
-            );
-        }
-
         for fixture_cfg in cfg.fixture_configs(candidate.channel_count) {
             let key = self.patch_one(fixture_cfg)?;
             if cfg.channel {
