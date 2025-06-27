@@ -6,6 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::Context;
 use log::error;
 
 use crate::fixture::prelude::*;
@@ -27,35 +28,47 @@ pub struct Lumitone {
     #[skip_control]
     #[skip_emit]
     send: Sender<Message>,
-
-    // FIXME: we only need this because we use default for instantiating fixtures.
-    // We should probably refactor fixture creation to force everything to
-    // define the new method instead.
-    #[skip_control]
-    #[skip_emit]
-    recv: Receiver<Message>,
 }
 
-impl Default for Lumitone {
-    fn default() -> Self {
+impl PatchFixture for Lumitone {
+    const NAME: FixtureType = FixtureType("Lumitone");
+    fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
+        0
+    }
+
+    fn new(options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
+        // Instantiate the control sender.
+        let Some(addr) = options.remove("socket") else {
+            bail!("missing required option: socket");
+        };
+        let addr = addr
+            .parse::<SocketAddr>()
+            .context("failed to parse socket")?;
         let (send, recv) = channel();
-        Self {
+
+        let l = Self {
             level: Unipolar::new("Level", ()).with_channel_level(),
             hue_coarse: PhaseControl::new("HueCoarse", ()).with_channel_knob(0),
             speed: Unipolar::new("Speed", ()).with_channel_knob(1),
             palette: IndexedSelect::new("Palette", 12, false, ()),
             send,
-            recv,
-        }
-    }
-}
+        };
 
-impl PatchFixture for Lumitone {
-    fn channel_count(&self, render_mode: Option<RenderMode>) -> usize {
-        0
-    }
+        std::thread::spawn(move || {
+            let sender = LumitoneSender {
+                addr,
+                recv,
+                pending_state: None,
+                pending_palette: None,
+                last_send: Instant::now(),
+            };
+            if let Err(err) = sender.run() {
+                error!("{err}");
+            }
+        });
 
-    fn new(options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {}
+        Ok((l, None))
+    }
 }
 
 impl NonAnimatedFixture for Lumitone {
@@ -65,7 +78,31 @@ impl NonAnimatedFixture for Lumitone {
 impl ControllableFixture for Lumitone {}
 
 impl Lumitone {
-    fn update_state(&self, emitter: &FixtureStateEmitter) {}
+    /// Get the current value of the hue control based on the selected palette.
+    fn current_hue(&self) -> Phase {
+        todo!()
+    }
+
+    fn update_state(&self, _emitter: &FixtureStateEmitter) {
+        if self
+            .send
+            .send(Message::State(State {
+                level: self.level.control.val(),
+                hue: self.current_hue(),
+                speed: self.speed.control.val(),
+                palette: self.palette.selected(),
+            }))
+            .is_err()
+        {
+            error!("Cannot send Lumitone state update; sender disconnected.");
+        }
+    }
+
+    fn update_custom_palette(&self, _emitter: &FixtureStateEmitter) {
+        if self.send.send(Message::CustomPalette(Palette {})).is_err() {
+            error!("Cannot send Lumitone custom palette update; sender disconnected.");
+        }
+    }
 }
 
 enum Message {
