@@ -36,7 +36,7 @@ const PASTE: Button = button("Paste");
 
 const WAVEFORM_SELECT: RadioButton = RadioButton {
     control: "Waveform",
-    n: 5,
+    n: 6,
     x_primary_coordinate: false,
 };
 
