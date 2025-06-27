@@ -1,5 +1,8 @@
 //! Control profile for Astera LEDs running in RC Wireless mode.
-use crate::{color::hsv_to_rgb, fixture::prelude::*};
+use crate::{
+    color::ColorSpace,
+    fixture::{color::Color, prelude::*},
+};
 
 #[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
 #[channel_count = 20]
@@ -14,18 +17,14 @@ pub struct Astera {
     program: LabeledSelect,
     pattern_direction: Bool<()>,
     pattern_loop: Bool<()>,
-    hue1: PhaseControl<()>,
-    sat1: Unipolar<()>,
-    val1: Unipolar<()>,
-    hue2: PhaseControl<()>,
-    sat2: Unipolar<()>,
-    val2: Unipolar<()>,
-    hue3: PhaseControl<()>,
-    sat3: Unipolar<()>,
-    val3: Unipolar<()>,
-    hue4: PhaseControl<()>,
-    sat4: Unipolar<()>,
-    val4: Unipolar<()>,
+    #[force_osc_control]
+    color1: Color,
+    #[force_osc_control]
+    color2: Color,
+    #[force_osc_control]
+    color3: Color,
+    #[force_osc_control]
+    color4: Color,
 }
 
 impl Default for Astera {
@@ -61,18 +60,10 @@ impl Default for Astera {
             ),
             pattern_direction: Bool::new_on("Forward", ()),
             pattern_loop: Bool::new_on("Loop", ()),
-            hue1: PhaseControl::new("Hue1", ()).at_half(),
-            sat1: Unipolar::new("Sat1", ()).at_full(),
-            val1: Unipolar::new("Val1", ()).at_full(),
-            hue2: PhaseControl::new("Hue2", ()).at_half(),
-            sat2: Unipolar::new("Sat2", ()).at_full(),
-            val2: Unipolar::new("Val2", ()),
-            hue3: PhaseControl::new("Hue3", ()).at_half(),
-            sat3: Unipolar::new("Sat3", ()).at_full(),
-            val3: Unipolar::new("Val3", ()),
-            hue4: PhaseControl::new("Hue4", ()).at_half(),
-            sat4: Unipolar::new("Sat4", ()).at_full(),
-            val4: Unipolar::new("Val4", ()),
+            color1: Color::for_subcontrol(Some(1), ColorSpace::Hsv),
+            color2: Color::for_subcontrol(Some(2), ColorSpace::Hsv),
+            color3: Color::for_subcontrol(Some(3), ColorSpace::Hsv),
+            color4: Color::for_subcontrol(Some(4), ColorSpace::Hsv),
         }
     }
 }
@@ -105,38 +96,14 @@ impl AnimatedFixture for Astera {
         dmx_buf[6] = 0;
         dmx_buf[7] = 0; // send on modify
 
-        // Color 1
-        {
-            let offset = 8;
-            let [r, g, b] = hsv_to_rgb(self.hue1.val(), self.sat1.val(), self.val1.val());
-            dmx_buf[offset] = r;
-            dmx_buf[offset + 1] = g;
-            dmx_buf[offset + 2] = b;
-        }
-        // Color 2
-        {
-            let offset = 11;
-            let [r, g, b] = hsv_to_rgb(self.hue2.val(), self.sat2.val(), self.val2.val());
-            dmx_buf[offset] = r;
-            dmx_buf[offset + 1] = g;
-            dmx_buf[offset + 2] = b;
-        }
-        // Color 3
-        {
-            let offset = 14;
-            let [r, g, b] = hsv_to_rgb(self.hue3.val(), self.sat3.val(), self.val3.val());
-            dmx_buf[offset] = r;
-            dmx_buf[offset + 1] = g;
-            dmx_buf[offset + 2] = b;
-        }
-        // Color 4
-        {
-            let offset = 17;
-            let [r, g, b] = hsv_to_rgb(self.hue4.val(), self.sat4.val(), self.val4.val());
-            dmx_buf[offset] = r;
-            dmx_buf[offset + 1] = g;
-            dmx_buf[offset + 2] = b;
-        }
+        self.color1
+            .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[8..11]);
+        self.color2
+            .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[11..14]);
+        self.color3
+            .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[14..17]);
+        self.color4
+            .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[17..20]);
     }
 }
 
