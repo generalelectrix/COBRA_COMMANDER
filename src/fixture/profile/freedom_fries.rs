@@ -4,7 +4,7 @@
 //! Control profle for the Chauvet Rotosphere Q3, aka Son Of Spherion.
 use super::color::{Color, Model as ColorModel};
 
-use crate::fixture::prelude::*;
+use crate::{color::ColorSpace, fixture::prelude::*};
 
 #[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
 #[channel_count = 8]
@@ -25,7 +25,7 @@ impl Default for FreedomFries {
     fn default() -> Self {
         Self {
             dimmer: Unipolar::full_channel("Dimmer", 0).with_channel_level(),
-            color: Default::default(),
+            color: Color::for_subcontrol(None, ColorSpace::Hsv),
             speed: Unipolar::full_channel("Speed", 7).with_channel_knob(0),
             strobe: Strobe::channel("Strobe", 5, 11, 255, 0),
 
