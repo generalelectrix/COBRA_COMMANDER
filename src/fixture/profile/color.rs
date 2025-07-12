@@ -227,6 +227,8 @@ pub enum Model {
     Rgbw,
     /// Dimmer in first channel + RGBW.
     DimmerRgbw,
+    /// Dimmer in first channel + RGBW plus two unused channels (common 7-channel profile).
+    SevenChannelRgbw,
     /// HSV in 3 DMX channels.
     Hsv,
     /// RGBWAU in 6 DMX channels.
@@ -242,6 +244,7 @@ impl Model {
             Self::DimmerRgb => 4,
             Self::Rgbw => 4,
             Self::DimmerRgbw => 5,
+            Self::SevenChannelRgbw => 7,
             Self::Hsv => 3,
             Self::Rgbwau => 6,
         }
@@ -269,6 +272,11 @@ impl Model {
             Self::DimmerRgbw => {
                 buf[0] = 255;
                 Self::Rgbw.render(&mut buf[1..], renderer);
+            }
+            Self::SevenChannelRgbw => {
+                Self::DimmerRgbw.render(&mut buf[0..5], renderer);
+                buf[5] = 0;
+                buf[6] = 0;
             }
             Self::Hsv => {
                 let [h, s, v] = renderer.hsv();

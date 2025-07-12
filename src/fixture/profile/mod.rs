@@ -6,6 +6,7 @@ pub mod colordynamic;
 pub mod comet;
 pub mod cosmic_burst;
 pub mod dimmer;
+pub mod empty_channel;
 pub mod faderboard;
 pub mod freedom_fries;
 pub mod freq_strobe;

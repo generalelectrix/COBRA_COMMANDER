@@ -122,8 +122,8 @@ impl NonAnimatedFixture for Lumitone {
 
 impl ControllableFixture for Lumitone {}
 
-const SIMPLE_PALETTE_INDEX: usize = 9;
-const SIMPLE_PALETTE_WITH_WHITE_INDEX: usize = 10;
+const SIMPLE_PALETTE_INDEX: usize = 7;
+const SIMPLE_PALETTE_WITH_WHITE_INDEX: usize = 8;
 const CUSTOM_PALETTE_INDEX: usize = 11;
 const PALETTE_COUNT: usize = 12;
 const FINE_HUE_ADJUST_SCALE: f64 = 0.1;
@@ -136,9 +136,11 @@ impl Lumitone {
                 // complex palette; use the fine hue adjust
                 Phase::new(self.hue_fine.val().val() * FINE_HUE_ADJUST_SCALE)
             }
-            SIMPLE_PALETTE_INDEX | SIMPLE_PALETTE_WITH_WHITE_INDEX => {
+            SIMPLE_PALETTE_INDEX | SIMPLE_PALETTE_WITH_WHITE_INDEX | 9 | 10 => {
                 // simple palette; use the coarse hue adjust
-                self.hue_coarse.control.val()
+                // simple palettes are red by default; this adjustment ensures we
+                // match the hue controls in other fixtures
+                self.hue_coarse.control.val() + Phase::new(1. / 3.)
             }
             CUSTOM_PALETTE_INDEX => {
                 // custom palette; no hue adjust
@@ -242,13 +244,22 @@ impl State {
             "NEW_TUNING g_iWifiSpeed={}",
             unit_to_u8(self.speed.val())
         )?;
-        writeln!(w, "NEW_TUNING g_iWifiHue={}", unit_to_u8(self.hue.val()))?;
+        writeln!(
+            w,
+            "NEW_TUNING g_iWifiHue={}",
+            phase_to_u8_hue(self.hue.val())
+        )?;
         Ok(())
     }
 }
 
 fn unit_to_u8(v: f64) -> u8 {
     (255. * v).round() as u8
+}
+
+/// Lumitone expects a 0 hue offset to come out as 127.
+fn phase_to_u8_hue(v: f64) -> u8 {
+    ((255. * v).round() + 127.).rem_euclid(255.) as u8
 }
 
 #[derive(Default)]
