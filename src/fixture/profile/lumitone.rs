@@ -429,7 +429,7 @@ mod test {
             "NEW_TUNING g_iWifiColorPal=2
 NEW_TUNING g_iWifiBrightness=255
 NEW_TUNING g_iWifiSpeed=64
-NEW_TUNING g_iWifiHue=0
+NEW_TUNING g_iWifiHue=127
 ",
             s,
         );
