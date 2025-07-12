@@ -47,7 +47,9 @@ impl Channels {
         S: crate::osc::EmitScopedOscMessage + ?Sized,
     {
         match sc {
-            StateChange::SelectChannel(channel_id) => CHANNEL_SELECT.set(channel_id.into(), send),
+            StateChange::SelectChannel(channel_id) => {
+                CHANNEL_SELECT.set(channel_id.into(), true, send)
+            }
             StateChange::ChannelLabels(labels) => CHANNEL_LABELS.set(labels.into_iter(), send),
             StateChange::State { channel_id, msg } => match msg {
                 ChannelStateChange::Level(l) => CHANNEL_FADERS.set(channel_id.into(), l, send),

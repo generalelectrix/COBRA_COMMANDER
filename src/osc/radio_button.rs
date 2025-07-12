@@ -69,11 +69,11 @@ impl RadioButton {
 
     /// Send OSC messages to set the current state of the button.
     /// Error conditions are logged.
-    pub fn set<S>(&self, n: usize, emitter: &S)
+    pub fn set<S>(&self, n: usize, allow_out_of_range: bool, emitter: &S)
     where
         S: crate::osc::EmitScopedOscMessage + ?Sized,
     {
-        if n >= self.n {
+        if n >= self.n && !allow_out_of_range {
             error!("radio button index {} out of range for {}", n, self.control);
             return;
         }

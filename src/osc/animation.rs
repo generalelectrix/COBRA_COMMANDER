@@ -129,8 +129,12 @@ impl AnimationUIState {
             crate::animation::StateChange::Animation(msg) => {
                 Self::emit_nested_osc_state_change(msg, send)
             }
-            crate::animation::StateChange::SelectAnimation(msg) => ANIMATION_SELECT.set(msg, send),
-            crate::animation::StateChange::Target(msg) => ANIMATION_TARGET_SELECT.set(msg, send),
+            crate::animation::StateChange::SelectAnimation(msg) => {
+                ANIMATION_SELECT.set(msg, false, send)
+            }
+            crate::animation::StateChange::Target(msg) => {
+                ANIMATION_TARGET_SELECT.set(msg, false, send)
+            }
             crate::animation::StateChange::TargetLabels(labels) => {
                 ANIMATION_TARGET_LABELS.set(labels.into_iter(), send)
             }
@@ -152,6 +156,7 @@ impl AnimationUIState {
                     Noise => 4,
                     Constant => 5,
                 },
+                false,
                 emitter,
             ),
             Speed(v) => emitter.emit_float(SPEED, v.into()),
@@ -159,9 +164,10 @@ impl AnimationUIState {
             DutyCycle(v) => emitter.emit_float(DUTY_CYCLE, v.into()),
             Smoothing(v) => emitter.emit_float(SMOOTHING, v.into()),
 
-            NPeriods(v) => N_PERIODS_SELECT.set(v as usize, emitter),
+            NPeriods(v) => N_PERIODS_SELECT.set(v as usize, false, emitter),
             ClockSource(maybe_clock) => CLOCK_SOURCE.set(
                 maybe_clock.map(|v| usize::from(v) + 1).unwrap_or(0),
+                false,
                 emitter,
             ),
 
