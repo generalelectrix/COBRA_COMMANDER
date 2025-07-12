@@ -120,7 +120,7 @@ fn main() -> Result<()> {
 
     match local_ip() {
         Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
-        Err(e) => println!("Unable to fetch local IP address: {}.", e),
+        Err(e) => println!("Unable to fetch local IP address: {e}."),
     }
 
     let osc_controllers = prompt_osc_config(args.osc_receive_port)?.unwrap_or_default();

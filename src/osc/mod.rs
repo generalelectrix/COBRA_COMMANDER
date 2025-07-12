@@ -61,7 +61,7 @@ impl OscController {
         send_addrs: Vec<OscClientId>,
         send: Sender<ControlMessage>,
     ) -> Result<Self> {
-        let recv_addr = SocketAddr::from_str(&format!("0.0.0.0:{}", receive_port))?;
+        let recv_addr = SocketAddr::from_str(&format!("0.0.0.0:{receive_port}"))?;
         start_listener(recv_addr, send)?;
         let response_send = start_sender(send_addrs)?;
         Ok(Self {
@@ -243,12 +243,12 @@ fn start_listener(addr: SocketAddr, send: Sender<ControlMessage>) -> Result<()> 
         let (packet, client_id) = match recv_packet() {
             Ok(msg) => msg,
             Err(e) => {
-                error!("Error receiving from OSC input: {}", e);
+                error!("Error receiving from OSC input: {e}");
                 continue;
             }
         };
         if let Err(e) = forward_packet(packet, client_id, &send) {
-            error!("Error unpacking/forwarding OSC packet: {}", e);
+            error!("Error unpacking/forwarding OSC packet: {e}");
         }
     });
     Ok(())
@@ -295,7 +295,7 @@ fn start_sender(clients: Vec<OscClientId>) -> Result<Sender<OscControlResponse>>
                     continue;
                 }
                 if let Err(err) = socket.send_to(&msg_buf, client.addr()) {
-                    error!("OSC send error to {client}: {}.", err);
+                    error!("OSC send error to {client}: {err}.");
                 }
             }
         }
@@ -342,8 +342,7 @@ impl OscControlMessage {
             OscType::Float(v) => Ok(*v as f64),
             OscType::Double(v) => Ok(*v),
             other => Err(self.err(format!(
-                "expected a single float argument but found {:?}",
-                other
+                "expected a single float argument but found {other:?}"
             ))),
         }
     }
@@ -373,8 +372,7 @@ impl OscControlMessage {
             OscType::Double(v) => *v != 0.0,
             other => {
                 return Err(self.err(format!(
-                    "expected a single bool argument but found {:?}",
-                    other
+                    "expected a single bool argument but found {other:?}"
                 )));
             }
         };

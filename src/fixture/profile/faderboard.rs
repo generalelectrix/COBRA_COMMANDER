@@ -42,7 +42,7 @@ impl Faderboard {
     fn handle_state_change(&mut self, sc: StateChange, emitter: &FixtureStateEmitter) {
         let (chan, val) = sc;
         if chan >= self.channel_count {
-            error!("Channel out of range: {}.", chan);
+            error!("Channel out of range: {chan}.");
             return;
         }
         self.vals[chan] = val;

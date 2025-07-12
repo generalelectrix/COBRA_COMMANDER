@@ -52,14 +52,12 @@ impl RadioButton {
         };
         if primary >= self.n {
             return Err(v.err(format!(
-                "radio button primary index out of range: {}",
-                primary
+                "radio button primary index out of range: {primary}"
             )));
         }
         if secondary > 0 {
             return Err(v.err(format!(
-                "radio button secondary index out of range: {}",
-                secondary
+                "radio button secondary index out of range: {secondary}"
             )));
         }
         // Ignore button release messages.
@@ -104,11 +102,11 @@ fn parse_radio_button_indices(addr_payload: &str) -> Result<(usize, usize), Stri
     let x = pieces_iter
         .next()
         .ok_or_else(|| "x radio button index missing".to_string())?
-        .map_err(|err| format!("failed to parse radio button x index: {}", err))?;
+        .map_err(|err| format!("failed to parse radio button x index: {err}"))?;
     let y = pieces_iter
         .next()
         .ok_or_else(|| "y radio button index missing".to_string())?
-        .map_err(|err| format!("failed to parse radio button y index: {}", err))?;
+        .map_err(|err| format!("failed to parse radio button y index: {err}"))?;
     if x == 0 {
         return Err("x index is unexpectedly 0".to_string());
     }

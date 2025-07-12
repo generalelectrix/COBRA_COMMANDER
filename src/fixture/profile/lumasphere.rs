@@ -244,13 +244,13 @@ where
 {
     use GenericStrobeStateChange::*;
     use StrobeStateChange::*;
-    map.add_bool(&format!("strobe_{}_state", index), move |v| {
+    map.add_bool(&format!("strobe_{index}_state"), move |v| {
         wrap(State(On(v)))
     });
-    map.add_unipolar(&format!("strobe_{}_rate", index), move |v| {
+    map.add_unipolar(&format!("strobe_{index}_rate"), move |v| {
         wrap(State(Rate(v)))
     });
-    map.add_unipolar(&format!("strobe_{}_intensity", index), move |v| {
+    map.add_unipolar(&format!("strobe_{index}_intensity"), move |v| {
         wrap(Intensity(v))
     });
 }

@@ -12,7 +12,7 @@ use super::OscClientId;
 
 /// Listen for a message from a OSC client.
 fn register_client(receive_port: u16) -> Result<OscClientId> {
-    let addr = SocketAddr::from_str(&format!("0.0.0.0:{}", receive_port))?;
+    let addr = SocketAddr::from_str(&format!("0.0.0.0:{receive_port}"))?;
     let socket = UdpSocket::bind(addr)?;
     let mut buf = [0u8; rosc::decoder::MTU];
     let (_, sender_addr) = socket.recv_from(&mut buf)?;
