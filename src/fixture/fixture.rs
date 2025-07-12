@@ -4,7 +4,7 @@ use std::ops::Deref;
 use std::time::Duration;
 
 use anyhow::{bail, Result};
-use number::{Phase, UnipolarFloat};
+use number::Phase;
 use serde::{Deserialize, Serialize};
 use strum::VariantArray;
 
@@ -209,7 +209,8 @@ impl<F: AnimatedFixture> ControllableFixture for FixtureWithAnimations<F> {
     fn update(&mut self, master_controls: &MasterControls, dt: Duration) {
         self.fixture.update(master_controls, dt);
         for ta in &mut self.animations {
-            ta.animation.update_state(dt, UnipolarFloat::ZERO);
+            ta.animation
+                .update_state(dt, master_controls.audio_envelope);
         }
     }
 }
