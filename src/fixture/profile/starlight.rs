@@ -17,7 +17,7 @@ impl Default for Starlight {
         Self {
             dimmer: Unipolar::full_channel("Dimmer", 1).with_channel_level(),
             strobe: Strobe::channel("Strobe", 2, 10, 255, 0),
-            rotation: Bipolar::split_channel("Rotation", 3, 127, 1, 128, 255, 0)
+            rotation: Bipolar::split_channel("Rotation", 3, 191, 128, 192, 255, 0)
                 .with_detent()
                 .with_mirroring(true)
                 .with_channel_knob(0),
