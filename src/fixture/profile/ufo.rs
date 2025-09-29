@@ -30,7 +30,7 @@ impl Default for Ufo {
                 .with_mirroring(true)
                 .with_channel_knob(2),
             pan: Bipolar::coarse_fine("Pan", 0).with_mirroring(true),
-            tilt: Bipolar::coarse_fine("Tily", 2).with_mirroring(true),
+            tilt: Bipolar::coarse_fine("Tilt", 2).with_mirroring(true),
         }
     }
 }
@@ -56,11 +56,15 @@ impl AnimatedFixture for Ufo {
             animation_vals.filter(&AnimationTarget::Tilt),
             dmx_buf,
         );
+        dmx_buf[4] = 255; // pan and tilt movement speed
         self.rotation.render_with_group(
             group_controls,
             animation_vals.filter(&AnimationTarget::Rotation),
             dmx_buf,
         );
+        dmx_buf[6] = 255; // dimmer always at full, brightness set via color control
+        dmx_buf[7] = 0; // TODO: strobe control
+
         // Create targeted animation values to pass into the Color control.
         // FIXME: we can surely make this elegant and generalizable.
         let mut color_animation_vals = [(0.0, ColorAnimationTarget::default()); N_ANIM];
@@ -73,8 +77,18 @@ impl AnimatedFixture for Ufo {
             ColorRenderModel::Rgbw,
             group_controls,
             TargetedAnimationValues(&color_animation_vals),
-            dmx_buf,
+            &mut dmx_buf[8..12],
         );
+
+        // horrible macro channels
+        dmx_buf[12] = 0;
+        dmx_buf[13] = 0;
+        dmx_buf[14] = 0;
+
+        // Remote fixture reset - resets if held at 255 for 5 seconds.
+        // TODO: this might be a useful feature to implement if their motion
+        // tends to run out of calibration
+        dmx_buf[15] = 0;
     }
 }
 
