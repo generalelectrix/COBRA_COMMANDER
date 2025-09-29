@@ -1,5 +1,5 @@
 //! Flexible control profile for a single-color fixture.
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use log::error;
 use strum_macros::{EnumString, VariantArray};
 
@@ -7,7 +7,6 @@ use crate::{
     color::*,
     config::Options,
     fixture::{fixture::EnumRenderModel, prelude::*},
-    osc::OscControlMessage,
 };
 
 #[derive(Debug, Control, EmitState)]
@@ -196,39 +195,6 @@ impl AnimatedFixture for Color {
 }
 
 impl ControllableFixture for Color {}
-
-impl OscControl<()> for Color {
-    fn control_direct(
-        &mut self,
-        _val: (),
-        _emitter: &dyn crate::osc::EmitScopedOscMessage,
-    ) -> anyhow::Result<()> {
-        bail!("direct control is not implemented for Color controls");
-    }
-
-    fn control(
-        &mut self,
-        msg: &OscControlMessage,
-        emitter: &dyn crate::osc::EmitScopedOscMessage,
-    ) -> anyhow::Result<bool> {
-        if self.hue.control.control(msg, emitter)? {
-            return Ok(true);
-        }
-        if self.sat.control.control(msg, emitter)? {
-            return Ok(true);
-        }
-        if self.val.control.control(msg, emitter)? {
-            return Ok(true);
-        }
-        Ok(false)
-    }
-
-    fn emit_state(&self, emitter: &dyn crate::osc::EmitScopedOscMessage) {
-        self.hue.control.emit_state(emitter);
-        self.sat.control.emit_state(emitter);
-        self.val.control.emit_state(emitter);
-    }
-}
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, VariantArray)]
 pub enum Model {

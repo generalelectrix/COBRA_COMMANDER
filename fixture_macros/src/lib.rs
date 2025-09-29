@@ -85,12 +85,11 @@ pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
 /// Derive the EmitState trait on a fixture struct.
 ///
 /// Fields that do not have an emit_state method can be skipped with #[skip_emit].
-/// Fields that implement OscControl as well as EmitState can be forced to emit
-/// with the OscControl method with the #[force_osc_control] attribute.
+///
 /// Fields that may or may not be present depending on configuration can be
 /// defined as an `Option<T>` and marked with the #[optional] attribute, which
 /// will handle the optionality.
-#[proc_macro_derive(EmitState, attributes(skip_emit, force_osc_control, optional))]
+#[proc_macro_derive(EmitState, attributes(skip_emit, optional))]
 pub fn derive_emit_state(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
 
@@ -110,14 +109,8 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
         };
 
         // Assume we have bound the field to a local with the same identifier.
-        let emit_state_call = if field_has_attr(field, "force_osc_control") {
-            quote! {
-                crate::fixture::control::OscControl::emit_state(#ident, emitter);
-            }
-        } else {
-            quote! {
-                #ident.emit_state(emitter);
-            }
+        let emit_state_call = quote! {
+            #ident.emit_state(emitter);
         };
 
         lines = insert_optional_call(
@@ -141,8 +134,6 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 /// Derive the Control trait on a fixture struct.
 ///
 /// Fields that do not have a control method can be skipped with #[skip_control].
-/// Fields that implement OscControl as well as Control can be forced to emit
-/// with the OscControl method with the #[force_osc_control] attribute.
 ///
 /// Fields annotated with #[channel_control] will be wired up to the channel
 /// control method.
@@ -158,14 +149,7 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 /// conditionally handle if Some.
 #[proc_macro_derive(
     Control,
-    attributes(
-        skip_control,
-        force_osc_control,
-        channel_control,
-        animate,
-        on_change,
-        optional
-    )
+    attributes(skip_control, channel_control, animate, on_change, optional)
 )]
 pub fn derive_control(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
@@ -199,19 +183,10 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
             .unwrap_or_default();
 
         // We'll bind the field mutably to a local named #ident.
-        let control_call = if field_has_attr(field, "force_osc_control") {
-            quote! {
-                if crate::fixture::control::OscControl::control(#ident, msg, emitter)? {
-                    #on_change
-                    return Ok(true);
-                }
-            }
-        } else {
-            quote! {
-                if #ident.control(msg, emitter)? {
-                    #on_change
-                    return Ok(true);
-                }
+        let control_call = quote! {
+            if #ident.control(msg, emitter)? {
+                #on_change
+                return Ok(true);
             }
         };
 

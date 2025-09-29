@@ -36,19 +36,14 @@ pub struct Lumitone {
     hue_fine: Bipolar<()>,
 
     // Controls for custom palette creation.
-    #[force_osc_control]
     #[on_change = "send_custom_palette"]
     color0: Color,
-    #[force_osc_control]
     #[on_change = "send_custom_palette"]
     color1: Color,
-    #[force_osc_control]
     #[on_change = "send_custom_palette"]
     color2: Color,
-    #[force_osc_control]
     #[on_change = "send_custom_palette"]
     color3: Color,
-    #[force_osc_control]
     #[on_change = "send_custom_palette"]
     color4: Color,
 

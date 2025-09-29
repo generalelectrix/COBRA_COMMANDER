@@ -13,7 +13,6 @@ use crate::fixture::{
 #[channel_count = 16]
 pub struct Ufo {
     #[channel_control]
-    #[force_osc_control]
     color: Color,
     #[channel_control]
     rotation: ChannelKnobBipolar<BipolarSplitChannelMirror>,

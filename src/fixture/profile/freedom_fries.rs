@@ -12,7 +12,6 @@ pub struct FreedomFries {
     #[channel_control]
     #[animate]
     dimmer: ChannelLevelUnipolar<UnipolarChannel>,
-    #[force_osc_control]
     color: Color,
     #[channel_control]
     #[animate]
