@@ -15,7 +15,7 @@ pub type TargetedAnimations<T> = [TargetedAnimation<T>; N_ANIM];
 pub type AnimationTargetIndex = usize;
 
 /// A collection of animation values paired with targets.
-pub struct TargetedAnimationValues<'a, T: PartialEq>(pub &'a [(f64, T)]);
+pub struct TargetedAnimationValues<'a, T: PartialEq>(pub &'a [(f64, T); N_ANIM]);
 
 impl<'a, T: PartialEq + Sized + 'static> TargetedAnimationValues<'a, T> {
     pub fn iter(&self) -> core::slice::Iter<'_, (f64, T)> {

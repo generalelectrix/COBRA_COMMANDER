@@ -122,24 +122,18 @@ impl Color {
             ),
         }
     }
-}
 
-impl AnimatedFixture for Color {
-    type Target = AnimationTarget;
-    fn render_with_animations(
+    /// Render this color into a DMX output buffer with an explicit color model.
+    ///
+    /// This method is useful for fixtures that embed a Color as a full sub-
+    /// control.
+    pub fn render_for_model(
         &self,
+        model: Model,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: TargetedAnimationValues<AnimationTarget>,
         dmx_buf: &mut [u8],
     ) {
-        let model = match Model::model_for_mode(group_controls.render_mode) {
-            Ok(m) => m,
-            Err(err) => {
-                error!("failed to render Color: {err}");
-                return;
-            }
-        };
-
         // If a color override has been provided, render it scaled by the level.
         if let Some(mut color_override) = group_controls.color.clone() {
             color_override.lightness *= self.val.control.val();
@@ -178,6 +172,26 @@ impl AnimatedFixture for Color {
                 },
             ),
         }
+    }
+}
+
+impl AnimatedFixture for Color {
+    type Target = AnimationTarget;
+    fn render_with_animations(
+        &self,
+        group_controls: &FixtureGroupControls,
+        animation_vals: TargetedAnimationValues<Self::Target>,
+        dmx_buf: &mut [u8],
+    ) {
+        let model = match Model::model_for_mode(group_controls.render_mode) {
+            Ok(m) => m,
+            Err(err) => {
+                error!("failed to render Color: {err}");
+                return;
+            }
+        };
+
+        self.render_for_model(model, group_controls, animation_vals, dmx_buf);
     }
 }
 

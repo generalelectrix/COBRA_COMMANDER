@@ -1,7 +1,7 @@
 //! A control for bipolar floats.
 
 use anyhow::Context;
-use number::{BipolarFloat, UnipolarFloat};
+use number::BipolarFloat;
 
 use crate::{
     channel::KnobIndex,
@@ -129,6 +129,13 @@ impl Bipolar<RenderBipolarToRange> {
     }
 }
 
+impl Bipolar<RenderBipolarToCoarseAndFine> {
+    /// Initialize a bipolar control that renders to a two-channel coarse/fine setup.
+    pub fn coarse_fine<S: Into<String>>(name: S, dmx_buf_offset: usize) -> Self {
+        Self::new(name, RenderBipolarToCoarseAndFine { dmx_buf_offset })
+    }
+}
+
 impl<R: RenderToDmx<BipolarFloat>> OscControl<BipolarFloat> for Bipolar<R> {
     fn control_direct(
         &mut self,
@@ -224,7 +231,23 @@ pub struct RenderBipolarToRange {
 
 impl RenderToDmx<BipolarFloat> for RenderBipolarToRange {
     fn render(&self, val: &BipolarFloat, dmx_buf: &mut [u8]) {
-        dmx_buf[self.dmx_buf_offset] = bipolar_to_range(self.start, self.end, *val);
+        dmx_buf[self.dmx_buf_offset] =
+            unipolar_to_range(self.start, self.end, val.rescale_as_unipolar());
+    }
+}
+
+/// Render a bipolar float to two channels interpreted as coarse and fine.
+#[derive(Debug)]
+pub struct RenderBipolarToCoarseAndFine {
+    pub dmx_buf_offset: usize,
+}
+
+impl RenderToDmx<BipolarFloat> for RenderBipolarToCoarseAndFine {
+    fn render(&self, val: &BipolarFloat, dmx_buf: &mut [u8]) {
+        let uni = val.rescale_as_unipolar();
+        let [coarse, fine] = ((uni.val() * u16::MAX as f64).round() as u16).to_be_bytes();
+        dmx_buf[self.dmx_buf_offset] = coarse;
+        dmx_buf[self.dmx_buf_offset + 1] = fine;
     }
 }
 
@@ -328,14 +351,6 @@ impl<R: RenderToDmx<BipolarFloat>> OscControl<BipolarFloat> for Mirrored<R> {
     ) -> anyhow::Result<bool> {
         self.control.control_with_callback(msg, emitter, callback)
     }
-}
-
-/// Scale value into the provided integer range.
-/// The range is inclusive at both ends.
-#[inline(always)]
-fn bipolar_to_range(start: u8, end: u8, value: BipolarFloat) -> u8 {
-    let uni = UnipolarFloat::new((value.val() + 1.0) / 2.0);
-    unipolar_to_range(start, end, uni)
 }
 
 /// Scale a bipolar value into an American DJ-style split range.

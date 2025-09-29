@@ -91,7 +91,7 @@ pub trait Control {
     ) -> anyhow::Result<bool>;
 
     /// Process a channel control message, if the fixture uses it.
-    #[allow(unused)]
+    #[allow(unused_variables)]
     fn control_from_channel(
         &mut self,
         msg: &ChannelControlMessage,
@@ -103,7 +103,7 @@ pub trait Control {
 }
 
 pub trait ControllableFixture: EmitState + Control {
-    #[allow(unused)]
+    #[allow(unused_variables)]
     fn update(&mut self, master_controls: &MasterControls, dt: Duration) {}
 }
 
