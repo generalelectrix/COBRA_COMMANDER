@@ -14,6 +14,7 @@ pub mod fusion_roll;
 pub mod generic;
 pub mod h2o;
 pub mod hypnotic;
+pub mod iwash_led;
 pub mod leko;
 pub mod lumasphere;
 pub mod lumitone;
