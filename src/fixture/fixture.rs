@@ -121,7 +121,7 @@ pub trait AnimatedFixture: ControllableFixture {
     fn render_with_animations(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     );
 }
@@ -238,7 +238,7 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         }
         self.fixture.render_with_animations(
             group_controls,
-            TargetedAnimationValues(&animation_vals),
+            &TargetedAnimationValues(animation_vals),
             dmx_buffer,
         );
     }

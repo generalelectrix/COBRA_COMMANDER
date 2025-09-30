@@ -47,7 +47,7 @@ impl AnimatedFixture for Colordynamic {
     fn render_with_animations(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
         dmx_buf[0] = 0; // FIXME does this do anything?

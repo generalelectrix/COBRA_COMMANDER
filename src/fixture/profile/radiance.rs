@@ -50,7 +50,7 @@ impl AnimatedFixture for Radiance {
     fn render_with_animations(
         &self,
         _group_controls: &FixtureGroupControls,
-        _animation_vals: TargetedAnimationValues<Self::Target>,
+        _animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
         if let Some(timer) = self.timer.as_ref() {

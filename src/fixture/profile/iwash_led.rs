@@ -33,7 +33,7 @@ impl AnimatedFixture for IWashLed {
     fn render_with_animations(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
         self.pan.render_with_group(
@@ -53,7 +53,7 @@ impl AnimatedFixture for IWashLed {
         self.color.render_for_model(
             ColorRenderModel::Rgb,
             group_controls,
-            TargetedAnimationValues(&animation_vals.subtarget()),
+            &animation_vals.subtarget(),
             &mut dmx_buf[7..10],
         );
         dmx_buf[10] = 0; // useless single white diode "color balance"

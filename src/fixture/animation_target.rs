@@ -15,9 +15,9 @@ pub type TargetedAnimations<T> = [TargetedAnimation<T>; N_ANIM];
 pub type AnimationTargetIndex = usize;
 
 /// A collection of animation values paired with targets.
-pub struct TargetedAnimationValues<'a, T: PartialEq>(pub &'a [(f64, T); N_ANIM]);
+pub struct TargetedAnimationValues<T: PartialEq>(pub [(f64, T); N_ANIM]);
 
-impl<'a, T: PartialEq + Sized + 'static> TargetedAnimationValues<'a, T> {
+impl<T: PartialEq + Sized + 'static> TargetedAnimationValues<T> {
     pub fn iter(&self) -> core::slice::Iter<'_, (f64, T)> {
         self.0.iter()
     }
@@ -28,23 +28,26 @@ impl<'a, T: PartialEq + Sized + 'static> TargetedAnimationValues<'a, T> {
     }
 
     /// Iterate over all animation values matching the provided target.
-    pub fn filter(&'a self, target: &'a T) -> impl Iterator<Item = f64> + 'a {
+    pub fn filter<'a>(&'a self, target: &'a T) -> impl Iterator<Item = f64> + 'a {
         self.0
             .iter()
             .filter_map(move |(v, t)| (*t == *target).then_some(*v))
     }
 }
 
-impl<'a, T: Copy + PartialEq + Sized + 'static> TargetedAnimationValues<'a, T> {
+impl<T: Copy + PartialEq + Sized + 'static> TargetedAnimationValues<T> {
     /// Return targeted animations subset down to a specific subtarget type.
-    pub fn subtarget<U: Default + Copy + FromSupertarget<T>>(&self) -> [(f64, U); N_ANIM] {
+    pub fn subtarget<U>(&self) -> TargetedAnimationValues<U>
+    where
+        U: Default + Copy + PartialEq + FromSupertarget<T>,
+    {
         let mut animation_vals = [(0.0, U::default()); N_ANIM];
         for (i, (val, t)) in self.iter().enumerate() {
             if let Some(subtarget) = U::from_supertarget(t) {
                 animation_vals[i] = (*val, subtarget);
             }
         }
-        animation_vals
+        TargetedAnimationValues(animation_vals)
     }
 }
 /// A pairing of an animation and a target.

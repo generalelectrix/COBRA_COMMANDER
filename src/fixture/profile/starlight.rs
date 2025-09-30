@@ -30,7 +30,7 @@ impl AnimatedFixture for Starlight {
     fn render_with_animations(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
         dmx_buf[0] = 255; // DMX mode
