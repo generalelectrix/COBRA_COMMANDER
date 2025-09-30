@@ -130,7 +130,7 @@ impl Color {
         &self,
         model: Model,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<AnimationTarget>,
+        animation_vals: &TargetedAnimationValues<AnimationTarget>,
         dmx_buf: &mut [u8],
     ) {
         // If a color override has been provided, render it scaled by the level.
@@ -179,7 +179,7 @@ impl AnimatedFixture for Color {
     fn render_with_animations(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
         let model = match Model::model_for_mode(group_controls.render_mode) {

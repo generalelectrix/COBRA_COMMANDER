@@ -2,8 +2,7 @@
 //!
 //! The alien egg sack with the most pastel blue diode of them all. Bleh.
 use crate::fixture::{
-    animation_target::N_ANIM,
-    color::{AnimationTarget as ColorAnimationTarget, Color, Model as ColorRenderModel},
+    color::{Color, Model as ColorRenderModel},
     prelude::*,
 };
 
@@ -11,8 +10,11 @@ use crate::fixture::{
 #[channel_count = 12]
 pub struct IWashLed {
     #[channel_control]
+    #[animate_subtarget(Hue, Sat, Val)]
     color: Color,
+    #[animate]
     pan: Mirrored<RenderBipolarToCoarseAndFine>,
+    #[animate]
     tilt: Mirrored<RenderBipolarToCoarseAndFine>,
 }
 
@@ -34,7 +36,7 @@ impl AnimatedFixture for IWashLed {
     fn render_with_animations(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
         self.pan.render_with_group(
@@ -51,53 +53,13 @@ impl AnimatedFixture for IWashLed {
         dmx_buf[5] = 255; // dimmer always at full, brightness set via color control
         dmx_buf[6] = 0; // TODO: strobe control
 
-        // Create targeted animation values to pass into the Color control.
-        // FIXME: we can surely make this elegant and generalizable.
-        let mut color_animation_vals = [(0.0, ColorAnimationTarget::default()); N_ANIM];
-        for (i, (val, t)) in animation_vals.iter().copied().enumerate() {
-            if let Some(color_target) = t.as_color_target() {
-                color_animation_vals[i] = (val, color_target);
-            }
-        }
         self.color.render_for_model(
             ColorRenderModel::Rgb,
             group_controls,
-            TargetedAnimationValues(&color_animation_vals),
+            &animation_vals.subtarget(),
             &mut dmx_buf[7..10],
         );
         dmx_buf[10] = 0; // useless single white diode "color balance"
         dmx_buf[11] = 0; // fixture reset if set in 101-170
-    }
-}
-
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    strum_macros::EnumString,
-    strum_macros::EnumIter,
-    strum_macros::Display,
-    num_derive::FromPrimitive,
-    num_derive::ToPrimitive,
-)]
-pub enum AnimationTarget {
-    #[default]
-    Hue,
-    Sat,
-    Val,
-    Pan,
-    Tilt,
-}
-
-impl AnimationTarget {
-    fn as_color_target(self) -> Option<ColorAnimationTarget> {
-        match self {
-            Self::Hue => Some(ColorAnimationTarget::Hue),
-            Self::Sat => Some(ColorAnimationTarget::Sat),
-            Self::Val => Some(ColorAnimationTarget::Val),
-            _ => None,
-        }
     }
 }

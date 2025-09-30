@@ -1,7 +1,10 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, Expr, Field, Fields, Ident, Lit, Meta};
+use syn::{
+    parse_macro_input, punctuated::Punctuated, Attribute, Data, DeriveInput, Expr, Field, Fields,
+    Ident, Lit, Meta, Token,
+};
 
 /// Register a fixture with the global patch registry.
 #[proc_macro]
@@ -142,6 +145,13 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 /// AnimationTarget type. The name of the animation variant will be the
 /// PascalCase version of the struct field identifier.
 ///
+/// If a field is itself an animatable entity with its own target type, we can
+/// include these as subtargets by using the attribute
+/// #[animate_subtarget(Target1, Target2, ...)] where the variant names of the
+/// field's animation target type that we want to include are provided as
+/// arguments. This will also automatically derive the Subtarget trait, so that
+/// the animation values can be easily passed into the subfixture.
+///
 /// Fields may declare a named method on the implementing struct to call when
 /// a change happens to the control.
 ///
@@ -149,7 +159,14 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 /// conditionally handle if Some.
 #[proc_macro_derive(
     Control,
-    attributes(skip_control, channel_control, animate, on_change, optional)
+    attributes(
+        skip_control,
+        channel_control,
+        animate,
+        animate_subtarget,
+        on_change,
+        optional
+    )
 )]
 pub fn derive_control(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
@@ -164,6 +181,7 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
     let mut channel_control_lines = quote! {};
 
     let mut animate_target_idents = vec![];
+    let mut animate_subtarget_types = vec![];
 
     for field in fields.named.iter() {
         if field_has_attr(field, "skip_control") {
@@ -214,6 +232,10 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
         if field_has_attr(field, "animate") {
             animate_target_idents.push(ident.to_string().to_case(Case::Pascal));
         }
+        if let Some(subtargets) = get_attr_and_list_payload(&field.attrs, "animate_subtarget") {
+            animate_subtarget_types.push((field.ty.clone(), subtargets.clone()));
+            animate_target_idents.extend(subtargets);
+        }
     }
 
     let mut anim_target_enum = quote! {};
@@ -241,6 +263,32 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
             pub enum AnimationTarget {
                 #[default]
                 #anim_target_enum
+            }
+        };
+
+        for (subcontrol_type, subtarget_idents) in animate_subtarget_types {
+            let animate_subtarget_type = quote!(<#subcontrol_type as AnimatedFixture>::Target);
+
+            let mut matches = quote! {};
+            for ident in subtarget_idents {
+                let ident = format_ident!("{ident}");
+                matches = quote! {
+                    #matches
+                    Self::#ident => Some(#animate_subtarget_type::#ident),
+                };
+            }
+
+            anim_target_enum = quote! {
+                #anim_target_enum
+
+                impl Subtarget<#animate_subtarget_type> for AnimationTarget {
+                    fn as_subtarget(&self) -> Option<#animate_subtarget_type> {
+                        match *self {
+                            #matches
+                            _ => None,
+                        }
+                    }
+                }
             }
         }
     }
@@ -316,6 +364,26 @@ fn get_attr_and_payload(attrs: &[Attribute], ident: &str) -> Option<String> {
                 panic!("attribute {ident} expected a string literal as argument");
             };
             Some(s.value())
+        })
+        .next()
+}
+
+fn get_attr_and_list_payload(attrs: &[Attribute], ident: &str) -> Option<Vec<String>> {
+    attrs
+        .iter()
+        .filter_map(|attr| {
+            if !attr.meta.path().is_ident(ident) {
+                return None;
+            }
+            let meta_list = attr.meta.require_list().expect(ident);
+            Some(
+                meta_list
+                    .parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+                    .unwrap()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+            )
         })
         .next()
 }

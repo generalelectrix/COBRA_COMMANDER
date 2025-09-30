@@ -71,7 +71,7 @@ impl AnimatedFixture for FusionRoll {
     fn render_with_animations(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
         self.drum_swivel.render_with_group(
