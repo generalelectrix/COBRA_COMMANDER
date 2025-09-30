@@ -37,7 +37,7 @@ impl<'a> FixtureGroupControls<'a> {
 
 pub mod prelude {
     pub use super::fixture::{
-        AnimatedFixture, ControllableFixture, FixtureType, NonAnimatedFixture, RenderMode,
+        AnimatedFixture, FixtureType, NonAnimatedFixture, RenderMode, Update,
     };
     pub use super::patch::{PatchAnimatedFixture, PatchFixture};
     pub use super::FixtureGroupControls;
@@ -50,7 +50,7 @@ pub mod prelude {
     pub use crate::osc::prelude::*;
     pub use anyhow::bail;
     pub use fixture_macros::{
-        register_patcher, Control, EmitState, PatchAnimatedFixture, PatchFixture,
+        register_patcher, Control, EmitState, PatchAnimatedFixture, PatchFixture, Update,
     };
     pub use number::{BipolarFloat, Phase, UnipolarFloat};
 }

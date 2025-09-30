@@ -9,7 +9,7 @@ use crate::{
     fixture::{fixture::EnumRenderModel, prelude::*},
 };
 
-#[derive(Debug, Control, EmitState)]
+#[derive(Debug, Control, EmitState, Update)]
 pub struct Color {
     #[channel_control]
     #[animate]
@@ -193,8 +193,6 @@ impl AnimatedFixture for Color {
         self.render_for_model(model, group_controls, animation_vals, dmx_buf);
     }
 }
-
-impl ControllableFixture for Color {}
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, VariantArray)]
 pub enum Model {

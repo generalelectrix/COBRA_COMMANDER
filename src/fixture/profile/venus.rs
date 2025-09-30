@@ -103,9 +103,17 @@ impl crate::fixture::Control for Venus {
         self.handle_state_change(ctl, emitter);
         Ok(true)
     }
+
+    fn control_from_channel(
+        &mut self,
+        _msg: &crate::channel::ChannelControlMessage,
+        _emitter: &FixtureStateEmitter,
+    ) -> anyhow::Result<bool> {
+        Ok(false)
+    }
 }
 
-impl ControllableFixture for Venus {
+impl Update for Venus {
     fn update(&mut self, _: &MasterControls, delta_t: Duration) {
         self.base_rotation.update(delta_t);
         self.cradle_motion.update(delta_t);

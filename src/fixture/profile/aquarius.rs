@@ -1,7 +1,7 @@
 //! Intuitive control profile for the American DJ Aquarius 250.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 2]
 pub struct Aquarius {
     #[channel_control]
@@ -37,5 +37,3 @@ impl AnimatedFixture for Aquarius {
             .render_with_group(group_controls, std::iter::empty(), dmx_buf);
     }
 }
-
-impl ControllableFixture for Aquarius {}

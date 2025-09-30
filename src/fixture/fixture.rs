@@ -75,15 +75,19 @@ pub trait EnumRenderModel: VariantArray + PartialEq + Debug + Clone {
     }
 }
 
+/// Emit controllable state back out to control surfaces.
+///
+/// Used for initializing as well as force-refreshing UIs.
 pub trait EmitState {
     /// Emit the current state of all controls.
     fn emit_state(&self, emitter: &FixtureStateEmitter);
 }
 
+/// Process control messages from input sources.
 pub trait Control {
     /// Process the provided OSC control message.
     ///
-    /// Return true if the control message was handled.
+    /// Return Ok(true) if the control message was handled.
     fn control(
         &mut self,
         msg: &OscControlMessage,
@@ -91,23 +95,23 @@ pub trait Control {
     ) -> anyhow::Result<bool>;
 
     /// Process a channel control message, if the fixture uses it.
-    #[allow(unused_variables)]
+    ///
+    /// Return Ok(true) if the control message was handled.
     fn control_from_channel(
         &mut self,
         msg: &ChannelControlMessage,
         emitter: &FixtureStateEmitter,
-    ) -> anyhow::Result<bool> {
-        // Ignore channel control messages by default.
-        Ok(false)
-    }
+    ) -> anyhow::Result<bool>;
 }
 
-pub trait ControllableFixture: EmitState + Control {
+/// Update time-driven internal state.
+pub trait Update {
+    /// Update the internal state by the timestep dt.
     #[allow(unused_variables)]
     fn update(&mut self, master_controls: &MasterControls, dt: Duration) {}
 }
 
-pub trait NonAnimatedFixture: ControllableFixture {
+pub trait NonAnimatedFixture: Update + EmitState + Control {
     /// Render into the provided DMX buffer.
     /// The buffer will be pre-sized to the fixture's channel count and offset
     /// to the fixture's start address.
@@ -115,7 +119,7 @@ pub trait NonAnimatedFixture: ControllableFixture {
     fn render(&self, group_controls: &FixtureGroupControls, dmx_buffer: &mut [u8]);
 }
 
-pub trait AnimatedFixture: ControllableFixture {
+pub trait AnimatedFixture: Update + EmitState + Control {
     type Target: AnimationTarget;
 
     fn render_with_animations(
@@ -126,7 +130,7 @@ pub trait AnimatedFixture: ControllableFixture {
     );
 }
 
-pub trait Fixture: ControllableFixture {
+pub trait Fixture: Update + EmitState + Control {
     /// Render into the provided DMX buffer.
     /// The buffer will be pre-sized to the fixture's channel count and offset
     /// to the fixture's start address.
@@ -205,7 +209,7 @@ impl<F: AnimatedFixture> Control for FixtureWithAnimations<F> {
     }
 }
 
-impl<F: AnimatedFixture> ControllableFixture for FixtureWithAnimations<F> {
+impl<F: AnimatedFixture> Update for FixtureWithAnimations<F> {
     fn update(&mut self, master_controls: &MasterControls, dt: Duration) {
         self.fixture.update(master_controls, dt);
         for ta in &mut self.animations {

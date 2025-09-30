@@ -1,7 +1,7 @@
 //! Martin Wizard Extreme - the one that Goes Slow
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 11]
 pub struct WizardExtreme {
     #[channel_control]
@@ -66,7 +66,6 @@ impl Default for WizardExtreme {
     }
 }
 
-impl ControllableFixture for WizardExtreme {}
 
 impl AnimatedFixture for WizardExtreme {
     type Target = AnimationTarget;

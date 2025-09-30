@@ -4,7 +4,7 @@ use crate::{
     fixture::{color::Color, prelude::*},
 };
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 20]
 pub struct Astera {
     #[channel_control]
@@ -102,5 +102,3 @@ impl AnimatedFixture for Astera {
             .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[17..20]);
     }
 }
-
-impl ControllableFixture for Astera {}

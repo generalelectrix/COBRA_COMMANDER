@@ -17,7 +17,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, Update)]
 pub struct Lumitone {
     #[channel_control]
     #[on_change = "send_state"]
@@ -114,8 +114,6 @@ register_patcher!(Lumitone);
 impl NonAnimatedFixture for Lumitone {
     fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}
 }
-
-impl ControllableFixture for Lumitone {}
 
 const SIMPLE_PALETTE_INDEX: usize = 7;
 const SIMPLE_PALETTE_WITH_WHITE_INDEX: usize = 8;

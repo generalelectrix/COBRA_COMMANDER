@@ -3,7 +3,7 @@ use super::color::Model::Rgbw;
 
 use crate::{color::Hsv, fixture::prelude::*};
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 9]
 pub struct RotosphereQ3 {
     #[channel_control]
@@ -75,4 +75,3 @@ impl AnimatedFixture for RotosphereQ3 {
     }
 }
 
-impl ControllableFixture for RotosphereQ3 {}

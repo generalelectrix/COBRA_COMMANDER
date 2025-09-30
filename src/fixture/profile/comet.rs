@@ -46,7 +46,7 @@ impl NonAnimatedFixture for Comet {
         self.reset.render_no_anim(dmx_buf);
     }
 }
-impl ControllableFixture for Comet {
+impl Update for Comet {
     fn update(&mut self, _: &MasterControls, delta_t: Duration) {
         self.trigger_state.update(delta_t);
     }

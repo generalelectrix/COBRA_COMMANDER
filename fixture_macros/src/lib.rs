@@ -315,6 +315,18 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
     .into()
 }
 
+/// Derive the Update trait on a fixture struct.
+/// Most fixtures do not have time-determinate internal state, so for the moment
+/// this is just a convenient way to omit an empty impl block.
+#[proc_macro_derive(Update)]
+pub fn derive_update(input: TokenStream) -> TokenStream {
+    let DeriveInput { ident, .. } = parse_macro_input!(input as DeriveInput);
+    quote! {
+        impl Update for #ident {}
+    }
+    .into()
+}
+
 fn insert_optional_call(
     optional: bool,
     mutable: bool,

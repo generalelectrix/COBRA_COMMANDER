@@ -1,7 +1,7 @@
 //! Intuitive control profile for the American DJ Aquarius 250.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 2]
 pub struct Hypnotic {
     on: ChannelLevelBool<Bool<()>>,
@@ -60,4 +60,3 @@ impl AnimatedFixture for Hypnotic {
     }
 }
 
-impl ControllableFixture for Hypnotic {}

@@ -1,6 +1,6 @@
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 11]
 pub struct FusionRoll {
     #[channel_control]
@@ -63,7 +63,6 @@ impl Default for FusionRoll {
     }
 }
 
-impl ControllableFixture for FusionRoll {}
 
 impl AnimatedFixture for FusionRoll {
     type Target = AnimationTarget;

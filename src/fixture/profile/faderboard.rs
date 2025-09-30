@@ -4,7 +4,7 @@ use log::error;
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug)]
+#[derive(Debug, Update)]
 pub struct Faderboard {
     controls: GroupControlMap<ControlMessage>,
     channel_count: usize,
@@ -82,9 +82,15 @@ impl crate::fixture::Control for Faderboard {
         self.handle_state_change(ctl, emitter);
         Ok(true)
     }
-}
 
-impl ControllableFixture for Faderboard {}
+    fn control_from_channel(
+        &mut self,
+        _msg: &crate::channel::ChannelControlMessage,
+        _emitter: &FixtureStateEmitter,
+    ) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+}
 
 pub type StateChange = (usize, UnipolarFloat);
 

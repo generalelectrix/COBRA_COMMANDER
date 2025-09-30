@@ -41,7 +41,7 @@ impl Default for FreqStrobe {
     }
 }
 
-impl ControllableFixture for FreqStrobe {
+impl Update for FreqStrobe {
     fn update(&mut self, master_controls: &MasterControls, dt: std::time::Duration) {
         let master_strobe = master_controls.strobe();
         let run = master_strobe.on && self.run.val();
