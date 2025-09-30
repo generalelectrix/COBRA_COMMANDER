@@ -4,7 +4,6 @@
 //! plus the ability to animate them, for now. Might be nice to try an XY pad,
 //! but that would require defining a new OSC control type.
 use crate::fixture::{
-    animation_target::N_ANIM,
     color::{AnimationTarget as ColorAnimationTarget, Color, Model as ColorRenderModel},
     prelude::*,
 };
@@ -64,18 +63,10 @@ impl AnimatedFixture for Ufo {
         dmx_buf[6] = 255; // dimmer always at full, brightness set via color control
         dmx_buf[7] = 0; // TODO: strobe control
 
-        // Create targeted animation values to pass into the Color control.
-        // FIXME: we can surely make this elegant and generalizable.
-        let mut color_animation_vals = [(0.0, ColorAnimationTarget::default()); N_ANIM];
-        for (i, (val, t)) in animation_vals.iter().copied().enumerate() {
-            if let Some(color_target) = t.as_color_target() {
-                color_animation_vals[i] = (val, color_target);
-            }
-        }
         self.color.render_for_model(
             ColorRenderModel::Rgbw,
             group_controls,
-            TargetedAnimationValues(&color_animation_vals),
+            TargetedAnimationValues(&animation_vals.subtarget()),
             &mut dmx_buf[8..12],
         );
 
@@ -113,9 +104,9 @@ pub enum AnimationTarget {
     Tilt,
 }
 
-impl AnimationTarget {
-    fn as_color_target(self) -> Option<ColorAnimationTarget> {
-        match self {
+impl Subtarget<ColorAnimationTarget> for AnimationTarget {
+    fn as_subtarget(&self) -> Option<ColorAnimationTarget> {
+        match *self {
             Self::Hue => Some(ColorAnimationTarget::Hue),
             Self::Sat => Some(ColorAnimationTarget::Sat),
             Self::Val => Some(ColorAnimationTarget::Val),

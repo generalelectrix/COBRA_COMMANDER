@@ -35,6 +35,18 @@ impl<'a, T: PartialEq + Sized + 'static> TargetedAnimationValues<'a, T> {
     }
 }
 
+impl<'a, T: Copy + PartialEq + Sized + 'static> TargetedAnimationValues<'a, T> {
+    /// Return targeted animations subset down to a specific subtarget type.
+    pub fn subtarget<U: Default + Copy + FromSupertarget<T>>(&self) -> [(f64, U); N_ANIM] {
+        let mut animation_vals = [(0.0, U::default()); N_ANIM];
+        for (i, (val, t)) in self.iter().enumerate() {
+            if let Some(subtarget) = U::from_supertarget(t) {
+                animation_vals[i] = (*val, subtarget);
+            }
+        }
+        animation_vals
+    }
+}
 /// A pairing of an animation and a target.
 #[derive(Debug, Clone, Default)]
 pub struct TargetedAnimation<T: AnimationTarget> {
@@ -111,5 +123,33 @@ impl<T: AnimationTarget> ControllableTargetedAnimation for TargetedAnimation<T> 
 
     fn target_labels(&self) -> Vec<String> {
         T::iter().map(|t| t.to_string()).collect()
+    }
+}
+
+/// Helper trait for fixtures that embed another type of fixture as a control.
+/// The animation target type can define this trait, and then targeted animation
+/// values can be filtered down to be passed to the subfixture.
+///
+/// Implementing this trait automatically implements the other direction as a
+/// method on the target type.
+pub trait Subtarget<T> {
+    fn as_subtarget(&self) -> Option<T>;
+}
+
+pub trait FromSupertarget<T> {
+    fn from_supertarget(supertarget: &T) -> Option<Self>
+    where
+        Self: std::marker::Sized;
+}
+
+impl<T, U> FromSupertarget<T> for U
+where
+    T: Subtarget<U>,
+{
+    fn from_supertarget(supertarget: &T) -> Option<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        supertarget.as_subtarget()
     }
 }

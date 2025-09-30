@@ -2,7 +2,6 @@
 //!
 //! The alien egg sack with the most pastel blue diode of them all. Bleh.
 use crate::fixture::{
-    animation_target::N_ANIM,
     color::{AnimationTarget as ColorAnimationTarget, Color, Model as ColorRenderModel},
     prelude::*,
 };
@@ -51,18 +50,10 @@ impl AnimatedFixture for IWashLed {
         dmx_buf[5] = 255; // dimmer always at full, brightness set via color control
         dmx_buf[6] = 0; // TODO: strobe control
 
-        // Create targeted animation values to pass into the Color control.
-        // FIXME: we can surely make this elegant and generalizable.
-        let mut color_animation_vals = [(0.0, ColorAnimationTarget::default()); N_ANIM];
-        for (i, (val, t)) in animation_vals.iter().copied().enumerate() {
-            if let Some(color_target) = t.as_color_target() {
-                color_animation_vals[i] = (val, color_target);
-            }
-        }
         self.color.render_for_model(
             ColorRenderModel::Rgb,
             group_controls,
-            TargetedAnimationValues(&color_animation_vals),
+            TargetedAnimationValues(&animation_vals.subtarget()),
             &mut dmx_buf[7..10],
         );
         dmx_buf[10] = 0; // useless single white diode "color balance"
@@ -91,9 +82,9 @@ pub enum AnimationTarget {
     Tilt,
 }
 
-impl AnimationTarget {
-    fn as_color_target(self) -> Option<ColorAnimationTarget> {
-        match self {
+impl Subtarget<ColorAnimationTarget> for AnimationTarget {
+    fn as_subtarget(&self) -> Option<ColorAnimationTarget> {
+        match *self {
             Self::Hue => Some(ColorAnimationTarget::Hue),
             Self::Sat => Some(ColorAnimationTarget::Sat),
             Self::Val => Some(ColorAnimationTarget::Val),
