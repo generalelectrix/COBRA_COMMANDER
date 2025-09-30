@@ -2,7 +2,7 @@
 //!
 //! The alien egg sack with the most pastel blue diode of them all. Bleh.
 use crate::fixture::{
-    color::{AnimationTarget as ColorAnimationTarget, Color, Model as ColorRenderModel},
+    color::{Color, Model as ColorRenderModel},
     prelude::*,
 };
 
@@ -10,8 +10,11 @@ use crate::fixture::{
 #[channel_count = 12]
 pub struct IWashLed {
     #[channel_control]
+    #[animate_subtarget(Hue, Sat, Val)]
     color: Color,
+    #[animate]
     pan: Mirrored<RenderBipolarToCoarseAndFine>,
+    #[animate]
     tilt: Mirrored<RenderBipolarToCoarseAndFine>,
 }
 
@@ -58,37 +61,5 @@ impl AnimatedFixture for IWashLed {
         );
         dmx_buf[10] = 0; // useless single white diode "color balance"
         dmx_buf[11] = 0; // fixture reset if set in 101-170
-    }
-}
-
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    strum_macros::EnumString,
-    strum_macros::EnumIter,
-    strum_macros::Display,
-    num_derive::FromPrimitive,
-    num_derive::ToPrimitive,
-)]
-pub enum AnimationTarget {
-    #[default]
-    Hue,
-    Sat,
-    Val,
-    Pan,
-    Tilt,
-}
-
-impl Subtarget<ColorAnimationTarget> for AnimationTarget {
-    fn as_subtarget(&self) -> Option<ColorAnimationTarget> {
-        match *self {
-            Self::Hue => Some(ColorAnimationTarget::Hue),
-            Self::Sat => Some(ColorAnimationTarget::Sat),
-            Self::Val => Some(ColorAnimationTarget::Val),
-            _ => None,
-        }
     }
 }
