@@ -17,13 +17,9 @@ pub struct Astera {
     program: LabeledSelect,
     pattern_direction: Bool<()>,
     pattern_loop: Bool<()>,
-    #[force_osc_control]
     color1: Color,
-    #[force_osc_control]
     color2: Color,
-    #[force_osc_control]
     color3: Color,
-    #[force_osc_control]
     color4: Color,
 }
 

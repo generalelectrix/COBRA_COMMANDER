@@ -1,5 +1,5 @@
 //! Flexible control profile for a single-color fixture.
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use log::error;
 use strum_macros::{EnumString, VariantArray};
 
@@ -7,7 +7,6 @@ use crate::{
     color::*,
     config::Options,
     fixture::{fixture::EnumRenderModel, prelude::*},
-    osc::OscControlMessage,
 };
 
 #[derive(Debug, Control, EmitState)]
@@ -122,24 +121,18 @@ impl Color {
             ),
         }
     }
-}
 
-impl AnimatedFixture for Color {
-    type Target = AnimationTarget;
-    fn render_with_animations(
+    /// Render this color into a DMX output buffer with an explicit color model.
+    ///
+    /// This method is useful for fixtures that embed a Color as a full sub-
+    /// control.
+    pub fn render_for_model(
         &self,
+        model: Model,
         group_controls: &FixtureGroupControls,
-        animation_vals: TargetedAnimationValues<Self::Target>,
+        animation_vals: TargetedAnimationValues<AnimationTarget>,
         dmx_buf: &mut [u8],
     ) {
-        let model = match Model::model_for_mode(group_controls.render_mode) {
-            Ok(m) => m,
-            Err(err) => {
-                error!("failed to render Color: {err}");
-                return;
-            }
-        };
-
         // If a color override has been provided, render it scaled by the level.
         if let Some(mut color_override) = group_controls.color.clone() {
             color_override.lightness *= self.val.control.val();
@@ -181,40 +174,27 @@ impl AnimatedFixture for Color {
     }
 }
 
-impl ControllableFixture for Color {}
+impl AnimatedFixture for Color {
+    type Target = AnimationTarget;
+    fn render_with_animations(
+        &self,
+        group_controls: &FixtureGroupControls,
+        animation_vals: TargetedAnimationValues<Self::Target>,
+        dmx_buf: &mut [u8],
+    ) {
+        let model = match Model::model_for_mode(group_controls.render_mode) {
+            Ok(m) => m,
+            Err(err) => {
+                error!("failed to render Color: {err}");
+                return;
+            }
+        };
 
-impl OscControl<()> for Color {
-    fn control_direct(
-        &mut self,
-        _val: (),
-        _emitter: &dyn crate::osc::EmitScopedOscMessage,
-    ) -> anyhow::Result<()> {
-        bail!("direct control is not implemented for Color controls");
-    }
-
-    fn control(
-        &mut self,
-        msg: &OscControlMessage,
-        emitter: &dyn crate::osc::EmitScopedOscMessage,
-    ) -> anyhow::Result<bool> {
-        if self.hue.control.control(msg, emitter)? {
-            return Ok(true);
-        }
-        if self.sat.control.control(msg, emitter)? {
-            return Ok(true);
-        }
-        if self.val.control.control(msg, emitter)? {
-            return Ok(true);
-        }
-        Ok(false)
-    }
-
-    fn emit_state(&self, emitter: &dyn crate::osc::EmitScopedOscMessage) {
-        self.hue.control.emit_state(emitter);
-        self.sat.control.emit_state(emitter);
-        self.val.control.emit_state(emitter);
+        self.render_for_model(model, group_controls, animation_vals, dmx_buf);
     }
 }
+
+impl ControllableFixture for Color {}
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, VariantArray)]
 pub enum Model {
