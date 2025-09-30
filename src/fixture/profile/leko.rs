@@ -17,7 +17,7 @@ use strum_macros::{EnumString, VariantArray};
 
 use crate::fixture::{fixture::EnumRenderModel, prelude::*};
 
-#[derive(Debug, EmitState, Control)]
+#[derive(Debug, EmitState, Control, Update)]
 pub struct Leko {
     #[channel_control]
     #[animate]
@@ -145,8 +145,6 @@ impl AnimatedFixture for Leko {
         }
     }
 }
-
-impl ControllableFixture for Leko {}
 
 /// Which model of gobo rotator is installed in this leko, or is this the dimmer.
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, EnumString, VariantArray)]

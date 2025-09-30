@@ -1,7 +1,7 @@
 //! Clay Paky Astroscan - drunken sailor extraordinaire
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 9]
 pub struct Astroscan {
     lamp_on: BoolChannel,
@@ -66,8 +66,6 @@ impl Default for Astroscan {
         }
     }
 }
-
-impl ControllableFixture for Astroscan {}
 
 impl AnimatedFixture for Astroscan {
     type Target = AnimationTarget;

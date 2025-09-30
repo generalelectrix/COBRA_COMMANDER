@@ -65,7 +65,7 @@ impl AnimatedFixture for Radiance {
     }
 }
 
-impl ControllableFixture for Radiance {
+impl Update for Radiance {
     fn update(&mut self, _: &MasterControls, delta_t: Duration) {
         if let Some(timer) = self.timer.as_mut() {
             timer.update(delta_t);

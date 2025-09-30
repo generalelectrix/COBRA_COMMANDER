@@ -6,7 +6,7 @@ use crate::fixture::{
     prelude::*,
 };
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 12]
 pub struct IWashLed {
     #[channel_control]
@@ -28,7 +28,6 @@ impl Default for IWashLed {
     }
 }
 
-impl ControllableFixture for IWashLed {}
 
 impl AnimatedFixture for IWashLed {
     type Target = AnimationTarget;

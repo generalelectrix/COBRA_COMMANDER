@@ -5,7 +5,7 @@ use crate::{
 };
 use wled_json_api_library::structures::state::{Seg, State};
 
-#[derive(Debug, EmitState, Control, PatchFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 0]
 pub struct RugDoctor {
     #[channel_control]
@@ -36,7 +36,6 @@ impl NonAnimatedFixture for RugDoctor {
     fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}
 }
 
-impl ControllableFixture for RugDoctor {}
 
 impl RugDoctor {
     fn set_level(&self, state: &mut State) {

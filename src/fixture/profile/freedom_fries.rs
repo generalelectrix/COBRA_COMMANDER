@@ -6,7 +6,7 @@ use super::color::{Color, Model as ColorModel};
 
 use crate::{color::ColorSpace, fixture::prelude::*};
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 8]
 pub struct FreedomFries {
     #[channel_control]
@@ -54,7 +54,6 @@ impl AnimatedFixture for FreedomFries {
     }
 }
 
-impl ControllableFixture for FreedomFries {}
 
 const PROGRAM_SELECT_LABEL: LabelArray = LabelArray {
     control: "ProgramLabel",

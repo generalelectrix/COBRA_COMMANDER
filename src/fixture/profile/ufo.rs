@@ -8,7 +8,7 @@ use crate::fixture::{
     prelude::*,
 };
 
-#[derive(Debug, EmitState, Control, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 16]
 pub struct Ufo {
     #[channel_control]
@@ -36,8 +36,6 @@ impl Default for Ufo {
         }
     }
 }
-
-impl ControllableFixture for Ufo {}
 
 impl AnimatedFixture for Ufo {
     type Target = AnimationTarget;
