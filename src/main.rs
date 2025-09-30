@@ -68,6 +68,14 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::try_parse()?;
 
+    let log_level = if args.debug {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Warn
+    };
+
+    SimpleLogger::init(log_level, LogConfig::default())?;
+
     let patch = {
         let patch_file = File::open(&args.patch_file).with_context(|| {
             format!(
@@ -81,14 +89,6 @@ fn main() -> Result<()> {
         }
         Patch::patch_all(fixtures)?
     };
-
-    let log_level = if args.debug {
-        LevelFilter::Debug
-    } else {
-        LevelFilter::Warn
-    };
-
-    SimpleLogger::init(log_level, LogConfig::default())?;
 
     let audio_device = prompt_audio()?
         .map(|device_name| AudioInput::new(Some(device_name)))
