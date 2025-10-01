@@ -4,6 +4,7 @@ use crate::fixture::prelude::*;
 #[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
 #[channel_count = 2]
 pub struct Hypnotic {
+    #[channel_control]
     on: ChannelLevelBool<Bool<()>>,
     red_laser_on: Bool<()>,
     green_laser_on: Bool<()>,
