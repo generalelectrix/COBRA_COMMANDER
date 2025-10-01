@@ -1,0 +1,184 @@
+- fixture: Color
+  addr:
+    start: 100
+    count: 3
+  options:
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 109
+    count: 2
+  options:
+    kind: SevenChannelRgbw
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 123
+    count: 1
+  options:
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 250
+    count: 1
+  options:
+    kind: SevenChannelRgbw
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 129
+    count: 1
+  options:
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 132
+    count: 1
+  options:
+    kind: SevenChannelRgbw
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 139
+    count: 6
+  options:
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 157
+    count: 1
+  options:
+    kind: SevenChannelRgbw
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 164
+    count: 1
+  options:
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 167
+    count: 1
+  options:
+    kind: SevenChannelRgbw
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 174
+    count: 3
+  options:
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 183
+    count: 2
+  options:
+    kind: SevenChannelRgbw
+    control_color_space: Hsluv
+- fixture: Color
+  addr:
+    start: 197
+    count: 3
+  options:
+    control_color_space: Hsluv
+
+- fixture: Leko
+  addr: 400
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 1
+  options:
+    kind: DhaVarispeed
+- fixture: Leko
+  addr: 401
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 5
+  options:
+    kind: DhaVarispeed
+- fixture: Leko
+  addr: 403
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 440
+  options:
+    kind: GoboSpinnaz
+- fixture: Leko
+  addr: 404
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 444
+  options:
+    kind: GoboSpinnaz
+
+- fixture: Leko
+  addr: 406
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 498
+  options:
+    kind: ApolloRotoQDmx
+- fixture: Leko
+  addr: 407
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 502
+  options:
+    kind: ApolloRotoQDmx
+- fixture: Leko
+  addr: 408
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 506
+  options:
+    kind: ApolloRotoQDmx
+
+- fixture: Leko
+  addr: 410
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 500
+  options:
+    kind: ApolloRotoQDmx
+- fixture: Leko
+  addr: 411
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 504
+  options:
+    kind: ApolloRotoQDmx
+- fixture: Leko
+  addr: 412
+  options:
+    kind: Dimmer
+- fixture: Leko
+  addr: 495
+  options:
+    kind: ApolloSmartMove
+
+- fixture: WizardExtreme
+  addr: 16
+- fixture: WizardExtreme
+  addr: 32
+- fixture: WizardExtreme
+  addr: 48
+- fixture: WizardExtreme
+  addr: 64
+- fixture: WizardExtreme
+  addr: 80
+- fixture: WizardExtreme
+  addr: 272
+- fixture: WizardExtreme
+  addr: 288
+- fixture: WizardExtreme
+  addr: 304
