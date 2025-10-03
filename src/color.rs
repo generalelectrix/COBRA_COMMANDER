@@ -1,5 +1,7 @@
 //! Things related to color spaces, color models, rendering colors, etc.
 
+use std::f64::consts::PI;
+
 use colored::Colorize;
 use hsluv::hsluv_to_rgb;
 use log::warn;
@@ -12,6 +14,8 @@ pub enum ColorSpace {
     /// HSV color space with green shifted to hue = 0.
     #[default]
     Hsv,
+    /// HSI color space with green shifted to hue = 0.
+    Hsi,
     /// HSLuv perceptually uniform color space, green shifted to hue = 0.
     /// www.hsluv.org
     ///
@@ -60,6 +64,37 @@ impl RenderColor for Hsv {
             unit_to_u8(self.sat.val()),
             unit_to_u8(self.val.val()),
         ]
+    }
+}
+
+/// A color in the HSI color space.
+///
+/// The hue coordinate is adjusted to put green at 0.
+/// HSI is a compromise between HSV and HSLuv - it is not perceptually uniform,
+/// but maintains "constant power" across all emitters for a given I.
+///
+/// The RGBW render implementation also makes effective use of the W diode
+/// under the assumption that its emission power is comparable to the other
+/// diodes, ensuring that any given pastel color uses no more than two of the
+/// three RGB emitters, and uses only the W diode when fully desaturated. This
+/// is a particularly useful color space for RGB or RGBW beam fixtures that do
+/// not actually color mix the diodes.
+#[derive(Clone)]
+pub struct Hsi {
+    pub hue: Phase,
+    pub sat: UnipolarFloat,
+    pub intensity: UnipolarFloat,
+}
+
+impl RenderColor for Hsi {
+    fn rgb(&self) -> ColorRgb {
+        hsi_to_rgb(self.hue, self.sat, self.intensity)
+    }
+    fn rgbw(&self) -> ColorRgbw {
+        hsi_to_rgbw(self.hue, self.sat, self.intensity)
+    }
+    fn hsv(&self) -> ColorHsv {
+        unimplemented!("conversion from HSI to HSV is not implemented");
     }
 }
 
@@ -179,6 +214,95 @@ pub fn hsv_to_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> ColorRg
         _ => (val.val(), var_1, var_2),
     };
     [unit_to_u8(rv), unit_to_u8(gv), unit_to_u8(bv)]
+}
+
+/// Convert unit-scaled HSI into a 24-bit RGB color.
+///
+/// NOTE: we shift the hue coordinate by 1/3, to put green at zero instead of red.
+/// This makes it easy to turn a knob between yellow, red, and magenta without
+/// passing through green.
+///
+/// Ported from https://blog.saikoled.com/post/43693602826/why-every-led-light-should-be-using-hsi
+pub fn hsi_to_rgb(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> ColorRgb {
+    let hue = hue + 1. / 3.;
+    let (rv, gv, bv) = if hue.val() < 1. / 3. {
+        let hue_rad = 2. * PI * hue.val();
+        (
+            (1. + sat.val() * hue_rad.cos() / (PI / 3. - hue_rad).cos()),
+            (1. + sat.val() * (1. - hue_rad.cos() / (PI / 3. - hue_rad).cos())),
+            (1. - sat.val()),
+        )
+    } else if hue.val() < 2. / 3. {
+        let hue_rad = 2. * PI * (hue.val() - 1. / 3.);
+        (
+            (1. - sat.val()),
+            (1. + sat.val() * hue_rad.cos() / (PI / 3. - hue_rad).cos()),
+            (1. + sat.val() * (1. - hue_rad.cos() / (PI / 3. - hue_rad).cos())),
+        )
+    } else {
+        let hue_rad = 2. * PI * (hue.val() - 2. / 3.);
+        (
+            (1. + sat.val() * (1. - hue_rad.cos() / (PI / 3. - hue_rad).cos())),
+            (1. - sat.val()),
+            (1. + sat.val() * hue_rad.cos() / (PI / 3. - hue_rad).cos()),
+        )
+    };
+    let i_scale = intensity.val() / 3.0;
+    [
+        unit_to_u8(i_scale * rv),
+        unit_to_u8(i_scale * gv),
+        unit_to_u8(i_scale * bv),
+    ]
+}
+
+/// Convert unit-scaled HSI into a 32-bit RGBW color.
+///
+/// NOTE: we shift the hue coordinate by 1/3, to put green at zero instead of red.
+/// This makes it easy to turn a knob between yellow, red, and magenta without
+/// passing through green.
+///
+/// This implementation ensures that no more than two out of three color diodes
+/// are ever on at a time, which produces much nicer results in fixtures with
+/// poor or absent color mixing.
+///
+/// Ported from https://blog.saikoled.com/post/44677718712/how-to-convert-from-hsi-to-rgb-white
+pub fn hsi_to_rgbw(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> ColorRgbw {
+    let hue = hue + 1. / 3.;
+    let (rv, gv, bv) = if hue.val() < 1. / 3. {
+        let hue_rad = 2. * PI * hue.val();
+        let cos_h = hue_rad.cos();
+        let cos_1047_h = (PI / 3. - hue_rad).cos();
+        (
+            (1. + cos_h / cos_1047_h),
+            (1. + (1. - cos_h / cos_1047_h)),
+            0.,
+        )
+    } else if hue.val() < 2. / 3. {
+        let hue_rad = 2. * PI * (hue.val() - 1. / 3.);
+        let cos_h = hue_rad.cos();
+        let cos_1047_h = (PI / 3. - hue_rad).cos();
+        (
+            0.,
+            (1. + cos_h / cos_1047_h),
+            (1. + (1. - cos_h / cos_1047_h)),
+        )
+    } else {
+        let hue_rad = 2. * PI * (hue.val() - 2. / 3.);
+        let cos_h = hue_rad.cos();
+        let cos_1047_h = (PI / 3. - hue_rad).cos();
+        (
+            (1. + (1. - cos_h / cos_1047_h)),
+            0.,
+            (1. + cos_h / cos_1047_h),
+        )
+    };
+    let i_scale = sat.val() * intensity.val() / 3.0;
+    [
+        unit_to_u8(i_scale * rv),
+        unit_to_u8(i_scale * gv),
+        unit_to_u8(i_scale * bv),
+        unit_to_u8((1. - sat.val()) * intensity.val()),
+    ]
 }
 
 fn unit_to_u8(v: f64) -> u8 {
