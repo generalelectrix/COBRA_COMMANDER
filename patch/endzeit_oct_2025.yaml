@@ -1,0 +1,58 @@
+- fixture: Color
+  addr:
+    start: 1
+    count: 17
+  options:
+    control_color_space: Hsluv
+
+- fixture: IWashLed
+  group: StageIwash
+  addr: 204
+- fixture: IWashLed
+  group: StageIwash
+  addr: 322
+  mirror: True
+
+- fixture: IWashLed
+  addr: 192
+- fixture: IWashLed
+  addr: 216
+- fixture: IWashLed
+  addr: 310
+  mirror: True
+- fixture: IWashLed
+  addr: 334
+  mirror: True
+
+- fixture: Ufo
+  addr: 256
+- fixture: Ufo
+  addr: 270
+- fixture: Ufo
+  addr: 288
+- fixture: Ufo
+  addr: 485
+- fixture: Ufo
+  addr: 373
+  mirror: True
+- fixture: Ufo
+  addr: 389
+  mirror: True
+- fixture: Ufo
+  addr: 405
+  mirror: True
+- fixture: Ufo
+  addr: 421
+  mirror: True
+- fixture: WizardExtreme
+  addr: 96
+- fixture: WizardExtreme
+  addr: 112
+- fixture: WizardExtreme
+  addr: 128
+- fixture: WizardExtreme
+  addr: 144
+- fixture: WizardExtreme
+  addr: 160
+- fixture: WizardExtreme
+  addr: 176
