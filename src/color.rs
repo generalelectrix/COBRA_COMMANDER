@@ -221,6 +221,8 @@ pub fn hsv_to_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> ColorRg
 /// NOTE: we shift the hue coordinate by 1/3, to put green at zero instead of red.
 /// This makes it easy to turn a knob between yellow, red, and magenta without
 /// passing through green.
+///
+/// Ported from https://blog.saikoled.com/post/43693602826/why-every-led-light-should-be-using-hsi
 pub fn hsi_to_rgb(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> ColorRgb {
     let (rv, gv, bv) = if hue.val() < 1. / 3. {
         let hue_rad = 2. * PI * hue.val();
@@ -249,6 +251,55 @@ pub fn hsi_to_rgb(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> C
         unit_to_u8(i_scale * rv),
         unit_to_u8(i_scale * gv),
         unit_to_u8(i_scale * bv),
+    ]
+}
+
+/// Convert unit-scaled HSI into a 32-bit RGBW color.
+///
+/// NOTE: we shift the hue coordinate by 1/3, to put green at zero instead of red.
+/// This makes it easy to turn a knob between yellow, red, and magenta without
+/// passing through green.
+///
+/// This implementation ensures that no more than two out of three color diodes
+/// are ever on at a time, which produces much nicer results in fixtures with
+/// poor or absent color mixing.
+///
+/// Ported from https://blog.saikoled.com/post/44677718712/how-to-convert-from-hsi-to-rgb-white
+pub fn hsi_to_rgbw(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> ColorRgbw {
+    let (rv, gv, bv) = if hue.val() < 1. / 3. {
+        let hue_rad = 2. * PI * hue.val();
+        let cos_h = hue_rad.cos();
+        let cos_1047_h = (PI / 3. - hue_rad).cos();
+        (
+            (1. + cos_h / cos_1047_h),
+            (1. + (1. - cos_h / cos_1047_h)),
+            0.,
+        )
+    } else if hue.val() < 2. / 3. {
+        let hue_rad = 2. * PI * (hue.val() - 1. / 3.);
+        let cos_h = hue_rad.cos();
+        let cos_1047_h = (PI / 3. - hue_rad).cos();
+        (
+            0.,
+            (1. + cos_h / cos_1047_h),
+            (1. + (1. - cos_h / cos_1047_h)),
+        )
+    } else {
+        let hue_rad = 2. * PI * (hue.val() - 2. / 3.);
+        let cos_h = hue_rad.cos();
+        let cos_1047_h = (PI / 3. - hue_rad).cos();
+        (
+            (1. + (1. - cos_h / cos_1047_h)),
+            0.,
+            (1. + cos_h / cos_1047_h),
+        )
+    };
+    let i_scale = sat.val() * intensity.val() / 3.0;
+    [
+        unit_to_u8(i_scale * rv),
+        unit_to_u8(i_scale * gv),
+        unit_to_u8(i_scale * bv),
+        unit_to_u8((1. - sat.val()) * intensity.val()),
     ]
 }
 
