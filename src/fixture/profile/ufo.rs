@@ -26,13 +26,8 @@ pub struct Ufo {
 impl Default for Ufo {
     fn default() -> Self {
         Self {
-<<<<<<< Updated upstream
             color: Color::for_subcontrol(None, crate::color::ColorSpace::Hsi),
-            rotation: Bipolar::split_channel("Rotation", 5, 191, 128, 192, 255, 0)
-=======
-            color: Color::for_subcontrol(None, crate::color::ColorSpace::Hsv),
             rotation: Bipolar::split_channel("Rotation", 3, 191, 128, 192, 255, 0)
->>>>>>> Stashed changes
                 .with_detent()
                 .with_mirroring(true)
                 .with_channel_knob(2),
