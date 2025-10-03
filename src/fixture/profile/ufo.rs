@@ -26,7 +26,7 @@ pub struct Ufo {
 impl Default for Ufo {
     fn default() -> Self {
         Self {
-            color: Color::for_subcontrol(None, crate::color::ColorSpace::Hsv),
+            color: Color::for_subcontrol(None, crate::color::ColorSpace::Hsi),
             rotation: Bipolar::split_channel("Rotation", 5, 191, 128, 192, 255, 0)
                 .with_detent()
                 .with_mirroring(true)
