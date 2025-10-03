@@ -111,6 +111,14 @@ impl Color {
                     val: self.val.control.val(),
                 },
             ),
+            ColorSpace::Hsi => model.render(
+                dmx_buf,
+                Hsi {
+                    hue: self.hue.control.val(),
+                    sat: self.sat.control.val(),
+                    intensity: self.val.control.val(),
+                },
+            ),
             ColorSpace::Hsluv => model.render(
                 dmx_buf,
                 Hsluv {
@@ -160,6 +168,14 @@ impl Color {
                     hue: Phase::new(hue),
                     sat: UnipolarFloat::new(sat),
                     val: UnipolarFloat::new(val),
+                },
+            ),
+            ColorSpace::Hsi => model.render(
+                dmx_buf,
+                Hsi {
+                    hue: Phase::new(hue),
+                    sat: UnipolarFloat::new(sat),
+                    intensity: UnipolarFloat::new(val),
                 },
             ),
             ColorSpace::Hsluv => model.render(
