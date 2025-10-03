@@ -224,6 +224,7 @@ pub fn hsv_to_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> ColorRg
 ///
 /// Ported from https://blog.saikoled.com/post/43693602826/why-every-led-light-should-be-using-hsi
 pub fn hsi_to_rgb(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> ColorRgb {
+    let hue = hue + 1. / 3.;
     let (rv, gv, bv) = if hue.val() < 1. / 3. {
         let hue_rad = 2. * PI * hue.val();
         (
@@ -266,6 +267,7 @@ pub fn hsi_to_rgb(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> C
 ///
 /// Ported from https://blog.saikoled.com/post/44677718712/how-to-convert-from-hsi-to-rgb-white
 pub fn hsi_to_rgbw(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> ColorRgbw {
+    let hue = hue + 1. / 3.;
     let (rv, gv, bv) = if hue.val() < 1. / 3. {
         let hue_rad = 2. * PI * hue.val();
         let cos_h = hue_rad.cos();
