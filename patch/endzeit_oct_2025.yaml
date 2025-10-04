@@ -1,4 +1,17 @@
 - fixture: Color
+  group: DJLeft
+  addr: 80
+  options:
+    kind: DimmerRgbw
+    control_color_space: Hsluv
+- fixture: Color
+  group: DJRight
+  addr: 87
+  options:
+    kind: DimmerRgbw
+    control_color_space: Hsluv
+
+- fixture: Color
   addr:
     start: 1
     count: 17
@@ -44,6 +57,7 @@
 - fixture: Ufo
   addr: 421
   mirror: True
+
 - fixture: WizardExtreme
   addr: 96
 - fixture: WizardExtreme
@@ -54,5 +68,17 @@
   addr: 144
 - fixture: WizardExtreme
   addr: 160
+  mirror: True
 - fixture: WizardExtreme
   addr: 176
+  mirror: True
+- fixture: WizardExtreme
+  addr: 448
+  mirror: True
+- fixture: WizardExtreme
+  addr: 464
+  mirror: True
+
+- fixture: Radiance
+  addr: 500
+  channel: False
