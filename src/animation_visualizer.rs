@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tunnels::{animation::Animation, clock_server::SharedClockData};
 use zero_configure::pub_sub::{PublisherService, SubscriberService};
 
-pub fn run() -> Result<()> {
+pub fn run_animation_visualizer() -> Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([350.0, 200.0]),
         ..Default::default()
@@ -51,12 +51,15 @@ impl eframe::App for AnimationVisualizer {
         };
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            Plot::new("My Plot").show(ui, |plot_ui| {
-                plot_ui.line(Line::new(
-                    "curve",
-                    PlotPoints::from_explicit_callback(get_val, 0.0..1.0, 100),
-                ));
-            });
+            Plot::new("My Plot")
+                .default_x_bounds(0.0, 1.0)
+                .default_y_bounds(-1.0, 1.0)
+                .show(ui, |plot_ui| {
+                    plot_ui.line(Line::new(
+                        "curve",
+                        PlotPoints::from_explicit_callback(get_val, 0.0..0.999, 1000),
+                    ));
+                });
         });
     }
 }

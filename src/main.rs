@@ -1,6 +1,6 @@
 use anyhow::Context as _;
 use anyhow::{bail, Result};
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use clock_service::prompt_start_clock_service;
 use fixture::Patch;
 use local_ip_address::local_ip;
@@ -22,7 +22,9 @@ use tunnels::midi::{list_ports, DeviceSpec};
 use tunnels_lib::prompt::{prompt_bool, prompt_indexed_value};
 use zmq::Context;
 
-use crate::animation_visualizer::{animation_publisher, run, AnimationPublisher};
+use crate::animation_visualizer::{
+    animation_publisher, run_animation_visualizer, AnimationPublisher,
+};
 use crate::config::FixtureGroupConfig;
 use crate::control::Controller;
 use crate::midi::ColorOrgan;
@@ -44,9 +46,31 @@ mod show;
 mod util;
 mod wled;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(about)]
-struct Args {
+struct Cli {
+    /// If true, provide verbose logging.
+    #[arg(long)]
+    debug: bool,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run the controller.
+    Run(RunArgs),
+
+    /// Run the animation visualizer.
+    Viz,
+}
+
+#[derive(Args)]
+struct RunArgs {
+    /// Path to a YAML file containing the fixture patch.
+    patch_file: PathBuf,
+
     /// Check that the provided patch file is valid and quit.
     #[arg(long)]
     check_patch: bool,
@@ -58,19 +82,10 @@ struct Args {
     /// URL to use to communicate with a WLED instance.
     #[arg(long)]
     wled_addr: Option<Url>,
-
-    /// If true, provide verbose logging.
-    #[arg(long)]
-    debug: bool,
-
-    /// Path to a YAML file containing the fixture patch.
-    patch_file: PathBuf,
 }
 
 fn main() -> Result<()> {
-    run().unwrap();
-
-    let args = Args::try_parse()?;
+    let args = Cli::try_parse()?;
 
     let log_level = if args.debug {
         LevelFilter::Debug
@@ -80,6 +95,13 @@ fn main() -> Result<()> {
 
     SimpleLogger::init(log_level, LogConfig::default())?;
 
+    match args.command {
+        Command::Run(args) => run_show(args),
+        Command::Viz => run_animation_visualizer(),
+    }
+}
+
+fn run_show(args: RunArgs) -> Result<()> {
     let patch = {
         let patch_file = File::open(&args.patch_file).with_context(|| {
             format!(
