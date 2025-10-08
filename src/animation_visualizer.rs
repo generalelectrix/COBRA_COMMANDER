@@ -6,8 +6,8 @@ use std::{
     time::Duration,
 };
 
-use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use eframe::egui::{self, Color32};
+use egui_plot::{Line, Plot, PlotPoint, PlotPoints, Points};
 use number::Phase;
 use serde::{Deserialize, Serialize};
 use tunnels::{animation::Animation, clock_server::SharedClockData};
@@ -19,46 +19,81 @@ pub fn run_animation_visualizer() -> Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "My egui App with a plot",
+        "Cobra Commander Animation Visualizer",
         options,
         Box::new(|cc| {
             let ctx = cc.egui_ctx.clone();
             let state = start_service(zmq::Context::new(), move || ctx.request_repaint())?;
 
-            Ok(Box::new(AnimationVisualizer { state }))
+            Ok(Box::new(AnimationVisualizer {
+                state,
+                wave: vec![],
+                dots: vec![],
+            }))
         }),
     )
     .unwrap();
     Ok(())
 }
 
-#[derive(Default)]
 struct AnimationVisualizer {
     state: Arc<Mutex<AnimationServiceState>>,
+    wave: Vec<PlotPoint>,
+    dots: Vec<PlotPoint>,
 }
 
 impl eframe::App for AnimationVisualizer {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let borrowed = self.state.lock().unwrap();
+        let state = self.state.lock().unwrap();
 
-        let get_val = |phase: f64| {
-            borrowed.animation.get_value(
+        // FIXME: deduplicate this logic between here and FixtureGroup.
+        let phase_offset_per_fixture = 1.0 / state.fixture_count as f64;
+
+        const NUM_WAVE_POINTS: usize = 1000;
+
+        self.wave.clear();
+
+        // Smooth wave values; we derive an offset index to correctly
+        // render the offsetting behavior for noise waveforms.
+        self.wave.extend((0..NUM_WAVE_POINTS).map(|i| {
+            let phase = i as f64 / NUM_WAVE_POINTS as f64;
+            let offset_index = (phase / phase_offset_per_fixture) as usize;
+            let y = state.animation.get_value(
                 Phase::new(phase),
-                0,
-                &borrowed.clocks.clock_bank,
-                borrowed.clocks.audio_envelope,
-            )
-        };
+                offset_index,
+                &state.clocks.clock_bank,
+                state.clocks.audio_envelope,
+            );
+            PlotPoint::new(phase, y)
+        }));
+
+        self.dots.clear();
+        self.dots.extend((0..state.fixture_count).map(|i| {
+            let phase = i as f64 * phase_offset_per_fixture;
+            let y = state.animation.get_value(
+                Phase::new(phase),
+                i,
+                &state.clocks.clock_bank,
+                state.clocks.audio_envelope,
+            );
+            PlotPoint::new(phase, y)
+        }));
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            Plot::new("My Plot")
+            Plot::new("Animation")
                 .default_x_bounds(0.0, 1.0)
                 .default_y_bounds(-1.0, 1.0)
                 .show(ui, |plot_ui| {
-                    plot_ui.line(Line::new(
-                        "curve",
-                        PlotPoints::from_explicit_callback(get_val, 0.0..0.999, 1000),
-                    ));
+                    plot_ui.line(
+                        Line::new("Scaled Waveform", PlotPoints::Borrowed(&self.wave))
+                            .color(Color32::WHITE)
+                            .width(2.0),
+                    );
+                    plot_ui.points(
+                        Points::new("Fixture Values", PlotPoints::Borrowed(&self.dots))
+                            .color(Color32::CYAN)
+                            .radius(5.0),
+                    );
                 });
         });
     }
@@ -66,8 +101,12 @@ impl eframe::App for AnimationVisualizer {
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct AnimationServiceState {
+    /// Animation state.
     pub animation: Animation,
+    /// Clock state.
     pub clocks: SharedClockData,
+    /// The number of fixtures patched in the current group.
+    pub fixture_count: usize,
 }
 
 fn start_service(
@@ -88,7 +127,10 @@ fn start_service(
     };
     println!("Connecting to {provider}...");
     let mut receiver = service.subscribe(&provider, None)?;
-    let storage = Arc::new(Mutex::new(AnimationServiceState::default()));
+    let storage = Arc::new(Mutex::new(AnimationServiceState {
+        fixture_count: 1,
+        ..Default::default()
+    }));
     let storage_handle = storage.clone();
     thread::spawn(move || loop {
         let msg = match receiver.receive_msg(true) {

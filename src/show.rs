@@ -393,6 +393,7 @@ impl Show {
                 .cloned()
                 .unwrap_or_default(),
             clocks: self.clocks.get(),
+            fixture_count: group.fixture_configs().len(),
         })
     }
 }
