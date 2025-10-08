@@ -1,6 +1,6 @@
 use anyhow::Context as _;
 use anyhow::{bail, Result};
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use clock_service::prompt_start_clock_service;
 use fixture::Patch;
 use local_ip_address::local_ip;
@@ -22,12 +22,16 @@ use tunnels::midi::{list_ports, DeviceSpec};
 use tunnels_lib::prompt::{prompt_bool, prompt_indexed_value};
 use zmq::Context;
 
+use crate::animation_visualizer::{
+    animation_publisher, run_animation_visualizer, AnimationPublisher,
+};
 use crate::config::FixtureGroupConfig;
 use crate::control::Controller;
 use crate::midi::ColorOrgan;
 use crate::show::Show;
 
 mod animation;
+mod animation_visualizer;
 mod channel;
 mod clock_service;
 mod color;
@@ -42,9 +46,31 @@ mod show;
 mod util;
 mod wled;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(about)]
-struct Args {
+struct Cli {
+    /// If true, provide verbose logging.
+    #[arg(long)]
+    debug: bool,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run the controller.
+    Run(RunArgs),
+
+    /// Run the animation visualizer.
+    Viz,
+}
+
+#[derive(Args)]
+struct RunArgs {
+    /// Path to a YAML file containing the fixture patch.
+    patch_file: PathBuf,
+
     /// Check that the provided patch file is valid and quit.
     #[arg(long)]
     check_patch: bool,
@@ -56,17 +82,10 @@ struct Args {
     /// URL to use to communicate with a WLED instance.
     #[arg(long)]
     wled_addr: Option<Url>,
-
-    /// If true, provide verbose logging.
-    #[arg(long)]
-    debug: bool,
-
-    /// Path to a YAML file containing the fixture patch.
-    patch_file: PathBuf,
 }
 
 fn main() -> Result<()> {
-    let args = Args::try_parse()?;
+    let args = Cli::try_parse()?;
 
     let log_level = if args.debug {
         LevelFilter::Debug
@@ -76,6 +95,13 @@ fn main() -> Result<()> {
 
     SimpleLogger::init(log_level, LogConfig::default())?;
 
+    match args.command {
+        Command::Run(args) => run_show(args),
+        Command::Viz => run_animation_visualizer(),
+    }
+}
+
+fn run_show(args: RunArgs) -> Result<()> {
     let patch = {
         let patch_file = File::open(&args.patch_file).with_context(|| {
             format!(
@@ -94,7 +120,9 @@ fn main() -> Result<()> {
         .map(|device_name| AudioInput::new(Some(device_name)))
         .transpose()?;
 
-    let clocks = if let Some(clock_service) = prompt_start_clock_service(Context::new())? {
+    let zmq_ctx = Context::new();
+
+    let clocks = if let Some(clock_service) = prompt_start_clock_service(zmq_ctx.clone())? {
         if let Some(audio_input) = audio_device {
             let mut audio_controls = GroupControlMap::default();
             crate::osc::audio::map_controls(&mut audio_controls);
@@ -117,6 +145,8 @@ fn main() -> Result<()> {
             audio_controls,
         }
     };
+
+    let animation_service = prompt_start_animation_service(&zmq_ctx)?;
 
     match local_ip() {
         Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
@@ -159,7 +189,7 @@ fn main() -> Result<()> {
         dmx_ports.push(select_port()?);
     }
 
-    let mut show = Show::new(patch, controller, clocks)?;
+    let mut show = Show::new(patch, controller, clocks, animation_service)?;
 
     show.run(&mut dmx_ports);
 
@@ -170,4 +200,11 @@ fn check_patch(fixtures: Vec<FixtureGroupConfig>) -> Result<()> {
     Patch::patch_all(fixtures)?;
     println!("Patch is OK.");
     Ok(())
+}
+
+fn prompt_start_animation_service(ctx: &Context) -> Result<Option<AnimationPublisher>> {
+    if !prompt_bool("Run animation service?")? {
+        return Ok(None);
+    }
+    Ok(Some(animation_publisher(ctx)?))
 }
