@@ -27,7 +27,8 @@ pub fn run_animation_visualizer() -> Result<()> {
 
             Ok(Box::new(AnimationVisualizer {
                 state,
-                wave: vec![],
+                preview: vec![],
+                live: vec![],
                 dots: vec![],
             }))
         }),
@@ -37,8 +38,14 @@ pub fn run_animation_visualizer() -> Result<()> {
 }
 
 struct AnimationVisualizer {
+    /// Current animation service state.
     state: Arc<Mutex<AnimationServiceState>>,
-    wave: Vec<PlotPoint>,
+    /// Buffer for rendering the "preview" visualization of the waveform; this
+    /// follows the phase evolution but always renders with an amplitude of 1.
+    preview: Vec<PlotPoint>,
+    /// Buffer for rendering the "live" visualization of the waveform.
+    live: Vec<PlotPoint>,
+    /// Buffer for rendering the individual dots for each fixture.
     dots: Vec<PlotPoint>,
 }
 
@@ -51,20 +58,31 @@ impl eframe::App for AnimationVisualizer {
 
         const NUM_WAVE_POINTS: usize = 1000;
 
-        self.wave.clear();
-
         // Smooth wave values; we derive an offset index to correctly
         // render the offsetting behavior for noise waveforms.
-        self.wave.extend((0..NUM_WAVE_POINTS).map(|i| {
+        self.preview.clear();
+        self.preview.extend((0..NUM_WAVE_POINTS).map(|i| {
             let phase = i as f64 / NUM_WAVE_POINTS as f64;
             let offset_index = (phase / phase_offset_per_fixture) as usize;
-            let y = state.animation.get_value(
+            let y = state.animation.get_unit_value(
                 Phase::new(phase),
                 offset_index,
                 &state.clocks.clock_bank,
-                state.clocks.audio_envelope,
             );
             PlotPoint::new(phase, y)
+        }));
+
+        // The "live" waveform is just the rescaled version.
+        self.live.clear();
+        self.live.extend(self.preview.iter().map(|point| {
+            PlotPoint::new(
+                point.x,
+                state.animation.scale_value(
+                    &state.clocks.clock_bank,
+                    state.clocks.audio_envelope,
+                    point.y,
+                ),
+            )
         }));
 
         self.dots.clear();
@@ -85,7 +103,12 @@ impl eframe::App for AnimationVisualizer {
                 .default_y_bounds(-1.0, 1.0)
                 .show(ui, |plot_ui| {
                     plot_ui.line(
-                        Line::new("Scaled Waveform", PlotPoints::Borrowed(&self.wave))
+                        Line::new("Unit Waveform", PlotPoints::Borrowed(&self.preview))
+                            .color(Color32::DARK_RED)
+                            .width(2.0),
+                    );
+                    plot_ui.line(
+                        Line::new("Scaled Waveform", PlotPoints::Borrowed(&self.live))
                             .color(Color32::WHITE)
                             .width(2.0),
                     );
