@@ -2,12 +2,13 @@ use std::time::{Duration, Instant};
 
 use crate::{
     animation::AnimationUIState,
+    animation_visualizer::{AnimationPublisher, AnimationServiceState},
     channel::{ChannelStateEmitter, Channels},
     clock_service::ClockService,
     color::Hsluv,
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
-    fixture::Patch,
+    fixture::{animation_target::ControllableTargetedAnimation, Patch},
     master::MasterControls,
     midi::{MidiControlMessage, MidiHandler},
     osc::{GroupControlMap, OscControlMessage, ScopedControlEmitter},
@@ -33,6 +34,7 @@ pub struct Show {
     master_controls: MasterControls,
     animation_ui_state: AnimationUIState,
     clocks: Clocks,
+    animation_service: Option<AnimationPublisher>,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -123,7 +125,12 @@ const CONTROL_TIMEOUT: Duration = Duration::from_millis(1);
 const UPDATE_INTERVAL: Duration = Duration::from_millis(20);
 
 impl Show {
-    pub fn new(mut patch: Patch, controller: Controller, clocks: Clocks) -> Result<Self> {
+    pub fn new(
+        mut patch: Patch,
+        controller: Controller,
+        clocks: Clocks,
+        animation_service: Option<AnimationPublisher>,
+    ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
         let master_controls = MasterControls::new();
@@ -139,6 +146,7 @@ impl Show {
             master_controls,
             animation_ui_state,
             clocks,
+            animation_service,
         };
         show.refresh_ui()?;
         Ok(show)
@@ -318,6 +326,9 @@ impl Show {
         let clock_state = self.clocks.get();
         self.master_controls.clock_state = clock_state.clock_bank;
         self.master_controls.audio_envelope = clock_state.audio_envelope;
+        if let Err(err) = self.publish_animation_state() {
+            error!("Animation state publishing error: {err}.");
+        };
     }
 
     /// Render the state of the show out to DMX.
@@ -358,6 +369,31 @@ impl Show {
         self.clocks.emit_state(&mut self.controller);
 
         Ok(())
+    }
+
+    /// If we have a animation publisher configured, send current state.
+    fn publish_animation_state(&mut self) -> Result<()> {
+        let Some(anim_pub) = self.animation_service.as_mut() else {
+            return Ok(());
+        };
+        let Some(current_channel) = self.channels.current_channel() else {
+            return Ok(());
+        };
+        let group = self
+            .channels
+            .group_by_channel(&self.patch, current_channel)?;
+        let animation_index = self
+            .animation_ui_state
+            .animation_index_for_channel(current_channel);
+        // FIXME: would be nice to avoid the extra memcopy here...
+        anim_pub.send(&AnimationServiceState {
+            animation: group
+                .get_animation(animation_index)
+                .map(ControllableTargetedAnimation::anim)
+                .cloned()
+                .unwrap_or_default(),
+            clocks: self.clocks.get(),
+        })
     }
 }
 

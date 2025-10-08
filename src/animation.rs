@@ -146,7 +146,7 @@ impl AnimationUIState {
         Some(self.current_animation_with_index_mut(channel, group)?.0)
     }
 
-    fn animation_index_for_channel(&self, channel: ChannelId) -> usize {
+    pub fn animation_index_for_channel(&self, channel: ChannelId) -> usize {
         self.selected_animator_by_channel
             .get(&channel)
             .cloned()
