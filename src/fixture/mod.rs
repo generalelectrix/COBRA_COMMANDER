@@ -39,7 +39,7 @@ pub mod prelude {
     pub use super::fixture::{
         AnimatedFixture, FixtureType, NonAnimatedFixture, RenderMode, Update,
     };
-    pub use super::patch::{PatchAnimatedFixture, PatchFixture};
+    pub use super::patch::{AsPatchOption, PatchAnimatedFixture, PatchFixture, PatchOption};
     pub use super::FixtureGroupControls;
     pub use crate::channel::ChannelStateEmitter;
     pub use crate::control::EmitControlMessage;

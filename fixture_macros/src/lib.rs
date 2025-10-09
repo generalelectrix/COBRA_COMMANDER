@@ -47,6 +47,9 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
             fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
                 Ok((Self::default(), None))
             }
+            fn options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
+                vec![]
+            }
         }
 
         #register

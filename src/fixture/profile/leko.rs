@@ -13,7 +13,7 @@ use std::str::FromStr;
 use anyhow::Context;
 use log::error;
 use ordered_float::OrderedFloat;
-use strum_macros::{EnumString, VariantArray};
+use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 
 use crate::fixture::{fixture::EnumRenderModel, prelude::*};
 
@@ -63,6 +63,10 @@ impl PatchAnimatedFixture for Leko {
         let model =
             Model::from_str(&kind).with_context(|| format!("invalid kind option: {kind}"))?;
         Ok((Default::default(), Some(model.render_mode())))
+    }
+
+    fn options() -> Vec<(String, PatchOption)> {
+        vec![("kind".to_string(), Model::patch_option())]
     }
 }
 
@@ -147,7 +151,9 @@ impl AnimatedFixture for Leko {
 }
 
 /// Which model of gobo rotator is installed in this leko, or is this the dimmer.
-#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, EnumString, VariantArray)]
+#[derive(
+    Default, Debug, Clone, Copy, Eq, PartialEq, EnumString, VariantArray, Display, EnumIter,
+)]
 enum Model {
     /// Dimmer channel.
     #[default]

@@ -1,7 +1,7 @@
 //! Flexible control profile for a single-color fixture.
 use anyhow::{Context, Result};
 use log::error;
-use strum_macros::{EnumString, VariantArray};
+use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 
 use crate::{
     color::*,
@@ -60,6 +60,16 @@ impl PatchAnimatedFixture for Color {
             .unwrap_or_default();
         let c = Self::for_subcontrol(None, space);
         Ok((c, Some(render_mode)))
+    }
+
+    fn options() -> Vec<(String, PatchOption)> {
+        vec![
+            ("kind".to_string(), Model::patch_option()),
+            (
+                "control_color_space".to_string(),
+                ColorSpace::patch_option(),
+            ),
+        ]
     }
 }
 
@@ -210,7 +220,9 @@ impl AnimatedFixture for Color {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, VariantArray)]
+#[derive(
+    Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, VariantArray, Display, EnumIter,
+)]
 pub enum Model {
     #[default]
     /// RGB in 3 DMX channels.
