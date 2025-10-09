@@ -6,7 +6,7 @@ use std::time::Duration;
 use anyhow::{bail, Result};
 use number::Phase;
 use serde::{Deserialize, Serialize};
-use strum::VariantArray;
+use strum::{IntoEnumIterator, VariantArray};
 
 use super::animation_target::{
     ControllableTargetedAnimation, TargetedAnimationValues, TargetedAnimations, N_ANIM,
@@ -14,6 +14,7 @@ use super::animation_target::{
 use super::FixtureGroupControls;
 use crate::channel::ChannelControlMessage;
 use crate::fixture::animation_target::AnimationTarget;
+use crate::fixture::patch::{AsPatchOption, PatchOption};
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 

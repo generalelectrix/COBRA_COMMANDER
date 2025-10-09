@@ -40,6 +40,10 @@ impl PatchAnimatedFixture for Radiance {
         }
         Ok((s, None))
     }
+
+    fn options() -> Vec<(String, PatchOption)> {
+        vec![]
+    }
 }
 
 register_patcher!(Radiance);

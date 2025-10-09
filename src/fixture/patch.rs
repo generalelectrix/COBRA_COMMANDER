@@ -3,6 +3,9 @@ use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
+use std::str::FromStr;
+use strum::IntoEnumIterator;
 
 use anyhow::bail;
 use log::info;
@@ -344,9 +347,32 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Sized + 'static {
     /// counts for different individual specific fixtures.
     fn channel_count(&self, render_mode: Option<RenderMode>) -> usize;
 
+    /// Return the menu of patch options for this fixture type.
+    fn options() -> Vec<(String, PatchOption)>;
+
     /// Create a new instance of the fixture from the provided options.
     ///
     /// Fixtures should remove all recognized items from Options.
     /// Any unhandled options remaining will result in a patch error.
     fn new(options: &mut Options) -> Result<(Self, Option<RenderMode>)>;
+}
+
+/// The kinds of patch options that fixtures can specify.
+pub enum PatchOption {
+    /// Select a specific option from a menu.
+    Select(Vec<String>),
+}
+
+/// Things that can be converted into patch options.
+pub trait AsPatchOption {
+    fn patch_option() -> PatchOption;
+}
+
+impl<T> AsPatchOption for T
+where
+    T: IntoEnumIterator + Display,
+{
+    fn patch_option() -> PatchOption {
+        PatchOption::Select(Self::iter().map(|x| x.to_string()).collect())
+    }
 }
