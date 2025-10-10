@@ -44,6 +44,11 @@ pub struct Patch {
 pub static PATCHERS: [Patcher];
 
 impl Patch {
+    /// Return the full menu of fixtures we can patch, sorted by name.
+    pub fn menu() -> Vec<Patcher> {
+        PATCHERS.iter().cloned().sorted_by_key(|p| p.name).collect()
+    }
+
     /// Initialize a new fixture patch.
     pub fn new() -> Self {
         assert!(!PATCHERS.is_empty());
@@ -262,6 +267,7 @@ pub struct PatchCandidate {
     fixture: Box<dyn Fixture>,
 }
 
+#[derive(Clone)]
 pub struct Patcher {
     pub name: FixtureType,
     pub func: fn(&str, &Options) -> Option<Result<PatchCandidate>>,
