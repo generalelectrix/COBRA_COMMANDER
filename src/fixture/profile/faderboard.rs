@@ -20,6 +20,10 @@ impl PatchFixture for Faderboard {
     fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
         Ok((Self::default(), None))
     }
+
+    fn options() -> Vec<(String, PatchOption)> {
+        vec![]
+    }
 }
 
 register_patcher!(Faderboard);

@@ -4,7 +4,6 @@ use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-use std::str::FromStr;
 use strum::IntoEnumIterator;
 
 use anyhow::bail;
@@ -99,7 +98,7 @@ impl Patch {
     fn get_candidate(&self, name: &str, options: &Options) -> Result<PatchCandidate> {
         let mut candidates = PATCHERS
             .iter()
-            .flat_map(|p| p(name, options))
+            .flat_map(|p| (p.func)(name, options))
             .collect::<Result<Vec<_>>>()
             .with_context(|| format!("patching {name}"))?;
         let candidate = match candidates.len() {
@@ -263,7 +262,11 @@ pub struct PatchCandidate {
     fixture: Box<dyn Fixture>,
 }
 
-pub type Patcher = fn(&str, &Options) -> Option<Result<PatchCandidate>>;
+pub struct Patcher {
+    pub name: FixtureType,
+    pub func: fn(&str, &Options) -> Option<Result<PatchCandidate>>,
+    pub options: fn() -> Vec<(String, PatchOption)>,
+}
 
 /// Fixture constructor trait to handle patching non-animating fixtures.
 pub trait PatchFixture: NonAnimatedFixture + Sized + 'static {
@@ -300,6 +303,9 @@ pub trait PatchFixture: NonAnimatedFixture + Sized + 'static {
     /// A render mode is provided for fixtures that may have different channel
     /// counts for different individual specific fixtures.
     fn channel_count(&self, render_mode: Option<RenderMode>) -> usize;
+
+    /// Return the menu of patch options for this fixture type.
+    fn options() -> Vec<(String, PatchOption)>;
 
     /// Create a new instance of the fixture from the provided options.
     ///
@@ -361,6 +367,9 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Sized + 'static {
 pub enum PatchOption {
     /// Select a specific option from a menu.
     Select(Vec<String>),
+
+    /// A network address.
+    SocketAddr,
 }
 
 /// Things that can be converted into patch options.
