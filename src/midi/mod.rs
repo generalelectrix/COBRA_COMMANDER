@@ -6,7 +6,8 @@ use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{
-    channel::StateChange as ChannelStateChange, midi::device::cmd_mm1::BehringerCmdMM1,
+    channel::StateChange as ChannelStateChange,
+    midi::device::{amx::AkaiAmx, cmd_mm1::BehringerCmdMM1},
     show::ShowControlMessage,
 };
 use tunnels::{
@@ -26,6 +27,7 @@ pub enum Device {
     LaunchControlXL(NovationLaunchControlXL),
     LaunchControlXLSecondWing(NovationLaunchControlXL),
     CmdMM1(BehringerCmdMM1),
+    Amx(AkaiAmx),
     ColorOrgan(ColorOrgan),
 }
 
@@ -40,6 +42,7 @@ impl MidiDevice for Device {
         match self {
             Self::Apc20(d) => d.device_name(),
             Self::CmdMM1(d) => d.device_name(),
+            Self::Amx(d) => d.device_name(),
             Self::LaunchControlXL(d) => d.device_name(),
             Self::LaunchControlXLSecondWing(_) => "Launch Control XL Second Wing",
             Self::ColorOrgan(_) => "Generic MIDI Keyboard",
@@ -52,6 +55,7 @@ impl MidiDevice for Device {
             Self::LaunchControlXL(d) => d.init_midi(out),
             Self::LaunchControlXLSecondWing(d) => d.init_midi(out),
             Self::CmdMM1(_) => Ok(()),
+            Self::Amx(_) => Ok(()),
             Self::ColorOrgan(_) => Ok(()),
         }
     }
@@ -65,6 +69,7 @@ impl Device {
             Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 0 }),
             Self::LaunchControlXLSecondWing(NovationLaunchControlXL { channel_offset: 8 }),
             Self::CmdMM1(BehringerCmdMM1 {}),
+            Self::Amx(AkaiAmx {}),
         ]
     }
 }
@@ -76,6 +81,7 @@ impl MidiHandler for Device {
             Self::LaunchControlXL(d) => d.interpret(event),
             Self::LaunchControlXLSecondWing(d) => d.interpret(event),
             Self::CmdMM1(d) => d.interpret(event),
+            Self::Amx(d) => d.interpret(event),
             Self::ColorOrgan(d) => d.interpret(event),
         }
     }
@@ -85,7 +91,7 @@ impl MidiHandler for Device {
             Self::Apc20(d) => d.emit_channel_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_channel_control(msg, output),
             Self::LaunchControlXLSecondWing(d) => d.emit_channel_control(msg, output),
-            Self::CmdMM1(_) | Self::ColorOrgan(_) => (),
+            Self::CmdMM1(_) | Self::Amx(_) | Self::ColorOrgan(_) => (),
         }
     }
 
@@ -96,6 +102,7 @@ impl MidiHandler for Device {
     ) {
         match self {
             Self::CmdMM1(d) => d.emit_clock_control(msg, output),
+            Self::Amx(d) => d.emit_clock_control(msg, output),
             Self::Apc20(_)
             | Self::LaunchControlXL(_)
             | Self::LaunchControlXLSecondWing(_)
@@ -108,7 +115,7 @@ impl MidiHandler for Device {
             Self::Apc20(d) => d.emit_master_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_master_control(msg, output),
             Self::LaunchControlXLSecondWing(d) => d.emit_master_control(msg, output),
-            Self::CmdMM1(_) | Self::ColorOrgan(_) => (),
+            Self::CmdMM1(_) | Self::Amx(_) | Self::ColorOrgan(_) => (),
         }
     }
 }
