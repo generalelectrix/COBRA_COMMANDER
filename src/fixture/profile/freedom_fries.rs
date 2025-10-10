@@ -54,7 +54,6 @@ impl AnimatedFixture for FreedomFries {
     }
 }
 
-
 const PROGRAM_SELECT_LABEL: LabelArray = LabelArray {
     control: "ProgramLabel",
     n: 1,

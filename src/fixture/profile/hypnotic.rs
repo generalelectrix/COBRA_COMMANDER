@@ -60,4 +60,3 @@ impl AnimatedFixture for Hypnotic {
             .render_with_group(group_controls, animation_vals.all(), dmx_buf);
     }
 }
-

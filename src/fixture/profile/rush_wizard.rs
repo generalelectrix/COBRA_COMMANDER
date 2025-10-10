@@ -119,4 +119,3 @@ impl AnimatedFixture for RushWizard {
         dmx_buf[9] = 0;
     }
 }
-

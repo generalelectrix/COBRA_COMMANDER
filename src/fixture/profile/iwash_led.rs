@@ -28,7 +28,6 @@ impl Default for IWashLed {
     }
 }
 
-
 impl AnimatedFixture for IWashLed {
     type Target = AnimationTarget;
 

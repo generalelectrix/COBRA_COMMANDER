@@ -66,7 +66,6 @@ impl Default for Wizlet {
     }
 }
 
-
 impl AnimatedFixture for Wizlet {
     type Target = AnimationTarget;
 

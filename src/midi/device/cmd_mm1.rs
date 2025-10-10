@@ -1,11 +1,10 @@
 //! Device model for the Behringer CMD MM-1 fader wing.
-use clap::error;
-use log::{debug, error, warn};
+use log::{error, warn};
 use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
     midi::{Event, EventType, Mapping, Output},
-    midi_controls::{bipolar_from_midi, unipolar_from_midi, MidiDevice},
+    midi_controls::{bipolar_from_midi, unipolar_from_midi},
 };
 
 use tunnels::clock::{ControlMessage as ClockControlMessage, StateChange as ClockStateChange};
@@ -14,9 +13,8 @@ use tunnels::clock_bank::{
 };
 
 use crate::{
-    channel::KnobValue,
     midi::{Device, MidiHandler},
-    show::{ChannelId, ShowControlMessage},
+    show::ShowControlMessage,
 };
 
 /// Model of the Behringer CMD-MM1.

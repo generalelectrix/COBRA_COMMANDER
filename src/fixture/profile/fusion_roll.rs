@@ -63,7 +63,6 @@ impl Default for FusionRoll {
     }
 }
 
-
 impl AnimatedFixture for FusionRoll {
     type Target = AnimationTarget;
 

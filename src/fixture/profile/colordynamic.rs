@@ -39,7 +39,6 @@ impl Default for Colordynamic {
     }
 }
 
-
 impl AnimatedFixture for Colordynamic {
     type Target = AnimationTarget;
 

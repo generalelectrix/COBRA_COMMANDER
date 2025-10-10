@@ -38,7 +38,6 @@ impl Default for SolarSystem {
     }
 }
 
-
 impl AnimatedFixture for SolarSystem {
     type Target = AnimationTarget;
 

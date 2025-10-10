@@ -29,4 +29,3 @@ impl AnimatedFixture for Dimmer {
         self.level.render(animation_vals.all(), dmx_buf);
     }
 }
-
