@@ -39,6 +39,7 @@ mod config;
 mod control;
 mod dmx;
 mod fixture;
+mod gui;
 mod master;
 mod midi;
 mod osc;
