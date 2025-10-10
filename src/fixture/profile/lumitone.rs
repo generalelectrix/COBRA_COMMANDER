@@ -17,6 +17,8 @@ use crate::{
     },
 };
 
+const SOCKET_OPT: &str = "socket";
+
 #[derive(Debug, EmitState, Control, Update)]
 pub struct Lumitone {
     #[channel_control]
@@ -64,7 +66,7 @@ impl PatchFixture for Lumitone {
 
     fn new(options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
         // Instantiate the control sender.
-        let Some(addr) = options.remove("socket") else {
+        let Some(addr) = options.remove(SOCKET_OPT) else {
             bail!("missing required option: socket");
         };
         let addr = if addr == "debug" {
@@ -106,6 +108,10 @@ impl PatchFixture for Lumitone {
         });
 
         Ok((l, None))
+    }
+
+    fn options() -> Vec<(String, PatchOption)> {
+        vec![(SOCKET_OPT.to_string(), PatchOption::SocketAddr)]
     }
 }
 
