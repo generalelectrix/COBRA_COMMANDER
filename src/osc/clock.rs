@@ -1,4 +1,4 @@
-//! OSC control mappins for the tunnels clock system.
+//! OSC control mappings for the tunnels clock system.
 
 use tunnels::clock_bank::StateChange;
 

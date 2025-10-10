@@ -114,6 +114,7 @@ impl tunnels::clock_bank::EmitStateChange for Controller {
                 },
             },
         );
+        self.midi.emit_clock_control(&sc);
     }
 }
 
