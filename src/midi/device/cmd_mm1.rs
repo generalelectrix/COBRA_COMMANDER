@@ -101,7 +101,7 @@ impl BehringerCmdMM1 {
         let control = match button {
             CmdMM1ChannelButton::Cue => 48 + channel as u8,
             CmdMM1ChannelButton::One => 19 + (channel as u8 * 4),
-            CmdMM1ChannelButton::Two => 20 + (channel as u8 + 4),
+            CmdMM1ChannelButton::Two => 20 + (channel as u8 * 4),
         };
         if let Err(err) = output.send(Event {
             mapping: Mapping {

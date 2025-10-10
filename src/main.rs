@@ -159,6 +159,12 @@ fn run_show(args: RunArgs) -> Result<()> {
     let (midi_inputs, midi_outputs) = list_ports()?;
     let mut midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
 
+    for d in &midi_devices {
+        if matches!(d.device, Device::CmdMM1(_)) && !matches!(clocks, Clocks::Internal { .. }) {
+            bail!("Configured a CMD MM-1 but the clock service is active; do not activate the clock service if you want local clock controls.");
+        }
+    }
+
     if osc_controllers.is_empty() && midi_devices.is_empty() {
         bail!("No OSC or midi clients were registered or manually configured.");
     }
