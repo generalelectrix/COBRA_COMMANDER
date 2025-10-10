@@ -81,4 +81,3 @@ impl AnimatedFixture for H2O {
         }
     }
 }
-

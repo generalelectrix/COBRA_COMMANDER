@@ -74,4 +74,3 @@ impl AnimatedFixture for RotosphereQ3 {
         dmx_buf[8] = 0;
     }
 }
-

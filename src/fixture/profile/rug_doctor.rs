@@ -36,7 +36,6 @@ impl NonAnimatedFixture for RugDoctor {
     fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}
 }
 
-
 impl RugDoctor {
     fn set_level(&self, state: &mut State) {
         let level = unipolar_to_range(0, 255, self.level.control.val());

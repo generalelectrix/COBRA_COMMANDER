@@ -32,4 +32,3 @@ impl AnimatedFixture for UvLedBrick {
         dmx_buf[6] = 255;
     }
 }
-

@@ -44,4 +44,3 @@ impl AnimatedFixture for CosmicBurst {
         );
     }
 }
-

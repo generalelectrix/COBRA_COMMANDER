@@ -66,7 +66,6 @@ impl Default for WizardExtreme {
     }
 }
 
-
 impl AnimatedFixture for WizardExtreme {
     type Target = AnimationTarget;
 

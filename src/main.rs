@@ -2,6 +2,7 @@ use anyhow::Context as _;
 use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
 use clock_service::prompt_start_clock_service;
+use clocks::Clocks;
 use fixture::Patch;
 use local_ip_address::local_ip;
 use log::LevelFilter;
@@ -10,7 +11,6 @@ use osc::prompt_osc_config;
 use osc::GroupControlMap;
 use reqwest::Url;
 use rust_dmx::select_port;
-use show::Clocks;
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::fs::File;
 use std::path::PathBuf;
@@ -34,6 +34,7 @@ mod animation;
 mod animation_visualizer;
 mod channel;
 mod clock_service;
+mod clocks;
 mod color;
 mod config;
 mod control;
@@ -157,6 +158,12 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     let (midi_inputs, midi_outputs) = list_ports()?;
     let mut midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
+
+    for d in &midi_devices {
+        if matches!(d.device, Device::CmdMM1(_)) && !matches!(clocks, Clocks::Internal { .. }) {
+            bail!("Configured a CMD MM-1 but the clock service is active; do not activate the clock service if you want local clock controls.");
+        }
+    }
 
     if osc_controllers.is_empty() && midi_devices.is_empty() {
         bail!("No OSC or midi clients were registered or manually configured.");
