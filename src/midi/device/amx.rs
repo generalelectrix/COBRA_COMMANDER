@@ -224,7 +224,7 @@ impl MidiHandler for AkaiAmx {
                     Button(b) => match b {
                         Sync => ClockControlMessage::Tap,
                         Cue => ClockControlMessage::ToggleOneShot,
-                        Play => ClockControlMessage::ToggleRetrigger,
+                        Play => ClockControlMessage::Retrigger,
                         _ => {
                             return None;
                         }
@@ -238,9 +238,6 @@ impl MidiHandler for AkaiAmx {
         let channel: usize = msg.channel.into();
         match msg.change {
             ClockStateChange::OneShot(v) => self.set_led(channel, AmxChannelButton::Cue, v, output),
-            ClockStateChange::Retrigger(v) => {
-                self.set_led(channel, AmxChannelButton::Play, v, output)
-            }
             ClockStateChange::Ticked(v) => self.set_led(channel, AmxChannelButton::Sync, v, output),
             ClockStateChange::Rate(_)
             | ClockStateChange::RateFine(_)

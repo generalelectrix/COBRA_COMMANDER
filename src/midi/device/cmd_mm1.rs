@@ -174,7 +174,7 @@ impl MidiHandler for BehringerCmdMM1 {
                     Button(b) => match b {
                         Cue => ClockControlMessage::Tap,
                         One => ClockControlMessage::ToggleOneShot,
-                        Two => ClockControlMessage::ToggleRetrigger,
+                        Two => ClockControlMessage::Retrigger,
                     },
                 },
             },
@@ -186,9 +186,6 @@ impl MidiHandler for BehringerCmdMM1 {
         match msg.change {
             ClockStateChange::OneShot(v) => {
                 self.set_led(channel, CmdMM1ChannelButton::One, v, output)
-            }
-            ClockStateChange::Retrigger(v) => {
-                self.set_led(channel, CmdMM1ChannelButton::Two, v, output)
             }
             ClockStateChange::Ticked(v) => {
                 self.set_led(channel, CmdMM1ChannelButton::Cue, v, output)
