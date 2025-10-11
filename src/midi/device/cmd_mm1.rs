@@ -40,7 +40,7 @@ impl BehringerCmdMM1 {
             return None;
         }
         let control = event.mapping.control;
-        match event.mapping.event_type {
+        Some(match event.mapping.event_type {
             EventType::ControlChange => {
                 match control {
                     6..=21 => {
@@ -48,42 +48,48 @@ impl BehringerCmdMM1 {
                         let index = control - 6;
                         let row = index / 4;
                         let channel = index % 4;
-                        Some(Channel {
+                        Channel {
                             channel,
                             event: Knob {
                                 row,
                                 val: event.value,
                             },
-                        })
+                        }
                     }
-                    48..51 => {
+                    48..=51 => {
                         let channel = control - 48;
-                        Some(Channel {
+                        Channel {
                             channel,
                             event: Fader(event.value),
-                        })
+                        }
                     }
                     // TODO: handle other knobs
-                    _ => None,
+                    _ => {
+                        return None;
+                    }
                 }
             }
             EventType::NoteOn => match control {
-                48..=51 => Some(Channel {
+                48..=51 => Channel {
                     channel: control - 48,
                     event: Button(Cue),
-                }),
-                19 | 23 | 27 | 31 => Some(Channel {
+                },
+                19 | 23 | 27 | 31 => Channel {
                     channel: (control - 19) / 4,
                     event: Button(One),
-                }),
-                20 | 24 | 28 | 32 => Some(Channel {
+                },
+                20 | 24 | 28 | 32 => Channel {
                     channel: (control - 20) / 4,
                     event: Button(Two),
-                }),
-                _ => None,
+                },
+                _ => {
+                    return None;
+                }
             },
-            _ => None,
-        }
+            _ => {
+                return None;
+            }
+        })
     }
 
     /// Set a button LED on or off.
