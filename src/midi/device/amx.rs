@@ -11,7 +11,7 @@ use log::{error, warn};
 use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
-    midi::{Event, EventType, Mapping, Output},
+    midi::{event, note_on, Event, EventType, Output},
     midi_controls::{bipolar_from_midi, unipolar_from_midi},
 };
 
@@ -133,14 +133,7 @@ impl AkaiAmx {
                 Play => PLAY,
                 Headphone => HEADPHONE,
             };
-        if let Err(err) = output.send(Event {
-            mapping: Mapping {
-                event_type: EventType::NoteOn,
-                channel: MIDI_CHANNEL,
-                control,
-            },
-            value: state as u8,
-        }) {
+        if let Err(err) = output.send(event(note_on(MIDI_CHANNEL, control), state as u8)) {
             error!("MIDI send error setting LED state {channel}({button}) to {state}: {err}.");
         }
     }
