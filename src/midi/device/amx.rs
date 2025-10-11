@@ -23,6 +23,7 @@ use tunnels::clock_bank::{
 use crate::{
     midi::{Device, MidiHandler},
     show::ShowControlMessage,
+    util::bipolar_fader_with_detent,
 };
 
 /// Model of the Akai AMX.
@@ -210,11 +211,11 @@ impl MidiHandler for AkaiAmx {
                         unipolar_from_midi(val),
                     )),
                     Knob { knob, val } => match knob {
-                        Filter => {
-                            ClockControlMessage::Set(ClockStateChange::Rate(bipolar_from_midi(val)))
-                        }
+                        Filter => ClockControlMessage::Set(ClockStateChange::Rate(
+                            bipolar_fader_with_detent(bipolar_from_midi(val)),
+                        )),
                         Bass => ClockControlMessage::Set(ClockStateChange::RateFine(
-                            bipolar_from_midi(val),
+                            bipolar_fader_with_detent(bipolar_from_midi(val)),
                         )),
                         _ => {
                             return None;

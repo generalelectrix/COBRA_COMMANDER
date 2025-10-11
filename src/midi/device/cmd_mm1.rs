@@ -56,7 +56,7 @@ impl BehringerCmdMM1 {
                             },
                         }
                     }
-                    48..51 => {
+                    48..=51 => {
                         let channel = control - 48;
                         Channel {
                             channel,
