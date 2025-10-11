@@ -222,9 +222,9 @@ impl MidiHandler for AkaiAmx {
                         }
                     },
                     Button(b) => match b {
-                        Play => ClockControlMessage::Tap,
+                        Sync => ClockControlMessage::Tap,
                         Cue => ClockControlMessage::ToggleOneShot,
-                        Sync => ClockControlMessage::ToggleRetrigger,
+                        Play => ClockControlMessage::ToggleRetrigger,
                         _ => {
                             return None;
                         }
@@ -239,9 +239,9 @@ impl MidiHandler for AkaiAmx {
         match msg.change {
             ClockStateChange::OneShot(v) => self.set_led(channel, AmxChannelButton::Cue, v, output),
             ClockStateChange::Retrigger(v) => {
-                self.set_led(channel, AmxChannelButton::Sync, v, output)
+                self.set_led(channel, AmxChannelButton::Play, v, output)
             }
-            ClockStateChange::Ticked(v) => self.set_led(channel, AmxChannelButton::Play, v, output),
+            ClockStateChange::Ticked(v) => self.set_led(channel, AmxChannelButton::Sync, v, output),
             ClockStateChange::Rate(_)
             | ClockStateChange::RateFine(_)
             | ClockStateChange::SubmasterLevel(_)
