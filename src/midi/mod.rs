@@ -110,6 +110,17 @@ impl MidiHandler for Device {
         }
     }
 
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output<Device>) {
+        match self {
+            Self::CmdMM1(d) => d.emit_audio_control(msg, output),
+            Self::Amx(d) => d.emit_audio_control(msg, output),
+            Self::Apc20(_)
+            | Self::LaunchControlXL(_)
+            | Self::LaunchControlXLSecondWing(_)
+            | Self::ColorOrgan(_) => (),
+        }
+    }
+
     fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output<Device>) {
         match self {
             Self::Apc20(d) => d.emit_master_control(msg, output),
@@ -137,6 +148,10 @@ pub trait MidiHandler {
         output: &mut Output<Device>,
     ) {
     }
+
+    /// Send MIDI state to handle the provided audio state change.
+    #[allow(unused_variables)]
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output<Device>) {}
 
     /// Send MIDI state to handle the provided master state change.
     #[allow(unused_variables)]
@@ -178,6 +193,15 @@ impl MidiController {
             // FIXME: tunnels devices are inside-out/stateless
             let device = *output.device();
             device.emit_clock_control(msg, output);
+        }
+    }
+
+    /// Handle a audio state change message.
+    pub fn emit_audio_control(&self, msg: &tunnels::audio::StateChange) {
+        for output in self.0.borrow_mut().outputs() {
+            // FIXME: tunnels devices are inside-out/stateless
+            let device = *output.device();
+            device.emit_audio_control(msg, output);
         }
     }
 

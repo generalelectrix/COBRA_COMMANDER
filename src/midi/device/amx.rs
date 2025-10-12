@@ -8,10 +8,11 @@
 //! messages to allow delaying interpretation of the midi messages... we need
 //! to fix that original mistake to unwind this.
 use log::{error, warn};
+use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
-    midi::{Event, EventType, Mapping, Output},
+    midi::{cc, event, note_on, Event, EventType, Output},
     midi_controls::{bipolar_from_midi, unipolar_from_midi},
 };
 
@@ -23,7 +24,7 @@ use tunnels::clock_bank::{
 use crate::{
     midi::{Device, MidiHandler},
     show::ShowControlMessage,
-    util::bipolar_fader_with_detent,
+    util::{bipolar_fader_with_detent, unipolar_to_range},
 };
 
 /// Model of the Akai AMX.
@@ -37,14 +38,17 @@ const LOAD: u8 = 4;
 const SYNC: u8 = 6;
 const CUE: u8 = 8;
 const PLAY: u8 = 10;
-const HEADPHONE: u8 = 12;
+
+// The headphone buttons unfortunately have a lot of on-board state management,
+// so we just can't make use of them (they always ensure that one or the other
+// channel is toggled on...)
+// const HEADPHONE: u8 = 12;
 
 const SEARCH_1: u8 = SEARCH + 1;
 const LOAD_1: u8 = LOAD + 1;
 const SYNC_1: u8 = SYNC + 1;
 const CUE_1: u8 = CUE + 1;
 const PLAY_1: u8 = PLAY + 1;
-const HEADPHONE_1: u8 = HEADPHONE + 1;
 
 impl AkaiAmx {
     pub const CHANNEL_COUNT: u8 = 2;
@@ -94,13 +98,11 @@ impl AkaiAmx {
                 SYNC => button(0, Sync),
                 CUE => button(0, Cue),
                 PLAY => button(0, Play),
-                HEADPHONE => button(0, Headphone),
-                SEARCH_1 => button(0, Search),
-                LOAD_1 => button(0, Load),
-                SYNC_1 => button(0, Sync),
-                CUE_1 => button(0, Cue),
-                PLAY_1 => button(0, Play),
-                HEADPHONE_1 => button(0, Headphone),
+                SEARCH_1 => button(1, Search),
+                LOAD_1 => button(1, Load),
+                SYNC_1 => button(1, Sync),
+                CUE_1 => button(1, Cue),
+                PLAY_1 => button(1, Play),
                 _ => {
                     return None;
                 }
@@ -131,19 +133,36 @@ impl AkaiAmx {
                 Sync => SYNC,
                 Cue => CUE,
                 Play => PLAY,
-                Headphone => HEADPHONE,
             };
-        if let Err(err) = output.send(Event {
-            mapping: Mapping {
-                event_type: EventType::NoteOn,
-                channel: MIDI_CHANNEL,
-                control,
-            },
-            value: state as u8,
-        }) {
+        if let Err(err) = output.send(event(note_on(MIDI_CHANNEL, control), state as u8)) {
             error!("MIDI send error setting LED state {channel}({button}) to {state}: {err}.");
         }
     }
+
+    /// Set one of the VU meters.
+    pub fn set_vu_meter(&self, which: VuMeter, value: UnipolarFloat, output: &mut Output<Device>) {
+        use VuMeter::*;
+        let control = match which {
+            Channel1 => 0x40,
+            Channel2 => 0x14,
+            MasterLeft => 0x3E,
+            MasterRight => 0x3F,
+        };
+        if let Err(err) = output.send(event(
+            cc(MIDI_CHANNEL, control),
+            unipolar_to_range(0, 85, value),
+        )) {
+            error!("MIDI send error setting VU meter: {err}");
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub enum VuMeter {
+    Channel1,
+    Channel2,
+    MasterLeft,
+    MasterRight,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -168,10 +187,6 @@ pub enum AmxChannelButton {
     Sync,
     Cue,
     Play,
-    // Unfortunately, the headphone buttons appear to maintain toggle state on
-    // the hardware; they send NoteOn or NoteOff only on each press. If we can
-    // control their LEDs we can paper over this...
-    Headphone,
 }
 
 #[derive(Clone, Copy, Debug, Display)]
@@ -241,9 +256,15 @@ impl MidiHandler for AkaiAmx {
             ClockStateChange::Ticked(v) => self.set_led(channel, AmxChannelButton::Sync, v, output),
             ClockStateChange::Rate(_)
             | ClockStateChange::RateFine(_)
-            | ClockStateChange::SubmasterLevel(_)
             | ClockStateChange::UseAudioSize(_)
+            | ClockStateChange::SubmasterLevel(_)
             | ClockStateChange::UseAudioSpeed(_) => (),
+        }
+    }
+
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output<Device>) {
+        if let tunnels::audio::StateChange::EnvelopeValue(v) = msg {
+            self.set_vu_meter(VuMeter::MasterRight, *v, output);
         }
     }
 }

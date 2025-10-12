@@ -129,9 +129,10 @@ impl Show {
                     .control(&msg, &mut self.patch, &self.animation_ui_state, &sender)
             }
             ShowControlMessage::Clock(msg) => {
-                self.clocks.control(msg, sender.controller);
+                self.clocks.control_clock(msg, sender.controller);
                 Ok(())
             }
+            ShowControlMessage::Audio(msg) => self.clocks.control_audio(msg, &mut self.controller),
             ShowControlMessage::Master(msg) => self.master_controls.control(&msg, &sender),
             ShowControlMessage::Animation(msg) => {
                 let Some(channel) = self.channels.current_channel() else {
@@ -196,27 +197,7 @@ impl Show {
                     },
                 )
             }
-            crate::osc::audio::GROUP => match &mut self.clocks {
-                Clocks::Internal {
-                    audio_input,
-                    audio_controls,
-                    ..
-                }
-                | Clocks::Mixed {
-                    audio_input,
-                    audio_controls,
-                    ..
-                } => {
-                    let Some((msg, _talkback)) = audio_controls.handle(msg)? else {
-                        return Ok(());
-                    };
-                    audio_input.control(msg, &mut self.controller);
-                    Ok(())
-                }
-                Clocks::Service(_) => {
-                    bail!("cannot handle audio control message because no audio input is configured\n{msg:?}");
-                }
-            },
+            crate::osc::audio::GROUP => self.clocks.control_audio_osc(msg, &mut self.controller),
             // Assume any other control group is referring to a ficture group.
             fixture_group => self.patch.get_mut(fixture_group)?.control(
                 msg,
@@ -325,6 +306,7 @@ pub enum ShowControlMessage {
     // Unused because show control messages only come from OSC so far.
     #[allow(unused)]
     Animation(crate::animation::ControlMessage),
+    Audio(tunnels::audio::ControlMessage),
     ColorOrgan(color_organ::ControlMessage<Hsluv>),
 }
 

@@ -99,6 +99,7 @@ impl tunnels::audio::EmitStateChange for Controller {
                 },
             },
         );
+        self.midi.emit_audio_control(&sc);
     }
 }
 

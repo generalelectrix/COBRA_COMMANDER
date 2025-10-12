@@ -1,12 +1,17 @@
 use std::time::Duration;
 
+use anyhow::{bail, Result};
 use tunnels::{
     audio::AudioInput,
     clock_bank::{ClockBank, ControlMessage},
     clock_server::{SharedClockData, StaticClockBank},
 };
 
-use crate::{clock_service::ClockService, control::Controller, osc::GroupControlMap};
+use crate::{
+    clock_service::ClockService,
+    control::Controller,
+    osc::{GroupControlMap, OscControlMessage},
+};
 
 #[allow(clippy::large_enum_variant)]
 pub enum Clocks {
@@ -52,12 +57,58 @@ impl Clocks {
         }
     }
 
-    /// Handle a control message.
-    pub fn control(&mut self, msg: ControlMessage, emitter: &mut Controller) {
+    /// Handle a clock control message.
+    pub fn control_clock(&mut self, msg: ControlMessage, emitter: &mut Controller) {
         let Self::Internal { clocks, .. } = self else {
             return;
         };
         clocks.control(msg, emitter);
+    }
+
+    /// Handle an audio OSC message.
+    pub fn control_audio_osc(
+        &mut self,
+        msg: &OscControlMessage,
+        emitter: &mut Controller,
+    ) -> Result<()> {
+        match self {
+            Clocks::Internal {
+                audio_input,
+                audio_controls,
+                ..
+            }
+            | Clocks::Mixed {
+                audio_input,
+                audio_controls,
+                ..
+            } => {
+                let Some((msg, _talkback)) = audio_controls.handle(msg)? else {
+                    return Ok(());
+                };
+                audio_input.control(msg, emitter);
+                Ok(())
+            }
+            Clocks::Service(_) => {
+                bail!("cannot handle audio control message because no audio input is configured\n{msg:?}");
+            }
+        }
+    }
+
+    /// Handle an audio control message.
+    pub fn control_audio(
+        &mut self,
+        msg: tunnels::audio::ControlMessage,
+        emitter: &mut Controller,
+    ) -> Result<()> {
+        match self {
+            Clocks::Internal { audio_input, .. } | Clocks::Mixed { audio_input, .. } => {
+                audio_input.control(msg, emitter);
+                Ok(())
+            }
+            Clocks::Service(_) => {
+                bail!("cannot handle audio control message because no audio input is configured\n{msg:?}");
+            }
+        }
     }
 
     /// Emit all current audio and clock state.
