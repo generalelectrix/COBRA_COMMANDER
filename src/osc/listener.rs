@@ -1,26 +1,12 @@
 //! Listen for incoming OSC messages, process them, and forward them along.
 
-use crate::channel::{ChannelStateChange, ChannelStateEmitter};
 use crate::control::ControlMessage;
-use crate::control::EmitControlMessage;
-use crate::fixture::FixtureGroupKey;
-use crate::osc::sender::{OscSender, OscSenderCommand};
 use crate::osc::{OscClientId, OscControlMessage, OscError};
-use crate::wled::EmitWledControlMessage;
-use anyhow::bail;
 use anyhow::Result;
-use log::{error, info};
-use number::{BipolarFloat, Phase, UnipolarFloat};
-use rosc::{encoder, OscMessage, OscPacket, OscType};
-use serde::Deserialize;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::fmt::Display;
+use log::error;
+use rosc::OscPacket;
 use std::net::{SocketAddr, UdpSocket};
-use std::str::FromStr;
-use std::sync::mpsc::{channel, Sender};
-use std::thread;
-use thiserror::Error;
+use std::sync::mpsc::Sender;
 
 pub struct OscListener {
     clients: Vec<OscClientId>,
