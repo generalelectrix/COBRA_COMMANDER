@@ -240,7 +240,6 @@ fn fixture_help(args: FixArgs) -> Result<()> {
     if args.all {
         for f in fixtures {
             println!("{f}");
-            println!();
         }
         return Ok(());
     }

@@ -103,7 +103,12 @@ impl Patch {
     fn get_candidate(&self, name: &str, options: &Options) -> Result<PatchCandidate> {
         let mut candidates = PATCHERS
             .iter()
-            .flat_map(|p| (p.func)(name, options))
+            .filter_map(|p| {
+                if *p.name != *name {
+                    return None;
+                }
+                Some((p.func)(options))
+            })
             .collect::<Result<Vec<_>>>()
             .with_context(|| format!("patching {name}"))?;
         let candidate = match candidates.len() {
@@ -270,19 +275,29 @@ pub struct PatchCandidate {
 #[derive(Clone)]
 pub struct Patcher {
     pub name: FixtureType,
-    pub func: fn(&str, &Options) -> Option<Result<PatchCandidate>>,
+    pub func: fn(&Options) -> Result<PatchCandidate>,
     pub options: fn() -> Vec<(String, PatchOption)>,
 }
 
 impl Display for Patcher {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)?;
+
         let opts = (self.options)();
         // If a fixture doesn't take options, we should be able to get a channel count.
         if opts.is_empty() {
-            todo!("get channel count");
+            if let Ok(fix) = (self.func)(&Default::default()) {
+                if fix.channel_count > 0 {
+                    write!(
+                        f,
+                        " ({} channel{})",
+                        fix.channel_count,
+                        if fix.channel_count > 1 { "s" } else { "" }
+                    )?;
+                }
+            }
         }
 
-        write!(f, "{}", self.name)?;
         let opts = (self.options)();
         if opts.is_empty() {
             return Ok(());
@@ -301,29 +316,19 @@ pub trait PatchFixture: NonAnimatedFixture + Sized + 'static {
     const NAME: FixtureType;
 
     /// Return a PatchCandidate for this fixture if it has the appropriate name.
-    fn patch(name: &str, options: &Options) -> Option<Result<PatchCandidate>> {
-        if *name != *Self::NAME {
-            return None;
-        }
+    fn patch(options: &Options) -> Result<PatchCandidate> {
         let mut options = options.clone();
-        match Self::new(&mut options) {
-            Ok((fixture, render_mode)) => {
-                // Ensure the fixture processed all of the options.
-                if !options.is_empty() {
-                    return Some(Err(anyhow!(
-                        "unhandled options: {}",
-                        options.keys().join(", ")
-                    )));
-                }
-                Some(Ok(PatchCandidate {
-                    fixture_type: Self::NAME,
-                    channel_count: fixture.channel_count(render_mode),
-                    render_mode,
-                    fixture: Box::new(fixture),
-                }))
-            }
-            Err(e) => Some(Err(e)),
+        let (fixture, render_mode) = Self::new(&mut options)?;
+        // Ensure the fixture processed all of the options.
+        if !options.is_empty() {
+            return Err(anyhow!("unhandled options: {}", options.keys().join(", ")));
         }
+        Ok(PatchCandidate {
+            fixture_type: Self::NAME,
+            channel_count: fixture.channel_count(render_mode),
+            render_mode,
+            fixture: Box::new(fixture),
+        })
     }
 
     /// The number of contiguous DMX channels used by the fixture.
@@ -347,32 +352,22 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Sized + 'static {
     const NAME: FixtureType;
 
     /// Return a PatchCandidate for this fixture if it has the appropriate name.
-    fn patch(name: &str, options: &Options) -> Option<Result<PatchCandidate>> {
-        if *name != *Self::NAME {
-            return None;
-        }
+    fn patch(options: &Options) -> Result<PatchCandidate> {
         let mut options = options.clone();
-        match Self::new(&mut options) {
-            Ok((fixture, render_mode)) => {
-                // Ensure the fixture processed all of the options.
-                if !options.is_empty() {
-                    return Some(Err(anyhow!(
-                        "unknown options: {}",
-                        options.keys().join(", ")
-                    )));
-                }
-                Some(Ok(PatchCandidate {
-                    fixture_type: Self::NAME,
-                    channel_count: fixture.channel_count(render_mode),
-                    render_mode,
-                    fixture: Box::new(FixtureWithAnimations {
-                        fixture,
-                        animations: Default::default(),
-                    }),
-                }))
-            }
-            Err(e) => Some(Err(e)),
+        let (fixture, render_mode) = Self::new(&mut options)?;
+        // Ensure the fixture processed all of the options.
+        if !options.is_empty() {
+            return Err(anyhow!("unknown options: {}", options.keys().join(", ")));
         }
+        Ok(PatchCandidate {
+            fixture_type: Self::NAME,
+            channel_count: fixture.channel_count(render_mode),
+            render_mode,
+            fixture: Box::new(FixtureWithAnimations {
+                fixture,
+                animations: Default::default(),
+            }),
+        })
     }
 
     /// The number of contiguous DMX channels used by the fixture.
