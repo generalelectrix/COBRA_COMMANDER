@@ -96,19 +96,25 @@ impl AkaiAmx {
                 CUE => button(0, Cue),
                 PLAY => button(0, Play),
                 HEADPHONE => button(0, Headphone),
-                SEARCH_1 => button(0, Search),
-                LOAD_1 => button(0, Load),
-                SYNC_1 => button(0, Sync),
-                CUE_1 => button(0, Cue),
-                PLAY_1 => button(0, Play),
-                HEADPHONE_1 => button(0, Headphone),
+                SEARCH_1 => button(1, Search),
+                LOAD_1 => button(1, Load),
+                SYNC_1 => button(1, Sync),
+                CUE_1 => button(1, Cue),
+                PLAY_1 => button(1, Play),
+                HEADPHONE_1 => button(1, Headphone),
                 _ => {
                     return None;
                 }
             },
-            _ => {
-                return None;
-            }
+            // The headphone buttons are toggles with state managed on the device.
+            // We override this and make them into controlled toggles.
+            EventType::NoteOff => match control {
+                HEADPHONE => button(0, Headphone),
+                HEADPHONE_1 => button(1, Headphone),
+                _ => {
+                    return None;
+                }
+            },
         })
     }
 
@@ -244,6 +250,7 @@ impl MidiHandler for AkaiAmx {
                         Sync => ClockControlMessage::Tap,
                         Cue => ClockControlMessage::ToggleOneShot,
                         Play => ClockControlMessage::Retrigger,
+                        Headphone => ClockControlMessage::ToggleUseAudioSize,
                         _ => {
                             return None;
                         }
@@ -258,10 +265,12 @@ impl MidiHandler for AkaiAmx {
         match msg.change {
             ClockStateChange::OneShot(v) => self.set_led(channel, AmxChannelButton::Cue, v, output),
             ClockStateChange::Ticked(v) => self.set_led(channel, AmxChannelButton::Sync, v, output),
+            ClockStateChange::UseAudioSize(v) => {
+                self.set_led(channel, AmxChannelButton::Headphone, v, output)
+            }
             ClockStateChange::Rate(_)
             | ClockStateChange::RateFine(_)
             | ClockStateChange::SubmasterLevel(_)
-            | ClockStateChange::UseAudioSize(_)
             | ClockStateChange::UseAudioSpeed(_) => (),
         }
     }
