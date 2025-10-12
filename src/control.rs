@@ -74,6 +74,16 @@ impl Controller {
         }
     }
 
+    /// Register a new OSC client.
+    pub fn register_osc_client(&mut self, client_id: OscClientId) {
+        self.osc.register(client_id);
+    }
+
+    /// Deregister an OSC client.
+    pub fn deregister_osc_client(&mut self, client_id: OscClientId) {
+        self.osc.deregister(client_id);
+    }
+
     /// Return a decorated version of self that will include the provided
     /// metadata when sending OSC response messages.
     pub fn sender_with_metadata<'a>(
@@ -156,6 +166,7 @@ impl<'a> EmitWledControlMessage for ControlMessageWithMetadataSender<'a> {
 }
 
 pub enum ControlMessage {
+    RegisterClient(OscClientId),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
     #[allow(unused)]

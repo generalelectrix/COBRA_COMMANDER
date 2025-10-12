@@ -87,6 +87,15 @@ impl OscListener {
                     continue;
                 }
             };
+
+            // If this is a new client, tell the show to register them.
+            if !self.clients.contains(&client_id) {
+                self.clients.push(client_id);
+                self.send
+                    .send(ControlMessage::RegisterClient(client_id))
+                    .unwrap();
+            }
+
             if let Err(e) = self.forward_packet(packet, client_id) {
                 error!("Error unpacking/forwarding OSC packet: {e}");
             }
