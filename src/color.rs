@@ -6,10 +6,10 @@ use colored::Colorize;
 use hsluv::hsluv_to_rgb;
 use log::warn;
 use number::{Phase, UnipolarFloat};
-use strum_macros::EnumString;
+use strum_macros::{Display, EnumIter, EnumString};
 
 /// Supported control color spaces.
-#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString)]
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, Display, EnumIter)]
 pub enum ColorSpace {
     /// HSV color space with green shifted to hue = 0.
     #[default]

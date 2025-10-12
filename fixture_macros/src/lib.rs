@@ -19,7 +19,11 @@ fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
         use crate::fixture::patch::PATCHERS;
 
         #[distributed_slice(PATCHERS)]
-        static PATCHER: crate::fixture::patch::Patcher = <#ident>::patch;
+        static PATCHER: crate::fixture::patch::Patcher = crate::fixture::patch::Patcher {
+            name: #ident::NAME,
+            func: #ident::patch,
+            options: #ident::options,
+        };
     }
 }
 
@@ -46,6 +50,9 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
             }
             fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
                 Ok((Self::default(), None))
+            }
+            fn options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
+                vec![]
             }
         }
 
@@ -77,6 +84,9 @@ pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
             }
             fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
                 Ok((Self::default(), None))
+            }
+            fn options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
+                vec![]
             }
         }
 

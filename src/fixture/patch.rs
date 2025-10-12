@@ -3,6 +3,8 @@ use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Write};
+use strum::IntoEnumIterator;
 
 use anyhow::bail;
 use log::info;
@@ -42,6 +44,11 @@ pub struct Patch {
 pub static PATCHERS: [Patcher];
 
 impl Patch {
+    /// Return the full menu of fixtures we can patch, sorted by name.
+    pub fn menu() -> Vec<Patcher> {
+        PATCHERS.iter().cloned().sorted_by_key(|p| p.name).collect()
+    }
+
     /// Initialize a new fixture patch.
     pub fn new() -> Self {
         assert!(!PATCHERS.is_empty());
@@ -96,7 +103,12 @@ impl Patch {
     fn get_candidate(&self, name: &str, options: &Options) -> Result<PatchCandidate> {
         let mut candidates = PATCHERS
             .iter()
-            .flat_map(|p| p(name, options))
+            .filter_map(|p| {
+                if *p.name != *name {
+                    return None;
+                }
+                Some((p.func)(options))
+            })
             .collect::<Result<Vec<_>>>()
             .with_context(|| format!("patching {name}"))?;
         let candidate = match candidates.len() {
@@ -260,36 +272,63 @@ pub struct PatchCandidate {
     fixture: Box<dyn Fixture>,
 }
 
-pub type Patcher = fn(&str, &Options) -> Option<Result<PatchCandidate>>;
+#[derive(Clone)]
+pub struct Patcher {
+    pub name: FixtureType,
+    pub func: fn(&Options) -> Result<PatchCandidate>,
+    pub options: fn() -> Vec<(String, PatchOption)>,
+}
+
+impl Display for Patcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)?;
+
+        let opts = (self.options)();
+        // If a fixture doesn't take options, we should be able to get a channel count.
+        if opts.is_empty() {
+            if let Ok(fix) = (self.func)(&Default::default()) {
+                if fix.channel_count > 0 {
+                    write!(
+                        f,
+                        " ({} channel{})",
+                        fix.channel_count,
+                        if fix.channel_count > 1 { "s" } else { "" }
+                    )?;
+                }
+            }
+        }
+
+        let opts = (self.options)();
+        if opts.is_empty() {
+            return Ok(());
+        }
+        f.write_char('\n')?;
+        writeln!(f, "  options:")?;
+        for (key, opt) in opts {
+            writeln!(f, "    {key}: {opt}")?;
+        }
+        Ok(())
+    }
+}
 
 /// Fixture constructor trait to handle patching non-animating fixtures.
 pub trait PatchFixture: NonAnimatedFixture + Sized + 'static {
     const NAME: FixtureType;
 
     /// Return a PatchCandidate for this fixture if it has the appropriate name.
-    fn patch(name: &str, options: &Options) -> Option<Result<PatchCandidate>> {
-        if *name != *Self::NAME {
-            return None;
-        }
+    fn patch(options: &Options) -> Result<PatchCandidate> {
         let mut options = options.clone();
-        match Self::new(&mut options) {
-            Ok((fixture, render_mode)) => {
-                // Ensure the fixture processed all of the options.
-                if !options.is_empty() {
-                    return Some(Err(anyhow!(
-                        "unhandled options: {}",
-                        options.keys().join(", ")
-                    )));
-                }
-                Some(Ok(PatchCandidate {
-                    fixture_type: Self::NAME,
-                    channel_count: fixture.channel_count(render_mode),
-                    render_mode,
-                    fixture: Box::new(fixture),
-                }))
-            }
-            Err(e) => Some(Err(e)),
+        let (fixture, render_mode) = Self::new(&mut options)?;
+        // Ensure the fixture processed all of the options.
+        if !options.is_empty() {
+            return Err(anyhow!("unhandled options: {}", options.keys().join(", ")));
         }
+        Ok(PatchCandidate {
+            fixture_type: Self::NAME,
+            channel_count: fixture.channel_count(render_mode),
+            render_mode,
+            fixture: Box::new(fixture),
+        })
     }
 
     /// The number of contiguous DMX channels used by the fixture.
@@ -297,6 +336,9 @@ pub trait PatchFixture: NonAnimatedFixture + Sized + 'static {
     /// A render mode is provided for fixtures that may have different channel
     /// counts for different individual specific fixtures.
     fn channel_count(&self, render_mode: Option<RenderMode>) -> usize;
+
+    /// Return the menu of patch options for this fixture type.
+    fn options() -> Vec<(String, PatchOption)>;
 
     /// Create a new instance of the fixture from the provided options.
     ///
@@ -310,32 +352,22 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Sized + 'static {
     const NAME: FixtureType;
 
     /// Return a PatchCandidate for this fixture if it has the appropriate name.
-    fn patch(name: &str, options: &Options) -> Option<Result<PatchCandidate>> {
-        if *name != *Self::NAME {
-            return None;
-        }
+    fn patch(options: &Options) -> Result<PatchCandidate> {
         let mut options = options.clone();
-        match Self::new(&mut options) {
-            Ok((fixture, render_mode)) => {
-                // Ensure the fixture processed all of the options.
-                if !options.is_empty() {
-                    return Some(Err(anyhow!(
-                        "unknown options: {}",
-                        options.keys().join(", ")
-                    )));
-                }
-                Some(Ok(PatchCandidate {
-                    fixture_type: Self::NAME,
-                    channel_count: fixture.channel_count(render_mode),
-                    render_mode,
-                    fixture: Box::new(FixtureWithAnimations {
-                        fixture,
-                        animations: Default::default(),
-                    }),
-                }))
-            }
-            Err(e) => Some(Err(e)),
+        let (fixture, render_mode) = Self::new(&mut options)?;
+        // Ensure the fixture processed all of the options.
+        if !options.is_empty() {
+            return Err(anyhow!("unknown options: {}", options.keys().join(", ")));
         }
+        Ok(PatchCandidate {
+            fixture_type: Self::NAME,
+            channel_count: fixture.channel_count(render_mode),
+            render_mode,
+            fixture: Box::new(FixtureWithAnimations {
+                fixture,
+                animations: Default::default(),
+            }),
+        })
     }
 
     /// The number of contiguous DMX channels used by the fixture.
@@ -344,9 +376,44 @@ pub trait PatchAnimatedFixture: AnimatedFixture + Sized + 'static {
     /// counts for different individual specific fixtures.
     fn channel_count(&self, render_mode: Option<RenderMode>) -> usize;
 
+    /// Return the menu of patch options for this fixture type.
+    fn options() -> Vec<(String, PatchOption)>;
+
     /// Create a new instance of the fixture from the provided options.
     ///
     /// Fixtures should remove all recognized items from Options.
     /// Any unhandled options remaining will result in a patch error.
     fn new(options: &mut Options) -> Result<(Self, Option<RenderMode>)>;
+}
+
+/// The kinds of patch options that fixtures can specify.
+pub enum PatchOption {
+    /// Select a specific option from a menu.
+    Select(Vec<String>),
+
+    /// A network address.
+    SocketAddr,
+}
+
+impl Display for PatchOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Select(opts) => f.write_str(&opts.join(", ")),
+            Self::SocketAddr => f.write_str("<socket address>"),
+        }
+    }
+}
+
+/// Things that can be converted into patch options.
+pub trait AsPatchOption {
+    fn patch_option() -> PatchOption;
+}
+
+impl<T> AsPatchOption for T
+where
+    T: IntoEnumIterator + Display,
+{
+    fn patch_option() -> PatchOption {
+        PatchOption::Select(Self::iter().map(|x| x.to_string()).collect())
+    }
 }
