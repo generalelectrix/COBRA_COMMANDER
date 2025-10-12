@@ -38,14 +38,17 @@ const LOAD: u8 = 4;
 const SYNC: u8 = 6;
 const CUE: u8 = 8;
 const PLAY: u8 = 10;
-const HEADPHONE: u8 = 12;
+
+// The headphone buttons unfortunately have a lot of on-board state management,
+// so we just can't make use of them (they always ensure that one or the other
+// channel is toggled on...)
+// const HEADPHONE: u8 = 12;
 
 const SEARCH_1: u8 = SEARCH + 1;
 const LOAD_1: u8 = LOAD + 1;
 const SYNC_1: u8 = SYNC + 1;
 const CUE_1: u8 = CUE + 1;
 const PLAY_1: u8 = PLAY + 1;
-const HEADPHONE_1: u8 = HEADPHONE + 1;
 
 impl AkaiAmx {
     pub const CHANNEL_COUNT: u8 = 2;
@@ -95,26 +98,18 @@ impl AkaiAmx {
                 SYNC => button(0, Sync),
                 CUE => button(0, Cue),
                 PLAY => button(0, Play),
-                HEADPHONE => button(0, Headphone),
                 SEARCH_1 => button(1, Search),
                 LOAD_1 => button(1, Load),
                 SYNC_1 => button(1, Sync),
                 CUE_1 => button(1, Cue),
                 PLAY_1 => button(1, Play),
-                HEADPHONE_1 => button(1, Headphone),
                 _ => {
                     return None;
                 }
             },
-            // The headphone buttons are toggles with state managed on the device.
-            // We override this and make them into controlled toggles.
-            EventType::NoteOff => match control {
-                HEADPHONE => button(0, Headphone),
-                HEADPHONE_1 => button(1, Headphone),
-                _ => {
-                    return None;
-                }
-            },
+            _ => {
+                return None;
+            }
         })
     }
 
@@ -138,7 +133,6 @@ impl AkaiAmx {
                 Sync => SYNC,
                 Cue => CUE,
                 Play => PLAY,
-                Headphone => HEADPHONE,
             };
         if let Err(err) = output.send(event(note_on(MIDI_CHANNEL, control), state as u8)) {
             error!("MIDI send error setting LED state {channel}({button}) to {state}: {err}.");
@@ -193,10 +187,6 @@ pub enum AmxChannelButton {
     Sync,
     Cue,
     Play,
-    // Unfortunately, the headphone buttons appear to maintain toggle state on
-    // the hardware; they send NoteOn or NoteOff only on each press. If we can
-    // control their LEDs we can paper over this...
-    Headphone,
 }
 
 #[derive(Clone, Copy, Debug, Display)]
@@ -250,7 +240,6 @@ impl MidiHandler for AkaiAmx {
                         Sync => ClockControlMessage::Tap,
                         Cue => ClockControlMessage::ToggleOneShot,
                         Play => ClockControlMessage::Retrigger,
-                        Headphone => ClockControlMessage::ToggleUseAudioSize,
                         _ => {
                             return None;
                         }
@@ -265,11 +254,9 @@ impl MidiHandler for AkaiAmx {
         match msg.change {
             ClockStateChange::OneShot(v) => self.set_led(channel, AmxChannelButton::Cue, v, output),
             ClockStateChange::Ticked(v) => self.set_led(channel, AmxChannelButton::Sync, v, output),
-            ClockStateChange::UseAudioSize(v) => {
-                self.set_led(channel, AmxChannelButton::Headphone, v, output)
-            }
             ClockStateChange::Rate(_)
             | ClockStateChange::RateFine(_)
+            | ClockStateChange::UseAudioSize(_)
             | ClockStateChange::SubmasterLevel(_)
             | ClockStateChange::UseAudioSpeed(_) => (),
         }
