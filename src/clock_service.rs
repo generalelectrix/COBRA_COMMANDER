@@ -25,7 +25,7 @@ impl ClockService {
 /// and present options.  Connect to the service and return a mutex that wraps
 /// the clock state shared with the receiver thread.
 pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> {
-    if !prompt_bool("Run clock service?")? {
+    if !prompt_bool("Listen to clocks and audio from a tunnels controller?")? {
         return Ok(None);
     }
     println!("Browsing for clock providers...");

@@ -126,14 +126,13 @@ impl Show {
         match show_ctrl_msg {
             ShowControlMessage::Channel(msg) => {
                 self.channels
-                    .control(&msg, &mut self.patch, &self.animation_ui_state, &sender)
+                    .control(&msg, &mut self.patch, &self.animation_ui_state, &sender)?;
             }
-            ShowControlMessage::Clock(msg) => {
-                self.clocks.control_clock(msg, sender.controller);
-                Ok(())
-            }
+            ShowControlMessage::Clock(msg) => self.clocks.control_clock(msg, sender.controller),
             ShowControlMessage::Audio(msg) => self.clocks.control_audio(msg, &mut self.controller),
-            ShowControlMessage::Master(msg) => self.master_controls.control(&msg, &sender),
+            ShowControlMessage::Master(msg) => {
+                self.master_controls.control(&msg, &sender)?;
+            }
             ShowControlMessage::Animation(msg) => {
                 let Some(channel) = self.channels.current_channel() else {
                     bail!("cannot handle animation control message because no channel is selected\n{msg:?}");
@@ -147,7 +146,7 @@ impl Show {
                         entity: crate::osc::animation::GROUP,
                         emitter: &sender,
                     },
-                )
+                )?;
             }
             ShowControlMessage::ColorOrgan(msg) => {
                 // FIXME: this is really janky and has no way to route messages.
@@ -157,9 +156,9 @@ impl Show {
                     };
                     color_organ.control(msg.clone(), &IgnoreEmitter);
                 }
-                Ok(())
             }
-        }
+        };
+        Ok(())
     }
 
     /// Handle a single OSC message.

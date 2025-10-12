@@ -120,26 +120,15 @@ fn run_show(args: RunArgs) -> Result<()> {
         Patch::patch_all(fixtures)?
     };
 
-    let audio_device = prompt_audio()?
-        .map(|device_name| AudioInput::new(Some(device_name)))
-        .transpose()?;
-
     let zmq_ctx = Context::new();
 
     let clocks = if let Some(clock_service) = prompt_start_clock_service(zmq_ctx.clone())? {
-        if let Some(audio_input) = audio_device {
-            let mut audio_controls = GroupControlMap::default();
-            crate::osc::audio::map_controls(&mut audio_controls);
-            // Local audio input, remote clocks.
-            Clocks::Mixed {
-                service: clock_service,
-                audio_input,
-                audio_controls,
-            }
-        } else {
-            Clocks::Service(clock_service)
-        }
+        Clocks::Service(clock_service)
     } else {
+        let audio_device = prompt_audio()?
+            .map(|device_name| AudioInput::new(Some(device_name)))
+            .transpose()?;
+
         let clocks = ClockBank::default();
         let mut audio_controls = GroupControlMap::default();
         crate::osc::audio::map_controls(&mut audio_controls);
