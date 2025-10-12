@@ -111,6 +111,16 @@ impl Show {
         };
 
         match msg {
+            ControlMessage::RegisterClient(client_id) => {
+                println!("Registering new OSC client at {client_id}.");
+                self.controller.register_osc_client(client_id);
+                self.refresh_ui()
+            }
+            ControlMessage::DeregisterClient(client_id) => {
+                println!("Deregistering OSC client at {}.", client_id);
+                self.controller.deregister_osc_client(client_id);
+                Ok(())
+            }
             ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
             ControlMessage::Wled(msg) => self.handle_wled_response(&msg),
@@ -167,12 +177,15 @@ impl Show {
 
         match msg.group() {
             "Meta" => {
-                if msg.control() == "RefreshUI" {
-                    if msg.get_bool()? {
-                        self.refresh_ui()?;
+                match msg.control() {
+                    "RefreshUI" => {
+                        if msg.get_bool()? {
+                            self.refresh_ui()?;
+                        }
                     }
-                } else {
-                    bail!("unknown Meta control {}", msg.control());
+                    unknown => {
+                        bail!("unknown Meta control {}", unknown)
+                    }
                 }
                 Ok(())
             }

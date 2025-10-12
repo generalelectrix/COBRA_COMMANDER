@@ -152,13 +152,11 @@ fn run_show(args: RunArgs) -> Result<()> {
     let mut midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
 
     for d in &midi_devices {
-        if matches!(d.device, Device::CmdMM1(_)) && !matches!(clocks, Clocks::Internal { .. }) {
-            bail!("Configured a CMD MM-1 but the clock service is active; do not activate the clock service if you want local clock controls.");
+        if matches!(d.device, Device::CmdMM1(_) | Device::Amx(_))
+            && matches!(clocks, Clocks::Service(_))
+        {
+            bail!("Configured a {} but the clock service is active; do not activate the clock service if you want local clock controls.", d.device);
         }
-    }
-
-    if osc_controllers.is_empty() && midi_devices.is_empty() {
-        bail!("No OSC or midi clients were registered or manually configured.");
     }
 
     if prompt_bool("Use a color organ?")? {
@@ -179,7 +177,7 @@ fn run_show(args: RunArgs) -> Result<()> {
     )?;
 
     let universe_count = patch.universe_count();
-    println!("This show requires {universe_count} universes.");
+    println!("This show requires {universe_count} universe(s).");
 
     let mut dmx_ports = Vec::new();
 
