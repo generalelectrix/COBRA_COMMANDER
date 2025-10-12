@@ -1,5 +1,6 @@
 //! Maintain UI state for animations.
 use anyhow::bail;
+use log::debug;
 use std::collections::HashMap;
 use tunnels::animation::{Animation, EmitStateChange as EmitAnimationStateChange};
 
@@ -77,7 +78,14 @@ impl AnimationUIState {
                 if anim.target() == msg {
                     return Ok(());
                 }
-                anim.set_target(msg)?;
+                // A target index being out of range basically just means that
+                // someone pushed a select button that doesn't have a target
+                // assigned to it. This isn't really an error, so don't report
+                // it as one.
+                if let Err(err) = anim.set_target(msg) {
+                    debug!("{err}");
+                    return Ok(());
+                }
                 Self::emit_osc_state_change(StateChange::Target(msg), emitter);
             }
             ControlMessage::SelectAnimation(n) => {

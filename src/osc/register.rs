@@ -20,7 +20,7 @@ fn register_client(receive_port: u16) -> Result<OscClientId> {
 }
 
 pub fn prompt_osc_config(receive_port: u16) -> Result<Option<Vec<OscClientId>>> {
-    if !prompt_bool("Auto-register OSC controllers?")? {
+    if !prompt_bool("Pre-register OSC controllers?")? {
         return Ok(None);
     }
     let mut clients = HashSet::new();

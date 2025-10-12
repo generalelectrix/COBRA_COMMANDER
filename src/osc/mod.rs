@@ -271,7 +271,11 @@ pub struct OscControlResponse {
 /// Drain a control channel of OSC messages and send them.
 /// Sends each message to every provided address, unless the talkback mode
 /// says otherwise.
-fn start_sender(clients: Vec<OscClientId>) -> Result<Sender<OscControlResponse>> {
+///
+/// We also track all client IDs in outgoing messages - if we come across one
+/// that we don't have in our initial client list, we add it to the list. This
+/// allows automatic addition of new clients just by sending a control message.
+fn start_sender(mut clients: Vec<OscClientId>) -> Result<Sender<OscControlResponse>> {
     let (send, recv) = channel::<OscControlResponse>();
     let socket = UdpSocket::bind("0.0.0.0:0")?;
 
@@ -290,12 +294,29 @@ fn start_sender(clients: Vec<OscClientId>) -> Result<Sender<OscControlResponse>>
                 continue;
             };
             //log::debug!("Sending OSC message: {packet:?}");
+            let mut client_already_registered = false;
             for client in &clients {
-                if resp.talkback == TalkbackMode::Off && resp.sender_id == Some(*client) {
+                let same_as_sender = resp.sender_id == Some(*client);
+                if same_as_sender {
+                    client_already_registered = true;
+                }
+                if resp.talkback == TalkbackMode::Off && same_as_sender {
                     continue;
                 }
                 if let Err(err) = socket.send_to(&msg_buf, client.addr()) {
                     error!("OSC send error to {client}: {err}.");
+                }
+            }
+            if !client_already_registered {
+                if let Some(new_client_id) = resp.sender_id {
+                    println!("Registering new OSC client: {new_client_id}");
+                    clients.push(new_client_id);
+
+                    if resp.talkback != TalkbackMode::Off {
+                        if let Err(err) = socket.send_to(&msg_buf, new_client_id.addr()) {
+                            error!("OSC send error to {new_client_id}: {err}.");
+                        }
+                    }
                 }
             }
         }
