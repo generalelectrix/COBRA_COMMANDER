@@ -8,10 +8,11 @@
 //! messages to allow delaying interpretation of the midi messages... we need
 //! to fix that original mistake to unwind this.
 use log::{error, warn};
+use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
-    midi::{event, note_on, Event, EventType, Output},
+    midi::{cc, event, note_on, Event, EventType, Output},
     midi_controls::{bipolar_from_midi, unipolar_from_midi},
 };
 
@@ -23,7 +24,7 @@ use tunnels::clock_bank::{
 use crate::{
     midi::{Device, MidiHandler},
     show::ShowControlMessage,
-    util::bipolar_fader_with_detent,
+    util::{bipolar_fader_with_detent, unipolar_to_range},
 };
 
 /// Model of the Akai AMX.
@@ -137,6 +138,31 @@ impl AkaiAmx {
             error!("MIDI send error setting LED state {channel}({button}) to {state}: {err}.");
         }
     }
+
+    /// Set one of the VU meters.
+    pub fn set_vu_meter(&self, which: VuMeter, value: UnipolarFloat, output: &mut Output<Device>) {
+        use VuMeter::*;
+        let control = match which {
+            Channel1 => 0x40,
+            Channel2 => 0x14,
+            MasterLeft => 0x3E,
+            MasterRight => 0x3F,
+        };
+        if let Err(err) = output.send(event(
+            cc(MIDI_CHANNEL, control),
+            unipolar_to_range(0, 85, value),
+        )) {
+            error!("MIDI send error setting VU meter: {err}");
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub enum VuMeter {
+    Channel1,
+    Channel2,
+    MasterLeft,
+    MasterRight,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -237,6 +263,12 @@ impl MidiHandler for AkaiAmx {
             | ClockStateChange::SubmasterLevel(_)
             | ClockStateChange::UseAudioSize(_)
             | ClockStateChange::UseAudioSpeed(_) => (),
+        }
+    }
+
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output<Device>) {
+        if let tunnels::audio::StateChange::EnvelopeValue(v) = msg {
+            self.set_vu_meter(VuMeter::MasterRight, *v, output);
         }
     }
 }
