@@ -42,7 +42,6 @@ mod config;
 mod control;
 mod dmx;
 mod fixture;
-mod gui;
 mod master;
 mod midi;
 mod osc;
@@ -69,6 +68,9 @@ enum Command {
 
     /// Run the animation visualizer.
     Viz,
+
+    /// Get fixture info.
+    Fix(FixArgs),
 }
 
 #[derive(Args)]
@@ -89,6 +91,16 @@ struct RunArgs {
     wled_addr: Option<Url>,
 }
 
+#[derive(Args)]
+struct FixArgs {
+    /// Show info for all registered fixture types.
+    #[arg(long)]
+    all: bool,
+
+    /// Show info for one fixture type.
+    fixture: Option<String>,
+}
+
 fn main() -> Result<()> {
     let args = Cli::try_parse()?;
 
@@ -103,6 +115,7 @@ fn main() -> Result<()> {
     match args.command {
         Command::Run(args) => run_show(args),
         Command::Viz => run_animation_visualizer(),
+        Command::Fix(args) => fixture_help(args),
     }
 }
 
@@ -219,5 +232,24 @@ fn launch_animation_visualizer() -> Result<()> {
         .arg(Command::Viz.to_string())
         .spawn()
         .context("failed to start animation visualizer")?;
+    Ok(())
+}
+
+fn fixture_help(args: FixArgs) -> Result<()> {
+    let fixtures = Patch::menu();
+    if args.all {
+        for f in fixtures {
+            println!("{f}");
+            println!();
+        }
+        return Ok(());
+    }
+    let Some(fixture_name) = args.fixture else {
+        bail!("specify a single fixture to get info about or pass --all");
+    };
+    let Some(fixture) = fixtures.into_iter().find(|f| f.name.0 == fixture_name) else {
+        bail!("unknown fixture '{}'", fixture_name);
+    };
+    println!("{fixture}");
     Ok(())
 }

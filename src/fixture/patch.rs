@@ -3,7 +3,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 use strum::IntoEnumIterator;
 
 use anyhow::bail;
@@ -274,6 +274,28 @@ pub struct Patcher {
     pub options: fn() -> Vec<(String, PatchOption)>,
 }
 
+impl Display for Patcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let opts = (self.options)();
+        // If a fixture doesn't take options, we should be able to get a channel count.
+        if opts.is_empty() {
+            todo!("get channel count");
+        }
+
+        write!(f, "{}", self.name)?;
+        let opts = (self.options)();
+        if opts.is_empty() {
+            return Ok(());
+        }
+        f.write_char('\n')?;
+        writeln!(f, "  options:")?;
+        for (key, opt) in opts {
+            writeln!(f, "    {key}: {opt}")?;
+        }
+        Ok(())
+    }
+}
+
 /// Fixture constructor trait to handle patching non-animating fixtures.
 pub trait PatchFixture: NonAnimatedFixture + Sized + 'static {
     const NAME: FixtureType;
@@ -376,6 +398,15 @@ pub enum PatchOption {
 
     /// A network address.
     SocketAddr,
+}
+
+impl Display for PatchOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Select(opts) => f.write_str(&opts.join(", ")),
+            Self::SocketAddr => f.write_str("<socket address>"),
+        }
+    }
 }
 
 /// Things that can be converted into patch options.
