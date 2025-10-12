@@ -65,6 +65,15 @@ impl OscListener {
                 if m.addr == "/ignore" {
                     return Ok(());
                 }
+
+                // If this is a deregistration message, tell the show to deregister this client.
+                if m.addr == "/deregister" {
+                    self.clients.retain(|c| *c != client_id);
+                    self.send
+                        .send(ControlMessage::DeregisterClient(client_id))
+                        .unwrap();
+                    return Ok(());
+                }
                 let cm = OscControlMessage::new(m, client_id)?;
                 self.send.send(ControlMessage::Osc(cm)).unwrap();
             }

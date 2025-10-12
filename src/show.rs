@@ -112,8 +112,14 @@ impl Show {
 
         match msg {
             ControlMessage::RegisterClient(client_id) => {
+                println!("Registering new OSC client at {client_id}.");
                 self.controller.register_osc_client(client_id);
                 self.refresh_ui()
+            }
+            ControlMessage::DeregisterClient(client_id) => {
+                println!("Deregistering OSC client at {}.", client_id);
+                self.controller.deregister_osc_client(client_id);
+                Ok(())
             }
             ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
@@ -175,11 +181,6 @@ impl Show {
                     "RefreshUI" => {
                         if msg.get_bool()? {
                             self.refresh_ui()?;
-                        }
-                    }
-                    "Deregister" => {
-                        if msg.get_bool()? {
-                            self.controller.deregister_osc_client(msg.client_id);
                         }
                     }
                     unknown => {

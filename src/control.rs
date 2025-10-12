@@ -167,6 +167,7 @@ impl<'a> EmitWledControlMessage for ControlMessageWithMetadataSender<'a> {
 
 pub enum ControlMessage {
     RegisterClient(OscClientId),
+    DeregisterClient(OscClientId),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
     #[allow(unused)]
