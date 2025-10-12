@@ -12,8 +12,10 @@ use osc::GroupControlMap;
 use reqwest::Url;
 use rust_dmx::select_port;
 use simplelog::{Config as LogConfig, SimpleLogger};
+use std::env::current_exe;
 use std::fs::File;
 use std::path::PathBuf;
+use strum_macros::Display;
 use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
 use tunnels::clock_bank::ClockBank;
@@ -58,7 +60,8 @@ struct Cli {
     command: Command,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Display)]
+#[strum(serialize_all = "lowercase")]
 enum Command {
     /// Run the controller.
     Run(RunArgs),
@@ -196,7 +199,13 @@ fn run_show(args: RunArgs) -> Result<()> {
         dmx_ports.push(select_port()?);
     }
 
+    if animation_service.is_some() {
+        launch_animation_visualizer()?;
+    }
+
     let mut show = Show::new(patch, controller, clocks, animation_service)?;
+
+    println!("Running show.");
 
     show.run(&mut dmx_ports);
 
@@ -210,8 +219,17 @@ fn check_patch(fixtures: Vec<FixtureGroupConfig>) -> Result<()> {
 }
 
 fn prompt_start_animation_service(ctx: &Context) -> Result<Option<AnimationPublisher>> {
-    if !prompt_bool("Run animation service?")? {
+    if !prompt_bool("Run animation visualizer?")? {
         return Ok(None);
     }
     Ok(Some(animation_publisher(ctx)?))
+}
+
+fn launch_animation_visualizer() -> Result<()> {
+    let bin_path = current_exe().context("failed to get the path to the running binary")?;
+    std::process::Command::new(bin_path)
+        .arg(Command::Viz.to_string())
+        .spawn()
+        .context("failed to start animation visualizer")?;
+    Ok(())
 }

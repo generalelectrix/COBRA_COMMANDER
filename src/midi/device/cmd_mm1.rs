@@ -1,5 +1,5 @@
 //! Device model for the Behringer CMD MM-1 fader wing.
-use log::{error, warn};
+use log::{debug, error};
 use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
@@ -107,7 +107,7 @@ impl BehringerCmdMM1 {
         output: &mut Output<Device>,
     ) {
         if channel >= Self::CHANNEL_COUNT as usize {
-            warn!("CMD MM-1 channel {channel} out of range for LED state update");
+            debug!("CMD MM-1 channel {channel} out of range for LED state update");
             return;
         }
         let control = match button {

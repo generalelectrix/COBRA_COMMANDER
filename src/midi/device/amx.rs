@@ -7,7 +7,7 @@
 //! tunnels assumes that devices are stateless and are passed around with the
 //! messages to allow delaying interpretation of the midi messages... we need
 //! to fix that original mistake to unwind this.
-use log::{error, warn};
+use log::{debug, error};
 use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
@@ -123,7 +123,7 @@ impl AkaiAmx {
     ) {
         use AmxChannelButton::*;
         if channel >= Self::CHANNEL_COUNT as usize {
-            warn!("AMX channel {channel} out of range for LED state update");
+            debug!("AMX channel {channel} out of range for LED state update");
             return;
         }
         let control = channel as u8
