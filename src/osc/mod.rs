@@ -2,9 +2,11 @@ use crate::channel::{ChannelStateChange, ChannelStateEmitter};
 use crate::control::ControlMessage;
 use crate::control::EmitControlMessage;
 use crate::fixture::FixtureGroupKey;
+use crate::osc::listener::OscListener;
+use crate::osc::sender::{OscSender, OscSenderCommand};
 use crate::wled::EmitWledControlMessage;
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::{bail, Context};
 use log::{error, info};
 use number::{BipolarFloat, Phase, UnipolarFloat};
 use rosc::{encoder, OscMessage, OscPacket, OscType};
@@ -28,8 +30,10 @@ pub mod clock;
 mod control_message;
 mod fader_array;
 mod label_array;
+mod listener;
 mod radio_button;
 mod register;
+mod sender;
 
 pub use control_message::OscControlMessage;
 pub use register::prompt_osc_config;
@@ -52,7 +56,7 @@ pub trait EmitOscMessage {
 }
 
 pub struct OscController {
-    send: Sender<OscControlResponse>,
+    send: Sender<OscSenderCommand>,
 }
 
 impl OscController {
@@ -62,15 +66,51 @@ impl OscController {
         send: Sender<ControlMessage>,
     ) -> Result<Self> {
         let recv_addr = SocketAddr::from_str(&format!("0.0.0.0:{receive_port}"))?;
-        start_listener(recv_addr, send)?;
-        let response_send = start_sender(send_addrs)?;
+
+        let mut listener = OscListener::new(send_addrs.clone(), recv_addr, send)
+            .context("failed to start OSC listener")?;
+
+        thread::spawn(move || {
+            listener.run();
+        });
+
+        let (mut sender, response_send) =
+            OscSender::new(send_addrs).context("failed to start OSC sender")?;
+
+        thread::spawn(move || {
+            sender.run();
+        });
+
         Ok(Self {
             send: response_send,
         })
     }
 
+    /// Send an OSC message to all clients.
     pub fn send(&self, msg: OscControlResponse) {
-        if self.send.send(msg).is_err() {
+        if self.send.send(OscSenderCommand::SendMessage(msg)).is_err() {
+            error!("OSC send channel is disconnected.");
+        }
+    }
+
+    /// Register an OSC client.
+    pub fn register(&self, client_id: OscClientId) {
+        if self
+            .send
+            .send(OscSenderCommand::Register(client_id))
+            .is_err()
+        {
+            error!("OSC send channel is disconnected.");
+        }
+    }
+
+    /// Deregister an OSC client.
+    pub fn deregister(&self, client_id: OscClientId) {
+        if self
+            .send
+            .send(OscSenderCommand::Deregister(client_id))
+            .is_err()
+        {
             error!("OSC send channel is disconnected.");
         }
     }
@@ -226,34 +266,6 @@ impl<C> GroupControlMap<C> {
     }
 }
 
-/// Forward OSC messages to the provided sender.
-/// Spawns a new thread to handle listening for messages.
-fn start_listener(addr: SocketAddr, send: Sender<ControlMessage>) -> Result<()> {
-    let socket = UdpSocket::bind(addr)?;
-
-    let mut buf = [0u8; rosc::decoder::MTU];
-
-    let mut recv_packet = move || -> Result<_> {
-        let (size, sender_addr) = socket.recv_from(&mut buf)?;
-        let (_, packet) = rosc::decoder::decode_udp(&buf[..size])?;
-        Ok((packet, OscClientId(sender_addr)))
-    };
-
-    thread::spawn(move || loop {
-        let (packet, client_id) = match recv_packet() {
-            Ok(msg) => msg,
-            Err(e) => {
-                error!("Error receiving from OSC input: {e}");
-                continue;
-            }
-        };
-        if let Err(e) = forward_packet(packet, client_id, &send) {
-            error!("Error unpacking/forwarding OSC packet: {e}");
-        }
-    });
-    Ok(())
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TalkbackMode {
     /// Control responses should be sent to all clients.
@@ -266,87 +278,6 @@ pub struct OscControlResponse {
     pub sender_id: Option<OscClientId>,
     pub talkback: TalkbackMode,
     pub msg: OscMessage,
-}
-
-/// Drain a control channel of OSC messages and send them.
-/// Sends each message to every provided address, unless the talkback mode
-/// says otherwise.
-///
-/// We also track all client IDs in outgoing messages - if we come across one
-/// that we don't have in our initial client list, we add it to the list. This
-/// allows automatic addition of new clients just by sending a control message.
-fn start_sender(mut clients: Vec<OscClientId>) -> Result<Sender<OscControlResponse>> {
-    let (send, recv) = channel::<OscControlResponse>();
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-
-    thread::spawn(move || {
-        let mut msg_buf = Vec::new();
-        loop {
-            let Ok(resp) = recv.recv() else {
-                info!("OSC sender channel hung up, terminating sender thread.");
-                return;
-            };
-            // Encode the message.
-            let packet = OscPacket::Message(resp.msg);
-            msg_buf.clear();
-            if let Err(err) = encoder::encode_into(&packet, &mut msg_buf) {
-                error!("Error encoding OSC packet {packet:?}: {err}.");
-                continue;
-            };
-            //log::debug!("Sending OSC message: {packet:?}");
-            let mut client_already_registered = false;
-            for client in &clients {
-                let same_as_sender = resp.sender_id == Some(*client);
-                if same_as_sender {
-                    client_already_registered = true;
-                }
-                if resp.talkback == TalkbackMode::Off && same_as_sender {
-                    continue;
-                }
-                if let Err(err) = socket.send_to(&msg_buf, client.addr()) {
-                    error!("OSC send error to {client}: {err}.");
-                }
-            }
-            if !client_already_registered {
-                if let Some(new_client_id) = resp.sender_id {
-                    println!("Registering new OSC client: {new_client_id}");
-                    clients.push(new_client_id);
-
-                    if resp.talkback != TalkbackMode::Off {
-                        if let Err(err) = socket.send_to(&msg_buf, new_client_id.addr()) {
-                            error!("OSC send error to {new_client_id}: {err}.");
-                        }
-                    }
-                }
-            }
-        }
-    });
-    Ok(send)
-}
-
-/// Recursively unpack OSC packets and send all the inner messages as control events.
-fn forward_packet(
-    packet: OscPacket,
-    client_id: OscClientId,
-    send: &Sender<ControlMessage>,
-) -> Result<(), OscError> {
-    match packet {
-        OscPacket::Message(m) => {
-            // info!("Received OSC message: {:?}", m);
-            // Set TouchOSC pages to send this message, and ignore them all here.
-            if m.addr == "/page" {
-                return Ok(());
-            }
-            let cm = OscControlMessage::new(m, client_id)?;
-            send.send(ControlMessage::Osc(cm)).unwrap();
-        }
-        OscPacket::Bundle(msgs) => {
-            for subpacket in msgs.content {
-                forward_packet(subpacket, client_id, send)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 #[derive(Debug, Error)]
