@@ -170,7 +170,7 @@ impl FixtureGroup {
                 },
                 dmx_buf,
             );
-            debug!("{}: {:?}", self.qualified_name(), dmx_buf);
+            debug!("{}@{}: {:?}", self.qualified_name(), dmx_addr + 1, dmx_buf);
         }
     }
 }
