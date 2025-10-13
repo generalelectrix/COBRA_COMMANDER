@@ -3,10 +3,7 @@
 use anyhow::{ensure, Context};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
-use serde::Deserialize;
-use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
-use std::ops::Deref;
 use std::time::Duration;
 
 use log::debug;

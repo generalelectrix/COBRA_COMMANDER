@@ -37,7 +37,7 @@ impl<'a> FixtureGroupControls<'a> {
 
 pub mod prelude {
     pub use super::fixture::{
-        AnimatedFixture, FixtureType, NonAnimatedFixture, RenderMode, Update,
+        AnimatedFixture, FixtureType, NonAnimatedFixture, Update,
     };
     pub use super::patch::{
         AsPatchOption, CreateAnimatedGroup, CreateNonAnimatedGroup, PatchConfig, PatchFixture,
