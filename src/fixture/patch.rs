@@ -110,6 +110,9 @@ impl Patch {
 
         let mut group = (patcher.create_group)(group_key.clone(), &cfg.options)?;
 
+        // FIXME: should do some validation around having at least one patch
+        // block... but need to decide how to handle patching non-DMX fixtures.
+
         for block in &cfg.patches {
             let patch_cfg = (patcher.patch)(&block.options)
                 .with_context(|| group.qualified_name().to_string())?;
