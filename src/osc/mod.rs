@@ -336,6 +336,7 @@ impl OscControlMessage {
 
 pub mod prelude {
     pub use super::basic_controls::{button, Button};
+    pub use super::bipolar_array::{bipolar_array, BipolarArray};
     pub use super::button_array::{button_array, ButtonArray};
     pub use super::label_array::LabelArray;
     pub use super::unipolar_array::{unipolar_array, UnipolarArray};
