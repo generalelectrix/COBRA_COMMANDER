@@ -108,6 +108,11 @@ impl Patch {
             .clone()
             .unwrap_or_else(|| FixtureGroupKey(cfg.fixture.to_string()));
 
+        ensure!(
+            !self.fixtures.contains_key(&group_key),
+            "duplicate group key"
+        );
+
         let mut group = (patcher.create_group)(group_key.clone(), &cfg.options)?;
 
         // FIXME: should do some validation around having at least one patch
