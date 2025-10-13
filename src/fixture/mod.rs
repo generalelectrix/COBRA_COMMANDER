@@ -36,9 +36,8 @@ impl<'a> FixtureGroupControls<'a> {
 }
 
 pub mod prelude {
-    pub use super::fixture::{
-        AnimatedFixture, FixtureType, NonAnimatedFixture, Update,
-    };
+    pub use super::fixture::EnumRenderModel;
+    pub use super::fixture::{AnimatedFixture, FixtureType, NonAnimatedFixture, Update};
     pub use super::patch::{
         AsPatchOption, CreateAnimatedGroup, CreateNonAnimatedGroup, PatchConfig, PatchFixture,
         PatchOption,

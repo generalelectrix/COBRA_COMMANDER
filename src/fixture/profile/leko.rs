@@ -15,7 +15,7 @@ use log::error;
 use ordered_float::OrderedFloat;
 use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 
-use crate::fixture::{fixture::EnumRenderModel, prelude::*};
+use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update)]
 pub struct Leko {
@@ -53,11 +53,11 @@ impl Default for Leko {
 impl PatchFixture for Leko {
     const NAME: FixtureType = FixtureType("Leko");
 
-    fn new(options: &mut crate::config::Options) -> Result<Self> {
+    fn new(_options: &mut Options) -> Result<Self> {
         Ok(Default::default())
     }
 
-    fn patch_config(options: &mut crate::config::Options) -> anyhow::Result<PatchConfig> {
+    fn patch_config(options: &mut Options) -> anyhow::Result<PatchConfig> {
         let Some(kind) = options.remove("kind") else {
             bail!("missing required option: kind");
         };

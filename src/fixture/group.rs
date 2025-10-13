@@ -49,10 +49,6 @@ impl FixtureGroup {
         }
     }
 
-    pub fn fixture_type(&self) -> FixtureType {
-        self.fixture_type
-    }
-
     /// Patch an additional fixture in this group.
     pub fn patch(&mut self, cfg: GroupFixtureConfig) {
         self.fixture_configs.push(cfg);

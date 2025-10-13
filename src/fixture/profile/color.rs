@@ -3,11 +3,7 @@ use anyhow::{Context, Result};
 use log::error;
 use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 
-use crate::{
-    color::*,
-    config::Options,
-    fixture::{fixture::EnumRenderModel, prelude::*},
-};
+use crate::{color::*, config::Options, fixture::prelude::*};
 
 #[derive(Debug, Control, EmitState, Update)]
 pub struct Color {

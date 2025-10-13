@@ -283,9 +283,11 @@ impl Display for Patcher {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)?;
 
-        let opts = (self.patch_options)();
+        let patch_opts = (self.patch_options)();
         // If a fixture doesn't take options, we should be able to get a channel count.
-        if opts.is_empty() {
+        // TODO: we should make it possible to generate patch configs for all
+        // enumerable options
+        if patch_opts.is_empty() {
             if let Ok(fix) = (self.patch)(&Default::default()) {
                 if fix.channel_count > 0 {
                     write!(
@@ -298,13 +300,25 @@ impl Display for Patcher {
             }
         }
 
-        let opts = (self.patch_options)();
-        if opts.is_empty() {
+        let group_opts = (self.group_options)();
+
+        if patch_opts.is_empty() && group_opts.is_empty() {
             return Ok(());
         }
         f.write_char('\n')?;
-        writeln!(f, "  options:")?;
-        for (key, opt) in opts {
+        if !group_opts.is_empty() {
+            writeln!(f, "  group-level options:")?;
+        }
+
+        for (key, opt) in group_opts {
+            writeln!(f, "    {key}: {opt}")?;
+        }
+
+        if !patch_opts.is_empty() {
+            writeln!(f, "  patch-level options:")?;
+        }
+
+        for (key, opt) in patch_opts {
             writeln!(f, "    {key}: {opt}")?;
         }
         Ok(())
