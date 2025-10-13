@@ -4,7 +4,7 @@ use crate::{
     fixture::{color::Color, prelude::*},
 };
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 20]
 pub struct Astera {
     #[channel_control]

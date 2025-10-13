@@ -50,22 +50,30 @@ impl Default for Leko {
     }
 }
 
-impl PatchAnimatedFixture for Leko {
+impl PatchFixture for Leko {
     const NAME: FixtureType = FixtureType("Leko");
-    fn channel_count(&self, render_mode: Option<RenderMode>) -> usize {
-        Model::model_for_mode(render_mode).unwrap().channel_count()
+
+    fn new(options: &mut crate::config::Options) -> Result<Self> {
+        Ok(Default::default())
     }
 
-    fn new(options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
+    fn patch_config(options: &mut crate::config::Options) -> anyhow::Result<PatchConfig> {
         let Some(kind) = options.remove("kind") else {
             bail!("missing required option: kind");
         };
         let model =
             Model::from_str(&kind).with_context(|| format!("invalid kind option: {kind}"))?;
-        Ok((Default::default(), Some(model.render_mode())))
+        Ok(PatchConfig {
+            channel_count: model.channel_count(),
+            render_mode: Some(model.render_mode()),
+        })
     }
 
-    fn options() -> Vec<(String, PatchOption)> {
+    fn group_options() -> Vec<(String, PatchOption)> {
+        vec![]
+    }
+
+    fn patch_options() -> Vec<(String, PatchOption)> {
         vec![("kind".to_string(), Model::patch_option())]
     }
 }

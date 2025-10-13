@@ -6,7 +6,7 @@ use super::color::{Color, Model as ColorModel};
 
 use crate::{color::ColorSpace, fixture::prelude::*};
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 8]
 pub struct FreedomFries {
     #[channel_control]

@@ -1,7 +1,7 @@
 //! Control profile for a dimmer.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 1]
 pub struct Dimmer {
     #[channel_control]

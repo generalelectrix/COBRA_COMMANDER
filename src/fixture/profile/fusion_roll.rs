@@ -1,6 +1,6 @@
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 11]
 pub struct FusionRoll {
     #[channel_control]

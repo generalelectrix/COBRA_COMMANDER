@@ -6,7 +6,7 @@ use crate::fixture::{
     prelude::*,
 };
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 12]
 pub struct IWashLed {
     #[channel_control]

@@ -2,7 +2,7 @@
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 10]
 pub struct RushWizard {
     #[channel_control]

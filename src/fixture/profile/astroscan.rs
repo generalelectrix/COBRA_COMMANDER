@@ -1,7 +1,7 @@
 //! Clay Paky Astroscan - drunken sailor extraordinaire
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 9]
 pub struct Astroscan {
     lamp_on: BoolChannel,

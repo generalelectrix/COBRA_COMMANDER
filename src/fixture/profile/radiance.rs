@@ -27,21 +27,29 @@ impl Default for Radiance {
     }
 }
 
-impl PatchAnimatedFixture for Radiance {
+impl PatchFixture for Radiance {
     const NAME: FixtureType = FixtureType("Radiance");
-    fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
-        2
-    }
 
-    fn new(options: &mut Options) -> Result<(Self, Option<RenderMode>)> {
+    fn new(options: &mut Options) -> Result<Self> {
         let mut s = Self::default();
         if options.remove("use_timer").is_some() {
             s.timer = Some(Timer::from_options(options)?);
         }
-        Ok((s, None))
+        Ok(s)
     }
 
-    fn options() -> Vec<(String, PatchOption)> {
+    fn patch_config(_options: &mut Options) -> Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: 2,
+            render_mode: None,
+        })
+    }
+
+    fn group_options() -> Vec<(String, PatchOption)> {
+        vec![]
+    }
+
+    fn patch_options() -> Vec<(String, PatchOption)> {
         vec![]
     }
 }

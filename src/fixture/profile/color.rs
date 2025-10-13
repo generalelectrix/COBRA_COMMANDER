@@ -33,22 +33,10 @@ pub struct Color {
     space: ColorSpace,
 }
 
-impl PatchAnimatedFixture for Color {
+impl PatchFixture for Color {
     const NAME: FixtureType = FixtureType("Color");
-    fn channel_count(&self, render_mode: Option<crate::fixture::RenderMode>) -> usize {
-        Model::model_for_mode(render_mode).unwrap().channel_count()
-    }
 
-    fn new(options: &mut Options) -> Result<(Self, Option<RenderMode>)> {
-        let render_mode = options
-            .remove("kind")
-            .map(|kind| {
-                kind.parse::<Model>()
-                    .with_context(|| format!("unknown color output model \"{kind}\""))
-            })
-            .transpose()?
-            .unwrap_or_default()
-            .render_mode();
+    fn new(options: &mut Options) -> Result<Self> {
         let space = options
             .remove("control_color_space")
             .map(|space| {
@@ -58,18 +46,33 @@ impl PatchAnimatedFixture for Color {
             })
             .transpose()?
             .unwrap_or_default();
-        let c = Self::for_subcontrol(None, space);
-        Ok((c, Some(render_mode)))
+        Ok(Self::for_subcontrol(None, space))
     }
 
-    fn options() -> Vec<(String, PatchOption)> {
-        vec![
-            ("kind".to_string(), Model::patch_option()),
-            (
-                "control_color_space".to_string(),
-                ColorSpace::patch_option(),
-            ),
-        ]
+    fn patch_config(options: &mut Options) -> Result<PatchConfig> {
+        let model = options
+            .remove("kind")
+            .map(|kind| {
+                kind.parse::<Model>()
+                    .with_context(|| format!("unknown color output model \"{kind}\""))
+            })
+            .transpose()?
+            .unwrap_or_default();
+        Ok(PatchConfig {
+            channel_count: model.channel_count(),
+            render_mode: Some(model.render_mode()),
+        })
+    }
+
+    fn group_options() -> Vec<(String, PatchOption)> {
+        vec![(
+            "control_color_space".to_string(),
+            ColorSpace::patch_option(),
+        )]
+    }
+
+    fn patch_options() -> Vec<(String, PatchOption)> {
+        vec![("kind".to_string(), Model::patch_option())]
     }
 }
 
