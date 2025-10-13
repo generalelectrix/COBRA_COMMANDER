@@ -13,7 +13,7 @@ use rust_dmx::select_port;
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use strum_macros::Display;
 use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
@@ -64,6 +64,9 @@ enum Command {
     /// Run the controller.
     Run(RunArgs),
 
+    /// Check that the provided patch file is valid, then quit.
+    Check(CheckArgs),
+
     /// Run the animation visualizer.
     Viz,
 
@@ -90,6 +93,12 @@ struct RunArgs {
 }
 
 #[derive(Args)]
+struct CheckArgs {
+    /// Path to a YAML file containing the fixture patch.
+    patch_file: PathBuf,
+}
+
+#[derive(Args)]
 struct FixArgs {
     /// Show info for all registered fixture types.
     #[arg(long)]
@@ -112,25 +121,14 @@ fn main() -> Result<()> {
 
     match args.command {
         Command::Run(args) => run_show(args),
+        Command::Check(args) => check_patch(args),
         Command::Viz => run_animation_visualizer(),
         Command::Fix(args) => fixture_help(args),
     }
 }
 
 fn run_show(args: RunArgs) -> Result<()> {
-    let patch = {
-        let patch_file = File::open(&args.patch_file).with_context(|| {
-            format!(
-                "unable to read patch file \"{}\"",
-                args.patch_file.to_string_lossy()
-            )
-        })?;
-        let fixtures = serde_yaml::from_reader(patch_file)?;
-        if args.check_patch {
-            return check_patch(fixtures);
-        }
-        Patch::patch_all(fixtures)?
-    };
+    let patch = Patch::patch_all(load_patch(&args.patch_file)?)?;
 
     let zmq_ctx = Context::new();
 
@@ -204,10 +202,16 @@ fn run_show(args: RunArgs) -> Result<()> {
     Ok(())
 }
 
-fn check_patch(fixtures: Vec<FixtureGroupConfig>) -> Result<()> {
-    Patch::patch_all(fixtures)?;
+fn check_patch(args: CheckArgs) -> Result<()> {
+    Patch::patch_all(load_patch(&args.patch_file)?)?;
     println!("Patch is OK.");
     Ok(())
+}
+
+fn load_patch(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
+    let patch_file = File::open(path)
+        .with_context(|| format!("unable to read patch file \"{}\"", path.to_string_lossy()))?;
+    Ok(serde_yaml::from_reader(patch_file)?)
 }
 
 fn prompt_start_animation_service(ctx: &Context) -> Result<Option<AnimationPublisher>> {
