@@ -3,10 +3,9 @@
 //! This need not be an TouchOSC "button grid".
 //! Note that the OSC controls should be indexed starting at 1, not 0, and these
 //! indexes will be shifted into a 0-indexed space when handled.
-use number::UnipolarFloat;
 use rosc::OscType;
 
-use crate::osc::{OscControlMessage, OscError};
+use crate::osc::OscControlMessage;
 
 use super::{GroupControlMap, ScopedOscMessage};
 use anyhow::{bail, Result};

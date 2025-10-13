@@ -1,5 +1,7 @@
 //! OSC control mappings for the tunnels clock system.
 use anyhow::Result;
+use tunnels::clock::ControlMessage::*;
+use tunnels::clock::StateChange::*;
 use tunnels::clock_bank::{ClockIdxExt, ControlMessage, StateChange};
 
 use crate::osc::prelude::*;
@@ -19,8 +21,6 @@ const USE_AUDIO_SIZE: ButtonArray = button_array("UseAudioSize");
 const USE_AUDIO_SPEED: ButtonArray = button_array("UseAudioSpeed");
 
 pub fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
-    use tunnels::clock::ControlMessage::*;
-    use tunnels::clock::StateChange::*;
     RATE.map(map, channel_control(|v| Set(Rate(v))));
     RATE_FINE.map(map, channel_control(|v| Set(RateFine(v))));
     LEVEL.map(map, channel_control(|v| Set(SubmasterLevel(v))));
@@ -36,7 +36,16 @@ pub fn emit_osc_state_change<S>(sc: &StateChange, emitter: &S)
 where
     S: crate::osc::EmitScopedOscMessage + ?Sized,
 {
-    todo!()
+    let channel: usize = sc.channel.into();
+    match sc.change {
+        Rate(v) => RATE.set(channel, v, emitter),
+        RateFine(v) => RATE_FINE.set(channel, v, emitter),
+        SubmasterLevel(v) => LEVEL.set(channel, v, emitter),
+        OneShot(v) => ONE_SHOT.set(channel, v, emitter),
+        UseAudioSize(v) => USE_AUDIO_SIZE.set(channel, v, emitter),
+        UseAudioSpeed(v) => USE_AUDIO_SPEED.set(channel, v, emitter),
+        Ticked(v) => TAP.set(channel, v, emitter),
+    }
 }
 
 fn channel_control<T>(
