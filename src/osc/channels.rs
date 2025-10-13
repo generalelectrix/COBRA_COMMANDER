@@ -3,8 +3,8 @@ use crate::channel::{ControlMessage, StateChange};
 
 use crate::osc::{GroupControlMap, RadioButton};
 
-use super::fader_array::FaderArray;
 use super::label_array::LabelArray;
+use super::unipolar_array::{unipolar_array, UnipolarArray};
 use anyhow::{anyhow, Context};
 
 const N_CHANNELS: usize = 8;
@@ -73,6 +73,4 @@ const CHANNEL_LABELS: LabelArray = LabelArray {
     empty_label: "",
 };
 
-const CHANNEL_FADERS: FaderArray = FaderArray {
-    control: "ChannelLevel",
-};
+const CHANNEL_FADERS: UnipolarArray = unipolar_array("ChannelLevel");

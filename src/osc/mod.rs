@@ -25,15 +25,16 @@ use self::radio_button::RadioButton;
 pub mod animation;
 pub mod audio;
 mod basic_controls;
+mod button_array;
 pub mod channels;
 pub mod clock;
 mod control_message;
-mod fader_array;
 mod label_array;
 mod listener;
 mod radio_button;
 mod register;
 mod sender;
+mod unipolar_array;
 
 pub use control_message::OscControlMessage;
 pub use register::prompt_osc_config;
@@ -334,8 +335,9 @@ impl OscControlMessage {
 
 pub mod prelude {
     pub use super::basic_controls::{button, Button};
-    pub use super::fader_array::FaderArray;
+    pub use super::button_array::{button_array, ButtonArray};
     pub use super::label_array::LabelArray;
+    pub use super::unipolar_array::{unipolar_array, UnipolarArray};
     pub use super::FixtureStateEmitter;
     pub use super::{GroupControlMap, OscControlMessage};
     pub use crate::util::*;

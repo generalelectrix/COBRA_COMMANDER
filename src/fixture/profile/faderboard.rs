@@ -100,4 +100,4 @@ pub type StateChange = (usize, UnipolarFloat);
 
 pub type ControlMessage = StateChange;
 
-const CONTROLS: FaderArray = FaderArray { control: "Fader" };
+const CONTROLS: UnipolarArray = unipolar_array("Fader");
