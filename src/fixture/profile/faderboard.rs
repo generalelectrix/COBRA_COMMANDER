@@ -4,31 +4,14 @@ use log::error;
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug, Update)]
+#[derive(Debug, Update, PatchFixture)]
+#[channel_count = 16]
 pub struct Faderboard {
     controls: GroupControlMap<ControlMessage>,
-    channel_count: usize,
     vals: Vec<UnipolarFloat>,
 }
 
-impl PatchFixture for Faderboard {
-    const NAME: FixtureType = FixtureType("Faderboard");
-    fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
-        self.channel_count
-    }
-
-    fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
-        Ok((Self::default(), None))
-    }
-
-    fn options() -> Vec<(String, PatchOption)> {
-        vec![]
-    }
-}
-
-register_patcher!(Faderboard);
-
-const DEFAULT_CHANNEL_COUNT: usize = 16;
+const CHANNEL_COUNT: usize = 16;
 
 impl Default for Faderboard {
     fn default() -> Self {
@@ -36,8 +19,7 @@ impl Default for Faderboard {
         CONTROLS.map(&mut controls, |index, val| Ok((index, val)));
         Self {
             controls,
-            vals: vec![UnipolarFloat::ZERO; DEFAULT_CHANNEL_COUNT],
-            channel_count: DEFAULT_CHANNEL_COUNT,
+            vals: vec![UnipolarFloat::ZERO; CHANNEL_COUNT],
         }
     }
 }
@@ -45,7 +27,7 @@ impl Default for Faderboard {
 impl Faderboard {
     fn handle_state_change(&mut self, sc: StateChange, emitter: &FixtureStateEmitter) {
         let (chan, val) = sc;
-        if chan >= self.channel_count {
+        if chan >= CHANNEL_COUNT {
             error!("Channel out of range: {chan}.");
             return;
         }

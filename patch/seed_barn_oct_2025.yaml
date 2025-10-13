@@ -1,0 +1,32 @@
+- fixture: Color
+  options:
+    control_color_space: Hsluv
+  patches:
+    - addr:
+        start: 1
+        count: 17
+
+- fixture: IWashLed
+  patches:
+    - addr:
+        start: 192
+        count: 3
+    - addr:
+        start: 310
+        count: 3
+      mirror: True
+
+- fixture: Ufo
+  patches:
+    - addr: 256
+    - addr: 270
+    - addr: 288
+    - addr: 485
+    - addr: 373
+      mirror: True
+    - addr: 389
+      mirror: True
+    - addr: 405
+      mirror: True
+    - addr: 421
+      mirror: True

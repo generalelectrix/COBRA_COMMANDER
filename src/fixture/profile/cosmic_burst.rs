@@ -1,7 +1,7 @@
 //! Control profile for the Cosmic Burst white laser moonflower.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 6]
 pub struct CosmicBurst {
     #[channel_control]

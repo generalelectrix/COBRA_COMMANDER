@@ -1,7 +1,7 @@
 //! Intuitive control profile for the American DJ H2O DMX Pro.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 3]
 pub struct H2O {
     #[channel_control]

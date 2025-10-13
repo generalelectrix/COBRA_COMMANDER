@@ -1,6 +1,6 @@
 use crate::dmx::DmxAddr;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap, fmt::Display, ops::Deref};
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(untagged)]
@@ -15,82 +15,85 @@ pub enum DmxAddrConfig {
 pub struct FixtureGroupConfig {
     /// The type of fixture to patch.
     pub fixture: String,
-    /// The DMX address configuration to patch this fixture at.
-    /// If no address is provided, assume this fixture doesn't need to render.
+
+    /// For fixtures that we may want to separately control multiple instances,
+    /// provide a group name.
     #[serde(default)]
+    pub group: Option<FixtureGroupKey>,
+
+    /// Additional fixture-specific key-value string options for configuring the group.
+    #[serde(default)]
+    pub options: Options,
+
+    /// If true, assign to a channel. Defaults to true.
+    #[serde(default = "_true")]
+    pub channel: bool,
+
+    /// If true, initialize a color organ for this group.
+    #[serde(default)]
+    pub color_organ: bool,
+
+    pub patches: Vec<PatchBlock>,
+}
+
+/// One or more instances of a fixture to patch in the context of a group.
+#[derive(Clone, Debug, Deserialize)]
+pub struct PatchBlock {
+    /// The DMX address(es) to patch at, either a single address or a start/count.
     pub addr: Option<DmxAddrConfig>,
+
     /// The universe this fixture is patched in.
     /// Defaults to 0.
     #[serde(default)]
     pub universe: usize,
+
     /// True if this fixture's controls should be flipped when running in mirror mode.
     #[serde(default)]
     pub mirror: bool,
-    /// For fixtures that we may want to separately control multiple instances,
-    /// provide a group index.  Most fixtures do not use this.
-    #[serde(default)]
-    pub group: Option<String>,
-    /// Additional key-value string options for configuring specific fixture types.
+
+    /// Additional fixture-specific key-value string options for configuring individual fixtures.
     #[serde(default)]
     pub options: Options,
-    /// If true, assign to a channel. Defaults to true.
-    #[serde(default = "_true")]
-    pub channel: bool,
-    /// If true, initialize a color organ for this group.
-    #[serde(default)]
-    pub color_organ: bool,
+}
+
+impl PatchBlock {
+    /// Return the starting DMX address for this patch block and the number of fixtures in it.
+    pub fn start_count(&self) -> (Option<DmxAddr>, usize) {
+        let Some(addr) = self.addr else {
+            return (None, 1);
+        };
+        match addr {
+            DmxAddrConfig::Single(addr) => (Some(addr), 1),
+            DmxAddrConfig::StartAndCount { start, count } => (Some(start), count),
+        }
+    }
 }
 
 const fn _true() -> bool {
     true
 }
 
-impl FixtureGroupConfig {
-    pub fn fixture_configs(&self, channel_count: usize) -> Vec<FixtureConfig> {
-        let Some(addr_cfg) = self.addr else {
-            return vec![FixtureConfig::from_group_config(self, None)];
-        };
-        match addr_cfg {
-            DmxAddrConfig::Single(addr) => {
-                vec![FixtureConfig::from_group_config(self, Some(addr))]
-            }
-            DmxAddrConfig::StartAndCount { start, count } => (0..count)
-                .map(|i| FixtureConfig::from_group_config(self, Some(start + (i * channel_count))))
-                .collect(),
-        }
-    }
-}
-
-/// A single instance of a fixture to patch, produced by a FixtureGroupConfig.
-#[derive(Clone, Debug)]
-pub struct FixtureConfig {
-    /// The type of fixture to patch.
-    pub fixture: String,
-    /// The DMX address to patch this fixture at.
-    /// If no address it provided, assume this fixture doesn't need to render.
-    pub addr: Option<DmxAddr>,
-    /// The universe this fixture is patched in.
-    pub universe: usize,
-    /// True if this fixture's controls should be flipped when running in mirror mode.
-    pub mirror: bool,
-    /// For fixtures that we may want to separately control multiple instances,
-    /// provide a group index.  Most fixtures do not use this.
-    pub group: Option<String>,
-    /// Additional key-value string options for configuring specific fixture types.
-    pub options: Options,
-}
-
-impl FixtureConfig {
-    fn from_group_config(group: &FixtureGroupConfig, addr: Option<DmxAddr>) -> Self {
-        Self {
-            fixture: group.fixture.clone(),
-            addr,
-            universe: group.universe,
-            mirror: group.mirror,
-            group: group.group.clone(),
-            options: group.options.clone(),
-        }
-    }
-}
-
 pub type Options = HashMap<String, String>;
+
+/// Uniquely identify a specific fixture group.
+#[derive(Clone, PartialEq, Eq, Hash, Deserialize, Debug)]
+pub struct FixtureGroupKey(pub String);
+
+impl Display for FixtureGroupKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+impl Borrow<str> for FixtureGroupKey {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for FixtureGroupKey {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}

@@ -3,7 +3,7 @@
 
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
 pub struct Colordynamic {
     #[channel_control]

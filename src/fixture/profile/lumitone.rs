@@ -60,11 +60,8 @@ pub struct Lumitone {
 
 impl PatchFixture for Lumitone {
     const NAME: FixtureType = FixtureType("Lumitone");
-    fn channel_count(&self, _render_mode: Option<RenderMode>) -> usize {
-        0
-    }
 
-    fn new(options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
+    fn new(options: &mut Options) -> Result<Self> {
         // Instantiate the control sender.
         let Some(addr) = options.remove(SOCKET_OPT) else {
             bail!("missing required option: socket");
@@ -107,11 +104,22 @@ impl PatchFixture for Lumitone {
             }
         });
 
-        Ok((l, None))
+        Ok(l)
     }
 
-    fn options() -> Vec<(String, PatchOption)> {
+    fn patch_config(_options: &mut Options) -> Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: 0,
+            render_mode: None,
+        })
+    }
+
+    fn group_options() -> Vec<(String, PatchOption)> {
         vec![(SOCKET_OPT.to_string(), PatchOption::SocketAddr)]
+    }
+
+    fn patch_options() -> Vec<(String, PatchOption)> {
+        vec![]
     }
 }
 

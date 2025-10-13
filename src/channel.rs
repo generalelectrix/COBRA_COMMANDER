@@ -9,8 +9,9 @@ use serde::Deserialize;
 
 use crate::{
     animation::AnimationUIState,
+    config::FixtureGroupKey,
     control::EmitControlMessage,
-    fixture::{FixtureGroup, FixtureGroupKey, Patch},
+    fixture::{FixtureGroup, Patch},
     osc::{EmitOscMessage, GroupControlMap, OscControlMessage, ScopedControlEmitter},
     wled::EmitWledControlMessage,
 };

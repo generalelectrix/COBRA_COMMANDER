@@ -1,7 +1,7 @@
 //! Control profile for the American DJ (Eliminator) Vortex, aka the Wizlet.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchAnimatedFixture)]
+#[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 12]
 pub struct Wizlet {
     #[channel_control]

@@ -3,9 +3,7 @@
 use anyhow::{ensure, Context};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
-use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
-use std::ops::Deref;
 use std::time::Duration;
 
 use log::debug;
@@ -16,6 +14,7 @@ use super::fixture::{Fixture, FixtureType, RenderMode};
 use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
 use crate::color::Hsluv;
+use crate::config::FixtureGroupKey;
 use crate::dmx::DmxBuffer;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
@@ -35,17 +34,16 @@ pub struct FixtureGroup {
 }
 
 impl FixtureGroup {
-    /// Create a fixture group, containing a single fixture config.
-    pub fn new(
+    /// Create empty fixture group from an initialized fixture model.
+    pub fn empty(
         fixture_type: FixtureType,
         key: FixtureGroupKey,
-        fixture_config: GroupFixtureConfig,
         fixture: Box<dyn Fixture>,
     ) -> Self {
         Self {
             fixture_type,
             key,
-            fixture_configs: vec![fixture_config],
+            fixture_configs: vec![],
             color_organ: None,
             fixture,
         }
@@ -172,7 +170,7 @@ impl FixtureGroup {
                 },
                 dmx_buf,
             );
-            debug!("{}: {:?}", self.qualified_name(), dmx_buf);
+            debug!("{}@{}: {:?}", self.qualified_name(), dmx_addr + 1, dmx_buf);
         }
     }
 }
@@ -180,6 +178,7 @@ impl FixtureGroup {
 #[derive(Debug)]
 pub struct GroupFixtureConfig {
     /// The starting index into the DMX buffer for a fixture in a group.
+    /// This is a buffer index - as in, indexed from 0, not 1.
     ///
     /// If None, the fixture is assumed to not render to DMX.
     pub dmx_addr: Option<usize>,
@@ -192,29 +191,6 @@ pub struct GroupFixtureConfig {
     pub mirror: bool,
     /// Render mode index for fixtures that support more than one render mode.
     pub render_mode: Option<RenderMode>,
-}
-
-/// Uniquely identify a specific fixture group.
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct FixtureGroupKey(pub String);
-
-impl Display for FixtureGroupKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.0, f)
-    }
-}
-
-impl Borrow<str> for FixtureGroupKey {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Deref for FixtureGroupKey {
-    type Target = str;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }
 
 /// Format the qualified name of a fixture group without allocating.

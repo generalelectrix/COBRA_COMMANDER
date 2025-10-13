@@ -1,7 +1,7 @@
 use crate::channel::{ChannelStateChange, ChannelStateEmitter};
+use crate::config::FixtureGroupKey;
 use crate::control::ControlMessage;
 use crate::control::EmitControlMessage;
-use crate::fixture::FixtureGroupKey;
 use crate::osc::listener::OscListener;
 use crate::osc::sender::{OscSender, OscSenderCommand};
 use crate::wled::EmitWledControlMessage;

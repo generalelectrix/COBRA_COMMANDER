@@ -12,7 +12,7 @@ mod patch;
 mod profile;
 
 pub use fixture::{Control, EmitState, RenderMode};
-pub use group::{FixtureGroup, FixtureGroupKey};
+pub use group::FixtureGroup;
 pub use patch::Patch;
 pub use profile::*;
 
@@ -36,21 +36,22 @@ impl<'a> FixtureGroupControls<'a> {
 }
 
 pub mod prelude {
-    pub use super::fixture::{
-        AnimatedFixture, FixtureType, NonAnimatedFixture, RenderMode, Update,
+    pub use super::fixture::EnumRenderModel;
+    pub use super::fixture::{AnimatedFixture, FixtureType, NonAnimatedFixture, Update};
+    pub use super::patch::{
+        AsPatchOption, CreateAnimatedGroup, CreateNonAnimatedGroup, PatchConfig, PatchFixture,
+        PatchOption,
     };
-    pub use super::patch::{AsPatchOption, PatchAnimatedFixture, PatchFixture, PatchOption};
     pub use super::FixtureGroupControls;
     pub use crate::channel::ChannelStateEmitter;
+    pub use crate::config::Options;
     pub use crate::control::EmitControlMessage;
     pub use crate::fixture::animation_target::{Subtarget, TargetedAnimationValues};
     pub use crate::fixture::control::*;
     pub use crate::fixture::generic::*;
     pub use crate::master::MasterControls;
     pub use crate::osc::prelude::*;
-    pub use anyhow::bail;
-    pub use fixture_macros::{
-        register_patcher, Control, EmitState, PatchAnimatedFixture, PatchFixture, Update,
-    };
+    pub use anyhow::{bail, Result};
+    pub use fixture_macros::{register_patcher, Control, EmitState, PatchFixture, Update};
     pub use number::{BipolarFloat, Phase, UnipolarFloat};
 }

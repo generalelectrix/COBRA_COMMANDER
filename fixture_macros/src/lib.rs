@@ -21,44 +21,12 @@ fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
         #[distributed_slice(PATCHERS)]
         static PATCHER: crate::fixture::patch::Patcher = crate::fixture::patch::Patcher {
             name: #ident::NAME,
-            func: #ident::patch,
-            options: #ident::options,
+            patch: #ident::patch,
+            patch_options: #ident::patch_options,
+            create_group: #ident::create_group,
+            group_options: #ident::group_options,
         };
     }
-}
-
-/// Derive the PatchAnimatedFixture trait on a fixture struct.
-/// The fixture must implement Default.
-/// Use the channel_count attribute to specify the DMX channel count.
-/// Registers the fixture type with the patch.
-#[proc_macro_derive(PatchAnimatedFixture, attributes(channel_count))]
-pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
-    let DeriveInput { ident, attrs, .. } = parse_macro_input!(input as DeriveInput);
-
-    let channel_count = get_attr_and_usize_payload(&attrs, "channel_count")
-        .expect("channel_count attribute is missing");
-
-    let name = ident.to_string();
-
-    let register = register_patcher_impl(&ident);
-
-    quote! {
-        impl crate::fixture::patch::PatchAnimatedFixture for #ident {
-            const NAME: FixtureType = FixtureType(#name);
-            fn channel_count(&self, _render_mode: Option<crate::fixture::RenderMode>) -> usize {
-                #channel_count
-            }
-            fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
-                Ok((Self::default(), None))
-            }
-            fn options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
-                vec![]
-            }
-        }
-
-        #register
-    }
-    .into()
 }
 
 /// Derive the PatchFixture trait on a fixture struct.
@@ -66,7 +34,7 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
 /// Use the channel_count attribute to specify the DMX channel count.
 /// Registers the fixture type with the patch.
 #[proc_macro_derive(PatchFixture, attributes(channel_count))]
-pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
+pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, attrs, .. } = parse_macro_input!(input as DeriveInput);
 
     let channel_count = get_attr_and_usize_payload(&attrs, "channel_count")
@@ -79,13 +47,20 @@ pub fn derive_patch_fixture(input: TokenStream) -> TokenStream {
     quote! {
         impl crate::fixture::patch::PatchFixture for #ident {
             const NAME: FixtureType = FixtureType(#name);
-            fn channel_count(&self, _render_mode: Option<crate::fixture::RenderMode>) -> usize {
-                #channel_count
+
+            fn new(_options: &mut crate::config::Options) -> anyhow::Result<Self> {
+                Ok(Self::default())
             }
-            fn new(_options: &mut crate::config::Options) -> anyhow::Result<(Self, Option<RenderMode>)> {
-                Ok((Self::default(), None))
+            fn patch_config(_options: &mut crate::config::Options) -> anyhow::Result<crate::fixture::patch::PatchConfig> {
+                Ok(crate::fixture::patch::PatchConfig {
+                    channel_count: #channel_count,
+                    render_mode: None,
+                })
             }
-            fn options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
+            fn patch_options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
+                vec![]
+            }
+            fn group_options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
                 vec![]
             }
         }
