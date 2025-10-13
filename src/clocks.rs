@@ -20,12 +20,28 @@ pub enum Clocks {
     /// Local control of clocks with local audio input.
     Internal {
         clocks: ClockBank,
+        clock_controls: GroupControlMap<tunnels::clock_bank::ControlMessage>,
         audio_input: AudioInput,
         audio_controls: GroupControlMap<tunnels::audio::ControlMessage>,
     },
 }
 
 impl Clocks {
+    /// Initialize internally-controlled clocks. Use the provided audio input.
+    pub fn internal(audio_device: Option<AudioInput>) -> Self {
+        let clocks = ClockBank::default();
+        let mut clock_controls = GroupControlMap::default();
+        crate::osc::clock::map_controls(&mut clock_controls);
+        let mut audio_controls = GroupControlMap::default();
+        crate::osc::audio::map_controls(&mut audio_controls);
+        Clocks::Internal {
+            clocks,
+            clock_controls,
+            audio_input: audio_device.unwrap_or_else(|| AudioInput::new(None).unwrap()),
+            audio_controls,
+        }
+    }
+
     pub fn get(&self) -> SharedClockData {
         match self {
             Self::Service(service) => service.get(),
@@ -38,6 +54,27 @@ impl Clocks {
                 audio_envelope: audio_input.envelope(),
             },
         }
+    }
+
+    /// Handle a clock OSC message.
+    pub fn control_clock_osc(
+        &mut self,
+        msg: &OscControlMessage,
+        emitter: &mut Controller,
+    ) -> Result<()> {
+        let Self::Internal {
+            clocks,
+            clock_controls,
+            ..
+        } = self
+        else {
+            return Ok(());
+        };
+        let Some((msg, _talkback)) = clock_controls.handle(msg)? else {
+            return Ok(());
+        };
+        clocks.control(msg, emitter);
+        Ok(())
     }
 
     /// Handle a clock control message.

@@ -8,7 +8,6 @@ use local_ip_address::local_ip;
 use log::LevelFilter;
 use midi::Device;
 use osc::prompt_osc_config;
-use osc::GroupControlMap;
 use reqwest::Url;
 use rust_dmx::select_port;
 use simplelog::{Config as LogConfig, SimpleLogger};
@@ -18,7 +17,6 @@ use std::path::PathBuf;
 use strum_macros::Display;
 use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
-use tunnels::clock_bank::ClockBank;
 use tunnels::midi::prompt_midi;
 use tunnels::midi::{list_ports, DeviceSpec};
 use tunnels_lib::prompt::{prompt_bool, prompt_indexed_value};
@@ -143,14 +141,7 @@ fn run_show(args: RunArgs) -> Result<()> {
             .map(|device_name| AudioInput::new(Some(device_name)))
             .transpose()?;
 
-        let clocks = ClockBank::default();
-        let mut audio_controls = GroupControlMap::default();
-        crate::osc::audio::map_controls(&mut audio_controls);
-        Clocks::Internal {
-            clocks,
-            audio_input: audio_device.unwrap_or_else(|| AudioInput::new(None).unwrap()),
-            audio_controls,
-        }
+        Clocks::internal(audio_device)
     };
 
     let animation_service = prompt_start_animation_service(&zmq_ctx)?;

@@ -210,6 +210,7 @@ impl Show {
                 )
             }
             crate::osc::audio::GROUP => self.clocks.control_audio_osc(msg, &mut self.controller),
+            crate::osc::clock::GROUP => self.clocks.control_clock_osc(msg, &mut self.controller),
             // Assume any other control group is referring to a ficture group.
             fixture_group => self.patch.get_mut(fixture_group)?.control(
                 msg,

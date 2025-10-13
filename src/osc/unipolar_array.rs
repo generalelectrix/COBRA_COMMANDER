@@ -1,4 +1,4 @@
-//! TouchOSC array of unipolar fader.
+//! TouchOSC array of unipolar controls, such as upfaders.
 use number::UnipolarFloat;
 use rosc::OscType;
 
@@ -7,14 +7,19 @@ use anyhow::{bail, Result};
 
 use anyhow::{anyhow, Context};
 
-/// Model a fader array.
+/// Model a unipolar control array.
 #[derive(Clone)]
-pub struct FaderArray {
+pub struct UnipolarArray {
     pub control: &'static str,
 }
 
-impl FaderArray {
-    /// Wire up this fader array to a control map.
+/// Create a unipolar control array.
+pub const fn unipolar_array(control: &'static str) -> UnipolarArray {
+    UnipolarArray { control }
+}
+
+impl UnipolarArray {
+    /// Wire up this unipolar control array to a control map.
     pub fn map<F, T>(self, map: &mut GroupControlMap<T>, process: F)
     where
         F: Fn(usize, UnipolarFloat) -> Result<T> + 'static + Copy,
@@ -26,18 +31,18 @@ impl FaderArray {
                 .skip(1)
                 .take(1)
                 .next()
-                .ok_or_else(|| anyhow!("fader array index missing for {msg:?}"))?
+                .ok_or_else(|| anyhow!("unipolar control array index missing for {msg:?}"))?
                 .parse::<usize>()
                 .with_context(|| format!("handling message {msg:?}"))?;
             if index == 0 {
-                bail!("fader array index is 0: {msg:?}");
+                bail!("unipolar control array index is 0: {msg:?}");
             }
             let val = msg.get_unipolar()?;
             process(index - 1, val).map(Some)
         })
     }
 
-    /// Emit state for a particular fader index.
+    /// Emit state for a particular unipolar control index.
     pub fn set<S>(&self, n: usize, val: UnipolarFloat, emitter: &S)
     where
         S: crate::osc::EmitScopedOscMessage + ?Sized,
