@@ -15,7 +15,7 @@ use tunnels::clock_bank::{
 };
 
 use crate::{
-    midi::{Device, MidiHandler},
+    midi::MidiHandler,
     show::ShowControlMessage,
     util::unipolar_to_range,
 };

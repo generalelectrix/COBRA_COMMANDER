@@ -1,10 +1,6 @@
 use log::{debug, error};
-use tunnels::{
-    midi::{Event, EventType, Mapping, Output},
-    midi_controls::MidiDevice,
-};
+use tunnels::midi::{Event, EventType, Mapping, Output};
 
-use crate::midi::Device;
 
 /// Basic model for the few APC20 controls we use so far.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
