@@ -66,16 +66,41 @@ impl MidiDevice for Device {
 }
 
 impl Device {
-    /// Return all known midi device types.
-    pub fn all() -> Vec<Self> {
-        vec![
+    /// Return all known MIDI device types that match the parameters.
+    pub fn all(internal_clocks: bool) -> Vec<Self> {
+        let mut devices = vec![
             // Self::Apc20(AkaiApc20 { channel_offset: 0 }),
             Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 0 }),
             Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 8 }),
-            Self::CmdMM1(BehringerCmdMM1 {}),
-            Self::Amx(AkaiAmx {}),
             Self::CmdDV1(BehringerCmdDV1 {}),
-        ]
+        ];
+        if internal_clocks {
+            devices.push(Self::CmdMM1(BehringerCmdMM1 {}));
+            devices.push(Self::Amx(AkaiAmx {}));
+        }
+        devices
+    }
+
+    /// Attempt to identify connected devices to automatically configure MIDI.
+    pub fn auto_configure(
+        internal_clocks: bool,
+        input_ports: &[String],
+        output_ports: &[String],
+    ) -> Vec<DeviceSpec<Self>> {
+        // For all known devices, see if we have a matching input and output port.
+        Self::all(internal_clocks)
+            .into_iter()
+            .filter_map(|device| {
+                let name = device.device_name().to_string();
+                (input_ports.contains(&name) && output_ports.contains(&name)).then_some(
+                    DeviceSpec {
+                        device,
+                        input_port_name: name.clone(),
+                        output_port_name: name,
+                    },
+                )
+            })
+            .collect()
     }
 }
 
