@@ -21,10 +21,6 @@ pub struct FixtureGroupConfig {
     #[serde(default)]
     pub group: Option<FixtureGroupKey>,
 
-    /// Additional fixture-specific key-value string options for configuring the group.
-    #[serde(default)]
-    pub options: Options,
-
     /// If true, assign to a channel. Defaults to true.
     #[serde(default = "_true")]
     pub channel: bool,
@@ -34,6 +30,11 @@ pub struct FixtureGroupConfig {
     pub color_organ: bool,
 
     pub patches: Vec<PatchBlock>,
+
+    /// Additional fixture-specific key-value string options for configuring the group.
+    /// Any additional keys will be parsed into here.
+    #[serde(flatten)]
+    pub options: Options,
 }
 
 /// One or more instances of a fixture to patch in the context of a group.
@@ -51,8 +52,8 @@ pub struct PatchBlock {
     #[serde(default)]
     pub mirror: bool,
 
-    /// Additional fixture-specific key-value string options for configuring individual fixtures.
-    #[serde(default)]
+    /// Additional key-value string options for configuring individual fixtures.
+    #[serde(flatten)]
     pub options: Options,
 }
 

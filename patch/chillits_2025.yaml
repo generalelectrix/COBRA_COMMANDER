@@ -1,6 +1,5 @@
 - fixture: Color
-  options:
-    control_color_space: Hsluv
+  control_color_space: Hsluv
   patches:
     - addr:
         start: 100
@@ -8,48 +7,42 @@
     - addr:
         start: 109
         count: 2
-      options:
-        kind: SevenChannelRgbw
+      kind: SevenChannelRgbw
     - addr:
         start: 123
         count: 1
     - addr:
         start: 250
         count: 1
-      options:
-        kind: SevenChannelRgbw
+      kind: SevenChannelRgbw
     - addr:
         start: 129
         count: 1
     - addr:
         start: 132
         count: 1
-      options:
-        kind: SevenChannelRgbw
+      kind: SevenChannelRgbw
     - addr:
         start: 139
         count: 6
     - addr:
         start: 157
         count: 1
-      options:
-        kind: SevenChannelRgbw
+      kind: SevenChannelRgbw
     - addr:
         start: 164
         count: 1
     - addr:
         start: 167
         count: 1
-      options:
-        kind: SevenChannelRgbw
+      kind: SevenChannelRgbw
     - addr:
         start: 174
         count: 3
     - addr:
         start: 183
         count: 2
-      options:
-        kind: SevenChannelRgbw
+      kind: SevenChannelRgbw
     - addr:
         start: 197
         count: 3
@@ -57,65 +50,45 @@
 - fixture: Leko
   patches:
     - addr: 400
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 1
-      options:
-        kind: DhaVarispeed
+      kind: DhaVarispeed
     - addr: 401
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 5
-      options:
-        kind: DhaVarispeed
+      kind: DhaVarispeed
     - addr: 403
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 440
-      options:
-        kind: GoboSpinnaz
+      kind: GoboSpinnaz
     - addr: 404
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 444
-      options:
-        kind: GoboSpinnaz
+      kind: GoboSpinnaz
     - addr: 406
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 498
-      options:
-        kind: ApolloRotoQDmx
+      kind: ApolloRotoQDmx
     - addr: 407
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 502
-      options:
-        kind: ApolloRotoQDmx
+      kind: ApolloRotoQDmx
     - addr: 408
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 506
-      options:
-        kind: ApolloRotoQDmx
+      kind: ApolloRotoQDmx
     - addr: 410
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 500
-      options:
-        kind: ApolloRotoQDmx
+      kind: ApolloRotoQDmx
     - addr: 411
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 504
-      options:
-        kind: ApolloRotoQDmx
+      kind: ApolloRotoQDmx
     - addr: 412
-      options:
-        kind: Dimmer
+      kind: Dimmer
     - addr: 495
-      options:
-        kind: ApolloSmartMove
+      kind: ApolloSmartMove
 
 - fixture: WizardExtreme
   patches:
