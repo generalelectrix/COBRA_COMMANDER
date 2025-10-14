@@ -13,7 +13,7 @@ use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
     midi::{cc, event, note_on, Event, EventType, Output},
-    midi_controls::{bipolar_from_midi, unipolar_from_midi},
+    midi_controls::{bipolar_from_midi, unipolar_from_midi, MidiDevice},
 };
 
 use tunnels::clock::{ControlMessage as ClockControlMessage, StateChange as ClockStateChange};
@@ -22,7 +22,7 @@ use tunnels::clock_bank::{
 };
 
 use crate::{
-    midi::{Device, MidiHandler},
+    midi::MidiHandler,
     show::ShowControlMessage,
     util::{bipolar_fader_with_detent, unipolar_to_range},
 };
@@ -50,12 +50,14 @@ const SYNC_1: u8 = SYNC + 1;
 const CUE_1: u8 = CUE + 1;
 const PLAY_1: u8 = PLAY + 1;
 
-impl AkaiAmx {
-    pub const CHANNEL_COUNT: u8 = 2;
-
-    pub fn device_name(&self) -> &str {
+impl MidiDevice for AkaiAmx {
+    fn device_name(&self) -> &str {
         "AMX"
     }
+}
+
+impl AkaiAmx {
+    pub const CHANNEL_COUNT: u8 = 2;
 
     /// Interpret a midi event as a typed control event.
     pub fn parse(&self, event: &Event) -> Option<AmxControlEvent> {
@@ -119,7 +121,7 @@ impl AkaiAmx {
         channel: usize,
         button: AmxChannelButton,
         state: bool,
-        output: &mut Output<Device>,
+        output: &mut Output,
     ) {
         use AmxChannelButton::*;
         if channel >= Self::CHANNEL_COUNT as usize {
@@ -140,7 +142,7 @@ impl AkaiAmx {
     }
 
     /// Set one of the VU meters.
-    pub fn set_vu_meter(&self, which: VuMeter, value: UnipolarFloat, output: &mut Output<Device>) {
+    pub fn set_vu_meter(&self, which: VuMeter, value: UnipolarFloat, output: &mut Output) {
         use VuMeter::*;
         let control = match which {
             Channel1 => 0x40,
@@ -249,7 +251,7 @@ impl MidiHandler for AkaiAmx {
         }))
     }
 
-    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output<Device>) {
+    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output) {
         let channel: usize = msg.channel.into();
         match msg.change {
             ClockStateChange::OneShot(v) => self.set_led(channel, AmxChannelButton::Cue, v, output),
@@ -262,7 +264,7 @@ impl MidiHandler for AkaiAmx {
         }
     }
 
-    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output<Device>) {
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output) {
         if let tunnels::audio::StateChange::EnvelopeValue(v) = msg {
             self.set_vu_meter(VuMeter::MasterRight, *v, output);
         }

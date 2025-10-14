@@ -5,7 +5,7 @@ use number::{Phase, UnipolarFloat};
 use color_organ::{ControlMessage, ReleaseId};
 use tunnels::{
     midi::{Event, EventType},
-    midi_controls::unipolar_from_midi,
+    midi_controls::{unipolar_from_midi, MidiDevice},
 };
 
 use crate::{
@@ -28,6 +28,12 @@ pub struct ColorOrgan {
     note_high: u8,
     /// MIDI channel to listen for color events on.
     channel: u8,
+}
+
+impl MidiDevice for ColorOrgan {
+    fn device_name(&self) -> &str {
+        "Generic MIDI Keyboard"
+    }
 }
 
 impl ColorOrgan {

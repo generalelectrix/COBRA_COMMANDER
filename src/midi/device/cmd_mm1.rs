@@ -5,7 +5,7 @@ use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
     midi::{cc, event, note_on, Event, EventType, Output},
-    midi_controls::{bipolar_from_midi, unipolar_from_midi},
+    midi_controls::{bipolar_from_midi, unipolar_from_midi, MidiDevice},
 };
 
 use tunnels::audio::StateChange as AudioStateChange;
@@ -14,11 +14,7 @@ use tunnels::clock_bank::{
     ControlMessage as ClockBankControlMessage, StateChange as ClockBankStateChange,
 };
 
-use crate::{
-    midi::{Device, MidiHandler},
-    show::ShowControlMessage,
-    util::unipolar_to_range,
-};
+use crate::{midi::MidiHandler, show::ShowControlMessage, util::unipolar_to_range};
 
 /// Model of the Behringer CMD-MM1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,12 +22,14 @@ pub struct BehringerCmdMM1 {}
 
 const MIDI_CHANNEL: u8 = 4;
 
-impl BehringerCmdMM1 {
-    pub const CHANNEL_COUNT: u8 = 4;
-
-    pub fn device_name(&self) -> &str {
+impl MidiDevice for BehringerCmdMM1 {
+    fn device_name(&self) -> &str {
         "CMD MM-1"
     }
+}
+
+impl BehringerCmdMM1 {
+    pub const CHANNEL_COUNT: u8 = 4;
 
     /// Interpret a midi event as a typed control event.
     pub fn parse(&self, event: &Event) -> Option<CmdMM1ControlEvent> {
@@ -104,7 +102,7 @@ impl BehringerCmdMM1 {
         channel: usize,
         button: CmdMM1ChannelButton,
         state: bool,
-        output: &mut Output<Device>,
+        output: &mut Output,
     ) {
         if channel >= Self::CHANNEL_COUNT as usize {
             debug!("CMD MM-1 channel {channel} out of range for LED state update");
@@ -123,7 +121,7 @@ impl BehringerCmdMM1 {
     /// Set one of the VU meters.
     ///
     /// which: pass false for left, true for right
-    pub fn set_vu_meter(&self, which: bool, value: UnipolarFloat, output: &mut Output<Device>) {
+    pub fn set_vu_meter(&self, which: bool, value: UnipolarFloat, output: &mut Output) {
         let control = if which { 81 } else { 80 };
         // Why they chose to scale the VU meters from 48 to 63... shrug.
         let scaled_val = unipolar_to_range(48, 63, value);
@@ -214,7 +212,7 @@ impl MidiHandler for BehringerCmdMM1 {
         })
     }
 
-    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output<Device>) {
+    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output) {
         let channel: usize = msg.channel.into();
         match msg.change {
             ClockStateChange::OneShot(v) => {
@@ -231,7 +229,7 @@ impl MidiHandler for BehringerCmdMM1 {
         }
     }
 
-    fn emit_audio_control(&self, msg: &AudioStateChange, output: &mut Output<Device>) {
+    fn emit_audio_control(&self, msg: &AudioStateChange, output: &mut Output) {
         if let Err(err) = match msg {
             AudioStateChange::Monitor(v) => output.send(event(note_on(MIDI_CHANNEL, 18), *v as u8)),
             AudioStateChange::EnvelopeValue(v) => {
