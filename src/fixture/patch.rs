@@ -103,6 +103,14 @@ impl Patch {
     fn patch(&mut self, cfg: &FixtureGroupConfig) -> Result<()> {
         let patcher = self.patcher(&cfg.fixture)?;
 
+        if let Some(group_key) = &cfg.group {
+            // If there's a patcher that matches this group, fail.
+            ensure!(
+                self.patcher(group_key).is_err(),
+                "the group key '{group_key}' cannot be used because it is also a fixture name"
+            );
+        }
+
         let group_key = cfg
             .group
             .clone()
@@ -110,18 +118,25 @@ impl Patch {
 
         ensure!(
             !self.fixtures.contains_key(&group_key),
-            "duplicate group key"
+            "duplicate group key '{group_key}'"
         );
 
         let mut group = (patcher.create_group)(group_key.clone(), &cfg.options)?;
 
-        // FIXME: should do some validation around having at least one patch
-        // block... but need to decide how to handle patching non-DMX fixtures.
+        ensure!(!cfg.patches.is_empty(), "no patches specified");
 
-        for block in &cfg.patches {
+        for (i, block) in cfg.patches.iter().enumerate() {
+            let (start_addr, count) = block.start_count();
+            // A patch block needs to either specify a DMX address or contain some options,
+            // otherwise there's nothing there that actually provides a configuration.
+            ensure!(
+                start_addr.is_some() || !block.options.is_empty(),
+                "patch block {} has neither DMX address nor options",
+                i + 1
+            );
             let patch_cfg = (patcher.patch)(&block.options)
                 .with_context(|| group.qualified_name().to_string())?;
-            let (start_addr, count) = block.start_count();
+
             match start_addr {
                 None => {
                     ensure!(
@@ -333,13 +348,16 @@ impl Display for Patcher {
 pub trait PatchFixture: Sized + 'static {
     const NAME: FixtureType;
 
-    /// Return a PatchCandidate for this fixture.
+    /// Return a PatchConfig for this fixture.
     fn patch(options: &Options) -> Result<PatchConfig> {
         let mut options = options.clone();
         let cfg = Self::patch_config(&mut options)?;
         // Ensure the fixture processed all of the options.
         if !options.is_empty() {
-            return Err(anyhow!("unhandled options: {}", options.keys().join(", ")));
+            return Err(anyhow!(
+                "unhandled patch options: {}",
+                options.keys().join(", ")
+            ));
         }
         Ok(cfg)
     }
@@ -367,7 +385,10 @@ pub trait CreateNonAnimatedGroup: PatchFixture + NonAnimatedFixture + Sized + 's
         let mut options = options.clone();
         let fixture = Self::new(&mut options)?;
         if !options.is_empty() {
-            return Err(anyhow!("unhandled options: {}", options.keys().join(", ")));
+            return Err(anyhow!(
+                "unhandled group options: {}",
+                options.keys().join(", ")
+            ));
         }
         Ok(FixtureGroup::empty(Self::NAME, key, Box::new(fixture)))
     }
@@ -382,7 +403,10 @@ pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static 
         let mut options = options.clone();
         let fixture = Self::new(&mut options)?;
         if !options.is_empty() {
-            return Err(anyhow!("unhandled options: {}", options.keys().join(", ")));
+            return Err(anyhow!(
+                "unhandled group options: {}",
+                options.keys().join(", ")
+            ));
         }
         Ok(FixtureGroup::empty(
             Self::NAME,
@@ -456,16 +480,20 @@ mod test {
       kind: DimmerRgb
 - fixture: Dimmer
   group: TestGroup
+  channel: false
   patches:
     - addr: 1
       universe: 1
-      mirror: True
+      mirror: true
     - addr: 12
         ",
         )?;
         assert_eq!(2, cfg.len());
         let p = Patch::patch_all(cfg)?;
-        assert_eq!(2, p.channels.len());
+        assert_eq!(
+            "Color",
+            p.channels.iter().exactly_one().unwrap().to_string()
+        );
         assert_eq!(2, p.fixtures.len());
         let color_configs = p.get("Color")?.fixture_configs();
         assert_eq!(3, color_configs.len());
@@ -512,5 +540,145 @@ mod test {
             }
         );
         Ok(())
+    }
+
+    fn assert_fail_patch(patch_yaml: &str, snippet: &str) {
+        let Err(err) = Patch::patch_all(
+            serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml)
+                .expect("invalid patch format"),
+        ) else {
+            panic!("patch didn't fail")
+        };
+        assert!(
+            format!("{err:#}").contains(snippet),
+            "error message didn't contain '{snippet}':\n{err:#}"
+        );
+    }
+
+    #[test]
+    fn test_collision() {
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  patches:
+    - addr: 1
+    - addr: 1",
+            "Dimmer at 1 overlaps at DMX address 1 in universe 0 with Dimmer at 1",
+        );
+        assert_fail_patch(
+            "
+- fixture: Color
+  patches:
+    - addr: 1
+    - addr: 3",
+            "Color at 3 overlaps at DMX address 3 in universe 0 with Color at 1",
+        );
+        assert_fail_patch(
+            "
+- fixture: Color
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  patches:
+    - addr: 2",
+            "Dimmer at 2 overlaps at DMX address 2 in universe 0 with Color at 1",
+        );
+    }
+
+    #[test]
+    fn test_unused_options() {
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  foobar: unused
+  patches:
+    - addr: 1",
+            "unhandled group options: foobar",
+        );
+
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  patches:
+    - addr: 1
+      foobar: unused",
+            "unhandled patch options: foobar",
+        );
+    }
+
+    #[test]
+    fn test_missing_dmx_addr() {
+        assert_fail_patch(
+            "
+- fixture: Color
+  patches:
+    - kind: Rgbw",
+            "no DMX address provided for a fixture that requests 4 DMX channel(s)",
+        );
+    }
+
+    #[test]
+    fn test_dupe_group_key() {
+        // Can't specify the same fixture twice with no group.
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  patches:
+    - addr: 2",
+            "duplicate group key 'Dimmer'",
+        );
+        // Can't use a group key that matches an existing fixture type.
+        assert_fail_patch(
+            "
+- fixture: Color
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  group: Color
+  patches:
+    - addr: 2",
+            "duplicate group key 'Color'",
+        );
+        // Can't use the same group key twice.
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  group: Foo
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  group: Foo
+  patches:
+    - addr: 2",
+            "duplicate group key 'Foo'",
+        );
+    }
+
+    #[test]
+    fn test_no_aliasing_fixture() {
+        // Can't use a group key that collides with a fixture name.
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  group: Color
+  patches:
+    - addr: 1",
+            "the group key 'Color' cannot be used because it is also a fixture name",
+        );
+    }
+
+    #[test]
+    fn test_no_invalid_patch_block() {
+        // Gotta have a DMX addr or some options to make any sense.
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  patches:
+    - mirror: true",
+            "patch block 1 has neither DMX address nor options",
+        );
     }
 }

@@ -41,6 +41,7 @@ pub struct FixtureGroupConfig {
 #[derive(Clone, Debug, Deserialize)]
 pub struct PatchBlock {
     /// The DMX address(es) to patch at, either a single address or a start/count.
+    #[serde(default)]
     pub addr: Option<DmxAddrConfig>,
 
     /// The universe this fixture is patched in.
@@ -96,5 +97,25 @@ impl Deref for FixtureGroupKey {
     type Target = str;
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    fn assert_fail_parse(patch_yaml: &str, snippet: &str) {
+        let err = serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml).unwrap_err();
+        assert!(
+            format!("{err:#}").contains(snippet),
+            "error message didn't contain '{snippet}':\n{err:#}"
+        );
+    }
+
+    // This is arguably "testing serde" but we want to have some machine-verifiable
+    // proof that these things fail.
+    #[test]
+    fn test_missing_fields() {
+        assert_fail_parse("- foobar: Baz", "missing field `fixture`");
+        assert_fail_parse("- fixture: Foo", "missing field `patches`");
     }
 }

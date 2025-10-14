@@ -13,7 +13,7 @@
     - addr:
         start: 310
         count: 3
-      mirror: True
+      mirror: true
 
 - fixture: Ufo
   patches:
@@ -22,10 +22,10 @@
     - addr: 288
     - addr: 485
     - addr: 373
-      mirror: True
+      mirror: true
     - addr: 389
-      mirror: True
+      mirror: true
     - addr: 405
-      mirror: True
+      mirror: true
     - addr: 421
-      mirror: True
+      mirror: true
