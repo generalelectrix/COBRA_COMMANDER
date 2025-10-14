@@ -13,13 +13,12 @@
 
 use log::error;
 use number::{BipolarFloat, UnipolarFloat};
-use tunnels::midi::{cc, event, note_on, Event, EventType, Output};
-
-
-use crate::{
-    midi::Device,
-    util::unipolar_to_range,
+use tunnels::{
+    midi::{cc, event, note_on, Event, EventType, Output},
+    midi_controls::MidiDevice,
 };
+
+use crate::{midi::MidiHandler, util::unipolar_to_range};
 
 /// Model of the Behringer CMD DV-1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,11 +26,13 @@ pub struct BehringerCmdDV1 {}
 
 const MIDI_CHANNEL: u8 = 6;
 
-impl BehringerCmdDV1 {
-    pub fn device_name(&self) -> &str {
+impl MidiDevice for BehringerCmdDV1 {
+    fn device_name(&self) -> &str {
         "CMD DV-1"
     }
+}
 
+impl BehringerCmdDV1 {
     /// Interpret a midi event as a typed control event.
     pub fn parse(&self, event: &Event) -> Option<CmdDV1ControlEvent> {
         use CmdDV1ControlEvent::*;
@@ -177,4 +178,13 @@ pub enum CmdDV1ControlEvent {
 fn encoder(index: u8, v: u8) -> Option<CmdDV1ControlEvent> {
     let step = EncoderStep::from_val(v)?;
     Some(CmdDV1ControlEvent::Encoder { index, step })
+}
+
+impl MidiHandler for BehringerCmdDV1 {
+    fn interpret(&self, event: &Event) -> Option<crate::show::ShowControlMessage> {
+        use CmdDV1ControlEvent::*;
+        match self.parse(event)? {
+            Encoder { index, step } => match index {},
+        }
+    }
 }

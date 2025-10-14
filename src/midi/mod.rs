@@ -10,7 +10,7 @@ use crate::{
     animation::StateChange as AnimationStateChange,
     channel::StateChange as ChannelStateChange,
     master::StateChange as MasterStateChange,
-    midi::device::{amx::AkaiAmx, cmd_mm1::BehringerCmdMM1},
+    midi::device::{amx::AkaiAmx, cmd_dv1::BehringerCmdDV1, cmd_mm1::BehringerCmdMM1},
     show::ShowControlMessage,
 };
 use tunnels::{
@@ -31,6 +31,7 @@ pub enum Device {
     LaunchControlXL(NovationLaunchControlXL),
     CmdMM1(BehringerCmdMM1),
     Amx(AkaiAmx),
+    CmdDV1(BehringerCmdDV1),
     ColorOrgan(ColorOrgan),
 }
 
@@ -47,6 +48,7 @@ impl MidiDevice for Device {
             Device::LaunchControlXL(d) => d.device_name(),
             Device::CmdMM1(d) => d.device_name(),
             Device::Amx(d) => d.device_name(),
+            Device::CmdDV1(d) => d.device_name(),
             Device::ColorOrgan(d) => d.device_name(),
         }
     }
@@ -57,6 +59,7 @@ impl MidiDevice for Device {
             Device::LaunchControlXL(d) => d.init_midi(out),
             Device::CmdMM1(d) => d.init_midi(out),
             Device::Amx(d) => d.init_midi(out),
+            Device::CmdDV1(d) => d.init_midi(out),
             Device::ColorOrgan(d) => d.init_midi(out),
         }
     }
@@ -71,6 +74,7 @@ impl Device {
             Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 8 }),
             Self::CmdMM1(BehringerCmdMM1 {}),
             Self::Amx(AkaiAmx {}),
+            Self::CmdDV1(BehringerCmdDV1 {}),
         ]
     }
 }

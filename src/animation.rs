@@ -70,6 +70,13 @@ impl AnimationUIState {
                 anim.anim_mut()
                     .control(msg, &mut InnerAnimationEmitter(emitter));
             }
+            ControlMessage::Nudge(n) => {
+                let Some(anim) = self.current_animation(channel, group) else {
+                    // Selected group is not animated. Ignore.
+                    return Ok(());
+                };
+                handle_nudge(anim.anim_mut(), n, emitter);
+            }
             ControlMessage::Target(msg) => {
                 let Some(anim) = self.current_animation(channel, group) else {
                     // Selected group is not animated. Ignore.
@@ -171,6 +178,38 @@ impl AnimationUIState {
     }
 }
 
+/// Handle interpreting a parameter nudge.
+fn handle_nudge(anim: &mut Animation, nudge: Nudge, emitter: &dyn EmitScopedControlMessage) {
+    use tunnels::animation::StateChange::*;
+    let msg = tunnels::animation::ControlMessage::Set(match nudge {
+        Nudge::Size(amt) => {
+            let mut v = anim.size();
+            v += amt;
+            Size(v)
+        }
+
+        Nudge::Speed(amt) => {
+            let mut v = anim.clock_speed();
+            v += amt;
+            Speed(v)
+        }
+        Nudge::DutyCycle(amt) => {
+            let mut v = anim.duty_cycle();
+            v += amt;
+            DutyCycle(v)
+        }
+        Nudge::Smoothing(amt) => {
+            let mut v = anim.smoothing();
+            v += amt;
+            Smoothing(v)
+        }
+        Nudge::NPeriods(amt) => {
+            NPeriods(((anim.n_periods() as i32) + amt as i32).max(0).min(15) as u16)
+        }
+    });
+    anim.control(msg, &mut InnerAnimationEmitter(emitter));
+}
+
 struct InnerAnimationEmitter<'a>(&'a dyn EmitScopedControlMessage);
 
 impl<'a> EmitAnimationStateChange for InnerAnimationEmitter<'a> {
@@ -182,10 +221,25 @@ impl<'a> EmitAnimationStateChange for InnerAnimationEmitter<'a> {
 #[derive(Clone, Debug)]
 pub enum ControlMessage {
     Animation(tunnels::animation::ControlMessage),
+    /// A "nudge" to a parameter. This handles input from controls like rotary
+    /// encoders that do not store state internally, but only transmit a
+    /// message when rotated. The actual amount that the nudge moves is up to
+    /// the caller.
+    Nudge(Nudge),
     Target(AnimationTargetIndex),
     SelectAnimation(usize),
     Copy,
     Paste,
+}
+
+/// Nudge a parameter up or down.
+#[derive(Clone, Debug)]
+pub enum Nudge {
+    Size(f64),
+    Speed(f64),
+    DutyCycle(f64),
+    Smoothing(f64),
+    NPeriods(i16),
 }
 
 #[derive(Clone, Debug)]
