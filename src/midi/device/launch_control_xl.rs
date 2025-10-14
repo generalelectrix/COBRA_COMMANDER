@@ -1,11 +1,8 @@
 //! Device model for the Novation Launch Control XL.
 use log::{debug, error};
-use tunnels::{
-    midi::{Event, EventType, Output},
-    midi_controls::MidiDevice,
-};
+use tunnels::midi::{Event, EventType, Output};
 
-use crate::{channel::KnobValue, midi::Device, show::ChannelId};
+use crate::{channel::KnobValue, show::ChannelId};
 
 /// Model of the Novation Launch Control XL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,7 +21,7 @@ const TRACK_CONTROL: u8 = 2;
 
 const TEMPLATE_ID: u8 = 0x00;
 
-fn set_led<D: MidiDevice>(index: u8, state: LedState, out: &mut Output<D>) {
+fn set_led(index: u8, state: LedState, out: &mut Output) {
     if let Err(err) = out.send_raw(&[
         0xF0,
         0x00,
@@ -54,7 +51,7 @@ impl NovationLaunchControlXL {
     }
 
     /// Select factory template 0.
-    pub fn init_midi(&self, out: &mut Output<Device>) -> anyhow::Result<()> {
+    pub fn init_midi(&self, out: &mut Output) -> anyhow::Result<()> {
         debug!("Sending Launch Control XL sysex template select command (User 1).");
         out.send_raw(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x11, 0x77, TEMPLATE_ID, 0xF7])?;
         debug!("Clearing all Launch Control XL LEDs.");
@@ -143,7 +140,7 @@ impl NovationLaunchControlXL {
     }
 
     /// Process a state change and emit midi.
-    pub fn emit(&self, sc: LaunchControlXLStateChange, output: &mut Output<Device>) {
+    pub fn emit(&self, sc: LaunchControlXLStateChange, output: &mut Output) {
         use LaunchControlXLChannelStateChange::*;
         use LaunchControlXLSideButton::*;
         use LaunchControlXLStateChange::*;

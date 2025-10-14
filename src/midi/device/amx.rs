@@ -119,7 +119,7 @@ impl AkaiAmx {
         channel: usize,
         button: AmxChannelButton,
         state: bool,
-        output: &mut Output<Device>,
+        output: &mut Output,
     ) {
         use AmxChannelButton::*;
         if channel >= Self::CHANNEL_COUNT as usize {
@@ -140,7 +140,7 @@ impl AkaiAmx {
     }
 
     /// Set one of the VU meters.
-    pub fn set_vu_meter(&self, which: VuMeter, value: UnipolarFloat, output: &mut Output<Device>) {
+    pub fn set_vu_meter(&self, which: VuMeter, value: UnipolarFloat, output: &mut Output) {
         use VuMeter::*;
         let control = match which {
             Channel1 => 0x40,
@@ -249,7 +249,7 @@ impl MidiHandler for AkaiAmx {
         }))
     }
 
-    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output<Device>) {
+    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output) {
         let channel: usize = msg.channel.into();
         match msg.change {
             ClockStateChange::OneShot(v) => self.set_led(channel, AmxChannelButton::Cue, v, output),
@@ -262,7 +262,7 @@ impl MidiHandler for AkaiAmx {
         }
     }
 
-    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output<Device>) {
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output) {
         if let tunnels::audio::StateChange::EnvelopeValue(v) = msg {
             self.set_vu_meter(VuMeter::MasterRight, *v, output);
         }

@@ -25,7 +25,7 @@ impl AkaiApc20 {
     }
 
     /// Put into ableton (full control) mode.
-    pub fn init_midi<D: MidiDevice>(&self, out: &mut Output<D>) -> anyhow::Result<()> {
+    pub fn init_midi(&self, out: &mut Output) -> anyhow::Result<()> {
         debug!("Sending APC20 sysex mode command.");
         out.send_raw(&[
             0xF0, 0x47, 0x7F, 0x7B, 0x60, 0x00, 0x04, 0x42, 0x08, 0x02, 0x01, 0xF7,
@@ -58,7 +58,7 @@ impl AkaiApc20 {
     }
 
     /// Process a state change and emit midi.
-    pub fn emit(&self, sc: Apc20StateChange, output: &mut Output<Device>) {
+    pub fn emit(&self, sc: Apc20StateChange, output: &mut Output) {
         use Apc20ChannelButtonType::*;
         use Apc20StateChange::*;
         match sc {

@@ -104,7 +104,7 @@ impl BehringerCmdMM1 {
         channel: usize,
         button: CmdMM1ChannelButton,
         state: bool,
-        output: &mut Output<Device>,
+        output: &mut Output,
     ) {
         if channel >= Self::CHANNEL_COUNT as usize {
             debug!("CMD MM-1 channel {channel} out of range for LED state update");
@@ -123,7 +123,7 @@ impl BehringerCmdMM1 {
     /// Set one of the VU meters.
     ///
     /// which: pass false for left, true for right
-    pub fn set_vu_meter(&self, which: bool, value: UnipolarFloat, output: &mut Output<Device>) {
+    pub fn set_vu_meter(&self, which: bool, value: UnipolarFloat, output: &mut Output) {
         let control = if which { 81 } else { 80 };
         // Why they chose to scale the VU meters from 48 to 63... shrug.
         let scaled_val = unipolar_to_range(48, 63, value);
@@ -214,7 +214,7 @@ impl MidiHandler for BehringerCmdMM1 {
         })
     }
 
-    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output<Device>) {
+    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output) {
         let channel: usize = msg.channel.into();
         match msg.change {
             ClockStateChange::OneShot(v) => {
@@ -231,7 +231,7 @@ impl MidiHandler for BehringerCmdMM1 {
         }
     }
 
-    fn emit_audio_control(&self, msg: &AudioStateChange, output: &mut Output<Device>) {
+    fn emit_audio_control(&self, msg: &AudioStateChange, output: &mut Output) {
         if let Err(err) = match msg {
             AudioStateChange::Monitor(v) => output.send(event(note_on(MIDI_CHANNEL, 18), *v as u8)),
             AudioStateChange::EnvelopeValue(v) => {

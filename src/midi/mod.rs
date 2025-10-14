@@ -47,7 +47,7 @@ impl MidiDevice for Device {
         }
     }
 
-    fn init_midi(&self, out: &mut tunnels::midi::Output<Self>) -> Result<()> {
+    fn init_midi(&self, out: &mut Output) -> Result<()> {
         match self {
             Self::Apc20(d) => d.init_midi(out),
             Self::LaunchControlXL(d) => d.init_midi(out),
@@ -82,7 +82,7 @@ impl MidiHandler for Device {
         }
     }
 
-    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output<Device>) {
+    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output) {
         match self {
             Self::Apc20(d) => d.emit_channel_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_channel_control(msg, output),
@@ -90,11 +90,7 @@ impl MidiHandler for Device {
         }
     }
 
-    fn emit_clock_control(
-        &self,
-        msg: &tunnels::clock_bank::StateChange,
-        output: &mut Output<Device>,
-    ) {
+    fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut Output) {
         match self {
             Self::CmdMM1(d) => d.emit_clock_control(msg, output),
             Self::Amx(d) => d.emit_clock_control(msg, output),
@@ -102,7 +98,7 @@ impl MidiHandler for Device {
         }
     }
 
-    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output<Device>) {
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output) {
         match self {
             Self::CmdMM1(d) => d.emit_audio_control(msg, output),
             Self::Amx(d) => d.emit_audio_control(msg, output),
@@ -110,7 +106,7 @@ impl MidiHandler for Device {
         }
     }
 
-    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output<Device>) {
+    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {
         match self {
             Self::Apc20(d) => d.emit_master_control(msg, output),
             Self::LaunchControlXL(d) => d.emit_master_control(msg, output),
@@ -126,24 +122,19 @@ pub trait MidiHandler {
 
     /// Send MIDI state to handle the provided channel state change.
     #[allow(unused_variables)]
-    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output<Device>) {}
+    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output) {}
 
     /// Send MIDI state to handle the provided clock state change.
     #[allow(unused_variables)]
-    fn emit_clock_control(
-        &self,
-        msg: &tunnels::clock_bank::StateChange,
-        output: &mut Output<Device>,
-    ) {
-    }
+    fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut Output) {}
 
     /// Send MIDI state to handle the provided audio state change.
     #[allow(unused_variables)]
-    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output<Device>) {}
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output) {}
 
     /// Send MIDI state to handle the provided master state change.
     #[allow(unused_variables)]
-    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output<Device>) {}
+    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {}
 }
 
 pub struct MidiControlMessage {
@@ -168,36 +159,32 @@ impl MidiController {
 
     /// Handle a channel state change message.
     pub fn emit_channel_control(&self, msg: &ChannelStateChange) {
-        for output in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are inside-out/stateless
-            let device = *output.device();
+        for (device, output) in self.0.borrow_mut().outputs() {
+            // FIXME: tunnels devices are stateless
             device.emit_channel_control(msg, output);
         }
     }
 
     /// Handle a clock state change message.
     pub fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange) {
-        for output in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are inside-out/stateless
-            let device = *output.device();
+        for (device, output) in self.0.borrow_mut().outputs() {
+            // FIXME: tunnels devices are stateless
             device.emit_clock_control(msg, output);
         }
     }
 
     /// Handle a audio state change message.
     pub fn emit_audio_control(&self, msg: &tunnels::audio::StateChange) {
-        for output in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are inside-out/stateless
-            let device = *output.device();
+        for (device, output) in self.0.borrow_mut().outputs() {
+            // FIXME: tunnels devices are stateless
             device.emit_audio_control(msg, output);
         }
     }
 
     /// Handle a master state change message.
     pub fn emit_master_control(&self, msg: &crate::master::StateChange) {
-        for output in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are inside-out/stateless
-            let device = *output.device();
+        for (device, output) in self.0.borrow_mut().outputs() {
+            // FIXME: tunnels devices are stateless
             device.emit_master_control(msg, output);
         }
     }
