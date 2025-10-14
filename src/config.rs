@@ -21,10 +21,6 @@ pub struct FixtureGroupConfig {
     #[serde(default)]
     pub group: Option<FixtureGroupKey>,
 
-    /// Additional fixture-specific key-value string options for configuring the group.
-    #[serde(default)]
-    pub options: Options,
-
     /// If true, assign to a channel. Defaults to true.
     #[serde(default = "_true")]
     pub channel: bool,
@@ -34,12 +30,18 @@ pub struct FixtureGroupConfig {
     pub color_organ: bool,
 
     pub patches: Vec<PatchBlock>,
+
+    /// Additional fixture-specific key-value string options for configuring the group.
+    /// Any additional keys will be parsed into here.
+    #[serde(flatten)]
+    pub options: Options,
 }
 
 /// One or more instances of a fixture to patch in the context of a group.
 #[derive(Clone, Debug, Deserialize)]
 pub struct PatchBlock {
     /// The DMX address(es) to patch at, either a single address or a start/count.
+    #[serde(default)]
     pub addr: Option<DmxAddrConfig>,
 
     /// The universe this fixture is patched in.
@@ -51,8 +53,8 @@ pub struct PatchBlock {
     #[serde(default)]
     pub mirror: bool,
 
-    /// Additional fixture-specific key-value string options for configuring individual fixtures.
-    #[serde(default)]
+    /// Additional key-value string options for configuring individual fixtures.
+    #[serde(flatten)]
     pub options: Options,
 }
 
@@ -95,5 +97,25 @@ impl Deref for FixtureGroupKey {
     type Target = str;
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    fn assert_fail_parse(patch_yaml: &str, snippet: &str) {
+        let err = serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml).unwrap_err();
+        assert!(
+            format!("{err:#}").contains(snippet),
+            "error message didn't contain '{snippet}':\n{err:#}"
+        );
+    }
+
+    // This is arguably "testing serde" but we want to have some machine-verifiable
+    // proof that these things fail.
+    #[test]
+    fn test_missing_fields() {
+        assert_fail_parse("- foobar: Baz", "missing field `fixture`");
+        assert_fail_parse("- fixture: Foo", "missing field `patches`");
     }
 }

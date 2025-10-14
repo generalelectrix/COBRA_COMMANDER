@@ -175,7 +175,7 @@ impl FixtureGroup {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GroupFixtureConfig {
     /// The starting index into the DMX buffer for a fixture in a group.
     /// This is a buffer index - as in, indexed from 0, not 1.

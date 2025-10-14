@@ -1,6 +1,5 @@
 - fixture: Color
-  options:
-    control_color_space: Hsluv
+  control_color_space: Hsluv
   patches:
     - addr:
         start: 1
