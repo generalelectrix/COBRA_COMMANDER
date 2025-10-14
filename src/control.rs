@@ -12,7 +12,8 @@ use tunnels::midi::{CreateControlEvent, DeviceSpec};
 
 use crate::{
     midi::{
-        Device, EmitMidiChannelMessage, EmitMidiMasterMessage, MidiControlMessage, MidiController,
+        Device, EmitMidiAnimationMessage, EmitMidiChannelMessage, EmitMidiMasterMessage,
+        MidiControlMessage, MidiController,
     },
     osc::{
         EmitOscMessage, EmitScopedOscMessage, OscClientId, OscControlMessage, OscControlResponse,
@@ -23,19 +24,27 @@ use crate::{
 
 /// Emit scoped control messages.
 /// Will be extended in the future to potentially cover more cases.
-pub trait EmitScopedControlMessage: EmitScopedOscMessage {}
+pub trait EmitScopedControlMessage: EmitScopedOscMessage + EmitMidiAnimationMessage {}
 
-impl<T> EmitScopedControlMessage for T where T: EmitScopedOscMessage {}
+impl<T> EmitScopedControlMessage for T where T: EmitScopedOscMessage + EmitMidiAnimationMessage {}
 
 /// Emit control messages.
 /// Will be extended in the future to potentially cover more cases.
 pub trait EmitControlMessage:
-    EmitOscMessage + EmitMidiChannelMessage + EmitMidiMasterMessage + EmitWledControlMessage
+    EmitOscMessage
+    + EmitMidiChannelMessage
+    + EmitMidiMasterMessage
+    + EmitMidiAnimationMessage
+    + EmitWledControlMessage
 {
 }
 
 impl<T> EmitControlMessage for T where
-    T: EmitOscMessage + EmitMidiChannelMessage + EmitMidiMasterMessage + EmitWledControlMessage
+    T: EmitOscMessage
+        + EmitMidiChannelMessage
+        + EmitMidiMasterMessage
+        + EmitMidiAnimationMessage
+        + EmitWledControlMessage
 {
 }
 
@@ -148,6 +157,12 @@ impl<'a> EmitOscMessage for ControlMessageWithMetadataSender<'a> {
 impl<'a> EmitMidiChannelMessage for ControlMessageWithMetadataSender<'a> {
     fn emit_midi_channel_message(&self, msg: &crate::channel::StateChange) {
         self.controller.midi.emit_channel_control(msg);
+    }
+}
+
+impl<'a> EmitMidiAnimationMessage for ControlMessageWithMetadataSender<'a> {
+    fn emit_midi_animation_message(&self, msg: &crate::animation::StateChange) {
+        self.controller.midi.emit_animation_control(msg);
     }
 }
 

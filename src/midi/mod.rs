@@ -7,9 +7,10 @@ use enum_dispatch::enum_dispatch;
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{
+    animation::StateChange as AnimationStateChange,
     channel::StateChange as ChannelStateChange,
     master::StateChange as MasterStateChange,
-    midi::device::{amx::AkaiAmx, cmd_mm1::BehringerCmdMM1},
+    midi::device::{amx::AkaiAmx, cmd_dv1::BehringerCmdDV1, cmd_mm1::BehringerCmdMM1},
     show::ShowControlMessage,
 };
 use tunnels::{
@@ -30,6 +31,7 @@ pub enum Device {
     LaunchControlXL(NovationLaunchControlXL),
     CmdMM1(BehringerCmdMM1),
     Amx(AkaiAmx),
+    CmdDV1(BehringerCmdDV1),
     ColorOrgan(ColorOrgan),
 }
 
@@ -46,6 +48,7 @@ impl MidiDevice for Device {
             Device::LaunchControlXL(d) => d.device_name(),
             Device::CmdMM1(d) => d.device_name(),
             Device::Amx(d) => d.device_name(),
+            Device::CmdDV1(d) => d.device_name(),
             Device::ColorOrgan(d) => d.device_name(),
         }
     }
@@ -56,6 +59,7 @@ impl MidiDevice for Device {
             Device::LaunchControlXL(d) => d.init_midi(out),
             Device::CmdMM1(d) => d.init_midi(out),
             Device::Amx(d) => d.init_midi(out),
+            Device::CmdDV1(d) => d.init_midi(out),
             Device::ColorOrgan(d) => d.init_midi(out),
         }
     }
@@ -70,6 +74,7 @@ impl Device {
             Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 8 }),
             Self::CmdMM1(BehringerCmdMM1 {}),
             Self::Amx(AkaiAmx {}),
+            Self::CmdDV1(BehringerCmdDV1 {}),
         ]
     }
 }
@@ -87,6 +92,10 @@ pub trait MidiHandler {
     /// Send MIDI state to handle the provided clock state change.
     #[allow(unused_variables)]
     fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut Output) {}
+
+    /// Send MIDI state to handle the provided animation state change.
+    #[allow(unused_variables)]
+    fn emit_animation_control(&self, msg: &AnimationStateChange, output: &mut Output) {}
 
     /// Send MIDI state to handle the provided audio state change.
     #[allow(unused_variables)]
@@ -141,6 +150,14 @@ impl MidiController {
         }
     }
 
+    /// Handle a animation state change message.
+    pub fn emit_animation_control(&self, msg: &AnimationStateChange) {
+        for (device, output) in self.0.borrow_mut().outputs() {
+            // FIXME: tunnels devices are stateless
+            device.emit_animation_control(msg, output);
+        }
+    }
+
     /// Handle a master state change message.
     pub fn emit_master_control(&self, msg: &crate::master::StateChange) {
         for (device, output) in self.0.borrow_mut().outputs() {
@@ -150,22 +167,14 @@ impl MidiController {
     }
 }
 
-impl EmitMidiChannelMessage for MidiController {
-    fn emit_midi_channel_message(&self, msg: &ChannelStateChange) {
-        self.emit_channel_control(msg);
-    }
-}
-
-impl EmitMidiMasterMessage for MidiController {
-    fn emit_midi_master_message(&self, msg: &crate::master::StateChange) {
-        self.emit_master_control(msg);
-    }
-}
-
 pub trait EmitMidiChannelMessage {
     fn emit_midi_channel_message(&self, msg: &ChannelStateChange);
 }
 
 pub trait EmitMidiMasterMessage {
     fn emit_midi_master_message(&self, msg: &crate::master::StateChange);
+}
+
+pub trait EmitMidiAnimationMessage {
+    fn emit_midi_animation_message(&self, msg: &crate::animation::StateChange);
 }

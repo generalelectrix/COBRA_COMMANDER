@@ -2,6 +2,7 @@ use crate::channel::{ChannelStateChange, ChannelStateEmitter};
 use crate::config::FixtureGroupKey;
 use crate::control::ControlMessage;
 use crate::control::EmitControlMessage;
+use crate::midi::EmitMidiAnimationMessage;
 use crate::osc::listener::OscListener;
 use crate::osc::sender::{OscSender, OscSenderCommand};
 use crate::wled::EmitWledControlMessage;
@@ -164,6 +165,12 @@ impl<'a> EmitScopedOscMessage for ScopedControlEmitter<'a> {
             addr: format!("/{}/{}", self.entity, msg.control),
             args: vec![msg.arg],
         });
+    }
+}
+
+impl<'a> EmitMidiAnimationMessage for ScopedControlEmitter<'a> {
+    fn emit_midi_animation_message(&self, msg: &crate::animation::StateChange) {
+        self.emitter.emit_midi_animation_message(msg);
     }
 }
 

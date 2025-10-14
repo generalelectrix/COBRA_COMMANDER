@@ -16,7 +16,7 @@ use tunnels::clock_bank::{
 
 use crate::{midi::MidiHandler, show::ShowControlMessage, util::unipolar_to_range};
 
-/// Model of the Behringer CMD-MM1.
+/// Model of the Behringer CMD MM-1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BehringerCmdMM1 {}
 
