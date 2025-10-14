@@ -50,6 +50,7 @@ impl AnimationUIState {
         ta.anim().emit_state(&mut InnerAnimationEmitter(emitter));
         Self::emit_osc_state_change(StateChange::Target(ta.target()), emitter);
         Self::emit_osc_state_change(StateChange::SelectAnimation(index), emitter);
+        emitter.emit_midi_animation_message(&StateChange::SelectAnimation(index));
         Self::emit_osc_state_change(StateChange::TargetLabels(ta.target_labels()), emitter);
     }
 
