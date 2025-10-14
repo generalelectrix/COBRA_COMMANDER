@@ -46,7 +46,11 @@ impl NovationLaunchControlXL {
     pub const CHANNEL_COUNT: u8 = 8;
 
     pub fn device_name(&self) -> &str {
-        "Launch Control XL"
+        if self.channel_offset == 8 {
+            "Launch Control XL Second Wing"
+        } else {
+            "Launch Control XL"
+        }
     }
 
     /// Select factory template 0.
