@@ -159,6 +159,23 @@ impl EncoderStep {
             _ => None,
         }
     }
+
+    /// Convert a nudge into a floating point adjustment by a scaling factor.
+    fn scaled(self, scale: f64) -> f64 {
+        match self {
+            Self::Left => -scale,
+            Self::Right => scale,
+        }
+    }
+}
+
+impl From<EncoderStep> for i16 {
+    fn from(value: EncoderStep) -> Self {
+        match value {
+            EncoderStep::Left => -1,
+            EncoderStep::Right => 1,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -180,11 +197,77 @@ fn encoder(index: u8, v: u8) -> Option<CmdDV1ControlEvent> {
     Some(CmdDV1ControlEvent::Encoder { index, step })
 }
 
+const N_PERIODS_ENCODER: u8 = 4;
+const SPEED_ENCODER: u8 = 8;
+const SIZE_ENCODER: u8 = 9;
+const DUTY_CYCLE_ENCODER: u8 = 10;
+const SMOOTHING_ENCODER: u8 = 11;
+
 impl MidiHandler for BehringerCmdDV1 {
     fn interpret(&self, event: &Event) -> Option<crate::show::ShowControlMessage> {
+        use crate::animation::ControlMessage;
+        use crate::animation::Nudge;
         use CmdDV1ControlEvent::*;
-        match self.parse(event)? {
-            Encoder { index, step } => match index {},
+        Some(crate::show::ShowControlMessage::Animation(
+            match self.parse(event)? {
+                Encoder { index, step } => match index {
+                    N_PERIODS_ENCODER => ControlMessage::Nudge(Nudge::NPeriods(step.into())),
+                    SPEED_ENCODER => ControlMessage::Nudge(Nudge::Speed(step.scaled(SPEED_NUDGE))),
+                    SIZE_ENCODER => ControlMessage::Nudge(Nudge::Size(step.scaled(SCALE_NUDGE))),
+                    DUTY_CYCLE_ENCODER => {
+                        ControlMessage::Nudge(Nudge::DutyCycle(step.scaled(DUTY_CYCLE_NUDGE)))
+                    }
+                    SMOOTHING_ENCODER => {
+                        ControlMessage::Nudge(Nudge::Smoothing(step.scaled(SMOOTHING_NUDGE)))
+                    }
+                    _ => {
+                        return None;
+                    }
+                },
+                Button(index) => match index {
+                    // large letter buttons - animation index select
+                    8..12 => ControlMessage::SelectAnimation(index as usize - 8),
+                    // TODO: implement toggle actions for mode selections so we can model "internal clock" as "no clock selected"
+                    _ => {
+                        return None;
+                    }
+                },
+            },
+        ))
+    }
+
+    fn emit_animation_control(&self, msg: &crate::animation::StateChange, output: &mut Output) {
+        use crate::animation::StateChange;
+        match msg {
+            StateChange::SelectAnimation(i) => {
+                for x in 0..4 {
+                    self.set_led(8 + x, x as usize == *i, output);
+                }
+            }
+            StateChange::Animation(a) => match a {
+                tunnels::animation::StateChange::Speed(v) => {
+                    self.set_encoder_bipolar(SPEED_ENCODER, *v, output);
+                }
+                tunnels::animation::StateChange::Size(v) => {
+                    self.set_encoder_unipolar(SIZE_ENCODER, *v, output);
+                }
+                tunnels::animation::StateChange::DutyCycle(v) => {
+                    self.set_encoder_unipolar(DUTY_CYCLE_ENCODER, *v, output);
+                }
+                tunnels::animation::StateChange::Smoothing(v) => {
+                    self.set_encoder_unipolar(SMOOTHING_ENCODER, *v, output);
+                }
+                tunnels::animation::StateChange::NPeriods(v) => {
+                    self.set_encoder_raw(N_PERIODS_ENCODER, *v as u8, output);
+                }
+                _ => (),
+            },
+            _ => (),
         }
     }
 }
+
+const SPEED_NUDGE: f64 = 1. / 256.;
+const SCALE_NUDGE: f64 = 1. / 128.;
+const DUTY_CYCLE_NUDGE: f64 = 1. / 128.;
+const SMOOTHING_NUDGE: f64 = 1. / 128.;

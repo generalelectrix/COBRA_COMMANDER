@@ -150,6 +150,14 @@ impl MidiController {
         }
     }
 
+    /// Handle a animation state change message.
+    pub fn emit_animation_control(&self, msg: &AnimationStateChange) {
+        for (device, output) in self.0.borrow_mut().outputs() {
+            // FIXME: tunnels devices are stateless
+            device.emit_animation_control(msg, output);
+        }
+    }
+
     /// Handle a master state change message.
     pub fn emit_master_control(&self, msg: &crate::master::StateChange) {
         for (device, output) in self.0.borrow_mut().outputs() {
@@ -159,22 +167,14 @@ impl MidiController {
     }
 }
 
-impl EmitMidiChannelMessage for MidiController {
-    fn emit_midi_channel_message(&self, msg: &ChannelStateChange) {
-        self.emit_channel_control(msg);
-    }
-}
-
-impl EmitMidiMasterMessage for MidiController {
-    fn emit_midi_master_message(&self, msg: &crate::master::StateChange) {
-        self.emit_master_control(msg);
-    }
-}
-
 pub trait EmitMidiChannelMessage {
     fn emit_midi_channel_message(&self, msg: &ChannelStateChange);
 }
 
 pub trait EmitMidiMasterMessage {
     fn emit_midi_master_message(&self, msg: &crate::master::StateChange);
+}
+
+pub trait EmitMidiAnimationMessage {
+    fn emit_midi_animation_message(&self, msg: &crate::animation::StateChange);
 }

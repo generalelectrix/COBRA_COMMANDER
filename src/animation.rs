@@ -204,7 +204,7 @@ fn handle_nudge(anim: &mut Animation, nudge: Nudge, emitter: &dyn EmitScopedCont
             Smoothing(v)
         }
         Nudge::NPeriods(amt) => {
-            NPeriods(((anim.n_periods() as i32) + amt as i32).max(0).min(15) as u16)
+            NPeriods(((anim.n_periods() as i32) + amt as i32).clamp(0, 15) as u16)
         }
     });
     anim.control(msg, &mut InnerAnimationEmitter(emitter));
@@ -214,7 +214,9 @@ struct InnerAnimationEmitter<'a>(&'a dyn EmitScopedControlMessage);
 
 impl<'a> EmitAnimationStateChange for InnerAnimationEmitter<'a> {
     fn emit_animation_state_change(&mut self, sc: tunnels::animation::StateChange) {
-        AnimationUIState::emit_osc_state_change(StateChange::Animation(sc), self.0);
+        let sc = StateChange::Animation(sc);
+        self.0.emit_midi_animation_message(&sc);
+        AnimationUIState::emit_osc_state_change(sc, self.0);
     }
 }
 
