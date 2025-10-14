@@ -187,7 +187,7 @@ impl MidiHandler for BehringerCmdMM1 {
                         0 => {
                             ClockControlMessage::Set(ClockStateChange::Rate(bipolar_from_midi(val)))
                         }
-                        1 => ClockControlMessage::Set(ClockStateChange::RateFine(
+                        3 => ClockControlMessage::Set(ClockStateChange::RateFine(
                             bipolar_from_midi(val),
                         )),
                         _ => {
