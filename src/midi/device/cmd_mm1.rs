@@ -5,7 +5,7 @@ use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
     midi::{cc, event, note_on, Event, EventType, Output},
-    midi_controls::{bipolar_from_midi, unipolar_from_midi},
+    midi_controls::{bipolar_from_midi, unipolar_from_midi, MidiDevice},
 };
 
 use tunnels::audio::StateChange as AudioStateChange;
@@ -14,11 +14,7 @@ use tunnels::clock_bank::{
     ControlMessage as ClockBankControlMessage, StateChange as ClockBankStateChange,
 };
 
-use crate::{
-    midi::MidiHandler,
-    show::ShowControlMessage,
-    util::unipolar_to_range,
-};
+use crate::{midi::MidiHandler, show::ShowControlMessage, util::unipolar_to_range};
 
 /// Model of the Behringer CMD-MM1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,12 +22,14 @@ pub struct BehringerCmdMM1 {}
 
 const MIDI_CHANNEL: u8 = 4;
 
-impl BehringerCmdMM1 {
-    pub const CHANNEL_COUNT: u8 = 4;
-
-    pub fn device_name(&self) -> &str {
+impl MidiDevice for BehringerCmdMM1 {
+    fn device_name(&self) -> &str {
         "CMD MM-1"
     }
+}
+
+impl BehringerCmdMM1 {
+    pub const CHANNEL_COUNT: u8 = 4;
 
     /// Interpret a midi event as a typed control event.
     pub fn parse(&self, event: &Event) -> Option<CmdMM1ControlEvent> {

@@ -3,10 +3,12 @@
 use anyhow::Result;
 pub use device::color_organ::ColorOrgan;
 use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
+use enum_dispatch::enum_dispatch;
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{
     channel::StateChange as ChannelStateChange,
+    master::StateChange as MasterStateChange,
     midi::device::{amx::AkaiAmx, cmd_mm1::BehringerCmdMM1},
     show::ShowControlMessage,
 };
@@ -21,6 +23,7 @@ mod device;
 mod mapping;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[enum_dispatch(MidiHandler)]
 pub enum Device {
     #[allow(unused)]
     Apc20(AkaiApc20),
@@ -39,21 +42,21 @@ impl Display for Device {
 impl MidiDevice for Device {
     fn device_name(&self) -> &str {
         match self {
-            Self::Apc20(d) => d.device_name(),
-            Self::CmdMM1(d) => d.device_name(),
-            Self::Amx(d) => d.device_name(),
-            Self::LaunchControlXL(d) => d.device_name(),
-            Self::ColorOrgan(_) => "Generic MIDI Keyboard",
+            Device::Apc20(d) => d.device_name(),
+            Device::LaunchControlXL(d) => d.device_name(),
+            Device::CmdMM1(d) => d.device_name(),
+            Device::Amx(d) => d.device_name(),
+            Device::ColorOrgan(d) => d.device_name(),
         }
     }
 
     fn init_midi(&self, out: &mut Output) -> Result<()> {
         match self {
-            Self::Apc20(d) => d.init_midi(out),
-            Self::LaunchControlXL(d) => d.init_midi(out),
-            Self::CmdMM1(_) => Ok(()),
-            Self::Amx(_) => Ok(()),
-            Self::ColorOrgan(_) => Ok(()),
+            Device::Apc20(d) => d.init_midi(out),
+            Device::LaunchControlXL(d) => d.init_midi(out),
+            Device::CmdMM1(d) => d.init_midi(out),
+            Device::Amx(d) => d.init_midi(out),
+            Device::ColorOrgan(d) => d.init_midi(out),
         }
     }
 }
@@ -71,51 +74,8 @@ impl Device {
     }
 }
 
-impl MidiHandler for Device {
-    fn interpret(&self, event: &Event) -> Option<ShowControlMessage> {
-        match self {
-            Self::Apc20(d) => d.interpret(event),
-            Self::LaunchControlXL(d) => d.interpret(event),
-            Self::CmdMM1(d) => d.interpret(event),
-            Self::Amx(d) => d.interpret(event),
-            Self::ColorOrgan(d) => d.interpret(event),
-        }
-    }
-
-    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output) {
-        match self {
-            Self::Apc20(d) => d.emit_channel_control(msg, output),
-            Self::LaunchControlXL(d) => d.emit_channel_control(msg, output),
-            Self::CmdMM1(_) | Self::Amx(_) | Self::ColorOrgan(_) => (),
-        }
-    }
-
-    fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut Output) {
-        match self {
-            Self::CmdMM1(d) => d.emit_clock_control(msg, output),
-            Self::Amx(d) => d.emit_clock_control(msg, output),
-            Self::Apc20(_) | Self::LaunchControlXL(_) | Self::ColorOrgan(_) => (),
-        }
-    }
-
-    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output) {
-        match self {
-            Self::CmdMM1(d) => d.emit_audio_control(msg, output),
-            Self::Amx(d) => d.emit_audio_control(msg, output),
-            Self::Apc20(_) | Self::LaunchControlXL(_) | Self::ColorOrgan(_) => (),
-        }
-    }
-
-    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {
-        match self {
-            Self::Apc20(d) => d.emit_master_control(msg, output),
-            Self::LaunchControlXL(d) => d.emit_master_control(msg, output),
-            Self::CmdMM1(_) | Self::Amx(_) | Self::ColorOrgan(_) => (),
-        }
-    }
-}
-
 /// MIDI handling, interpreting a MIDI event as a channel control message.
+#[enum_dispatch]
 pub trait MidiHandler {
     /// Interpet an incoming MIDI event as a show control message.
     fn interpret(&self, event: &Event) -> Option<ShowControlMessage>;
@@ -134,7 +94,7 @@ pub trait MidiHandler {
 
     /// Send MIDI state to handle the provided master state change.
     #[allow(unused_variables)]
-    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {}
+    fn emit_master_control(&self, msg: &MasterStateChange, output: &mut Output) {}
 }
 
 pub struct MidiControlMessage {

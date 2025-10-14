@@ -1,6 +1,9 @@
 //! Device model for the Novation Launch Control XL.
 use log::{debug, error};
-use tunnels::midi::{Event, EventType, Output};
+use tunnels::{
+    midi::{Event, EventType, Output},
+    midi_controls::MidiDevice,
+};
 
 use crate::{channel::KnobValue, show::ChannelId};
 
@@ -39,10 +42,8 @@ fn set_led(index: u8, state: LedState, out: &mut Output) {
     }
 }
 
-impl NovationLaunchControlXL {
-    pub const CHANNEL_COUNT: u8 = 8;
-
-    pub fn device_name(&self) -> &str {
+impl MidiDevice for NovationLaunchControlXL {
+    fn device_name(&self) -> &str {
         if self.channel_offset == 8 {
             "Launch Control XL Second Wing"
         } else {
@@ -51,7 +52,7 @@ impl NovationLaunchControlXL {
     }
 
     /// Select factory template 0.
-    pub fn init_midi(&self, out: &mut Output) -> anyhow::Result<()> {
+    fn init_midi(&self, out: &mut Output) -> anyhow::Result<()> {
         debug!("Sending Launch Control XL sysex template select command (User 1).");
         out.send_raw(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x11, 0x77, TEMPLATE_ID, 0xF7])?;
         debug!("Clearing all Launch Control XL LEDs.");
@@ -71,6 +72,10 @@ impl NovationLaunchControlXL {
         }
         Ok(())
     }
+}
+
+impl NovationLaunchControlXL {
+    pub const CHANNEL_COUNT: u8 = 8;
 
     /// Determine the midi channel for the given show control channel.
     /// Return None if the show channel isn't mapped onto this device.

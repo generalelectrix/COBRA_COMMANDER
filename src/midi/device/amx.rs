@@ -13,7 +13,7 @@ use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
     midi::{cc, event, note_on, Event, EventType, Output},
-    midi_controls::{bipolar_from_midi, unipolar_from_midi},
+    midi_controls::{bipolar_from_midi, unipolar_from_midi, MidiDevice},
 };
 
 use tunnels::clock::{ControlMessage as ClockControlMessage, StateChange as ClockStateChange};
@@ -50,12 +50,14 @@ const SYNC_1: u8 = SYNC + 1;
 const CUE_1: u8 = CUE + 1;
 const PLAY_1: u8 = PLAY + 1;
 
-impl AkaiAmx {
-    pub const CHANNEL_COUNT: u8 = 2;
-
-    pub fn device_name(&self) -> &str {
+impl MidiDevice for AkaiAmx {
+    fn device_name(&self) -> &str {
         "AMX"
     }
+}
+
+impl AkaiAmx {
+    pub const CHANNEL_COUNT: u8 = 2;
 
     /// Interpret a midi event as a typed control event.
     pub fn parse(&self, event: &Event) -> Option<AmxControlEvent> {

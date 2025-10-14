@@ -1,6 +1,8 @@
 use log::{debug, error};
-use tunnels::midi::{Event, EventType, Mapping, Output};
-
+use tunnels::{
+    midi::{Event, EventType, Mapping, Output},
+    midi_controls::MidiDevice,
+};
 
 /// Basic model for the few APC20 controls we use so far.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,21 +15,23 @@ pub struct AkaiApc20 {
 const FADER: u8 = 0x7;
 const TRACK_SELECT: u8 = 0x33;
 
-impl AkaiApc20 {
-    pub const CHANNEL_COUNT: u8 = 8;
-
-    pub fn device_name(&self) -> &str {
+impl MidiDevice for AkaiApc20 {
+    fn device_name(&self) -> &str {
         "Akai APC20"
     }
 
     /// Put into ableton (full control) mode.
-    pub fn init_midi(&self, out: &mut Output) -> anyhow::Result<()> {
+    fn init_midi(&self, out: &mut Output) -> anyhow::Result<()> {
         debug!("Sending APC20 sysex mode command.");
         out.send_raw(&[
             0xF0, 0x47, 0x7F, 0x7B, 0x60, 0x00, 0x04, 0x42, 0x08, 0x02, 0x01, 0xF7,
         ])?;
         Ok(())
     }
+}
+
+impl AkaiApc20 {
+    pub const CHANNEL_COUNT: u8 = 8;
 
     /// Interpret a midi event as a typed control event.
     pub fn parse(&self, event: &Event) -> Option<Apc20ControlEvent> {
