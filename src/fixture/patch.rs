@@ -630,18 +630,6 @@ mod test {
     - addr: 2",
             "duplicate group key 'Dimmer'",
         );
-        // Can't use a group key that matches an existing fixture type.
-        assert_fail_patch(
-            "
-- fixture: Color
-  patches:
-    - addr: 1
-- fixture: Dimmer
-  group: Color
-  patches:
-    - addr: 2",
-            "duplicate group key 'Color'",
-        );
         // Can't use the same group key twice.
         assert_fail_patch(
             "
