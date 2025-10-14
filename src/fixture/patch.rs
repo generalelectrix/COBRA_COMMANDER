@@ -428,3 +428,89 @@ where
         PatchOption::Select(Self::iter().map(|x| x.to_string()).collect())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        config::FixtureGroupConfig,
+        fixture::{color::Model as ColorModel, fixture::EnumRenderModel},
+    };
+    use anyhow::Result;
+
+    fn parse(patch_yaml: &str) -> Result<Vec<FixtureGroupConfig>> {
+        Ok(serde_yaml::from_str(patch_yaml)?)
+    }
+
+    #[test]
+    fn test_ok() -> Result<()> {
+        let cfg = parse(
+            "
+- fixture: Color
+  control_color_space: Hsluv
+  patches:
+    - addr: 1
+    - addr:
+        start: 4
+        count: 2
+      kind: DimmerRgb
+- fixture: Dimmer
+  group: TestGroup
+  patches:
+    - addr: 1
+      universe: 1
+      mirror: True
+    - addr: 12
+        ",
+        )?;
+        assert_eq!(2, cfg.len());
+        let p = Patch::patch_all(cfg)?;
+        assert_eq!(2, p.channels.len());
+        assert_eq!(2, p.fixtures.len());
+        let color_configs = p.get("Color")?.fixture_configs();
+        assert_eq!(3, color_configs.len());
+        assert_eq!(
+            color_configs[0],
+            GroupFixtureConfig {
+                dmx_addr: Some(0),
+                universe: 0,
+                channel_count: 3,
+                mirror: false,
+                render_mode: Some(ColorModel::Rgb.render_mode()),
+            }
+        );
+        assert_eq!(
+            color_configs[2],
+            GroupFixtureConfig {
+                dmx_addr: Some(7),
+                universe: 0,
+                channel_count: 4,
+                mirror: false,
+                render_mode: Some(ColorModel::DimmerRgb.render_mode()),
+            }
+        );
+        let dimmer_configs = p.get("TestGroup")?.fixture_configs();
+        assert_eq!(2, dimmer_configs.len());
+        assert_eq!(
+            dimmer_configs[0],
+            GroupFixtureConfig {
+                dmx_addr: Some(0),
+                universe: 1,
+                channel_count: 1,
+                mirror: true,
+                render_mode: None,
+            }
+        );
+        assert_eq!(
+            dimmer_configs[1],
+            GroupFixtureConfig {
+                dmx_addr: Some(11),
+                universe: 0,
+                channel_count: 1,
+                mirror: false,
+                render_mode: None,
+            }
+        );
+        Ok(())
+    }
+}
