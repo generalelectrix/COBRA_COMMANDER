@@ -7,6 +7,7 @@ use enum_dispatch::enum_dispatch;
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{
+    animation::StateChange as AnimationStateChange,
     channel::StateChange as ChannelStateChange,
     master::StateChange as MasterStateChange,
     midi::device::{amx::AkaiAmx, cmd_mm1::BehringerCmdMM1},
@@ -87,6 +88,10 @@ pub trait MidiHandler {
     /// Send MIDI state to handle the provided clock state change.
     #[allow(unused_variables)]
     fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut Output) {}
+
+    /// Send MIDI state to handle the provided animation state change.
+    #[allow(unused_variables)]
+    fn emit_animation_control(&self, msg: &AnimationStateChange, output: &mut Output) {}
 
     /// Send MIDI state to handle the provided audio state change.
     #[allow(unused_variables)]

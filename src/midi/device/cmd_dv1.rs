@@ -93,9 +93,9 @@ impl BehringerCmdDV1 {
     }
 
     /// Set a button LED on or off.
-    pub fn set_led(&self, index: u8, state: bool, output: &mut Output<Device>) {
+    pub fn set_led(&self, index: u8, state: bool, output: &mut Output) {
         if index >= 28 {
-            error!("CMD DV-1 button {index} out of range for LED state update");
+            error!("CMD DV-1 button {index} out of range for LED state update.");
             return;
         }
         // How many extra commands do we need to send to cover our bases?
@@ -108,7 +108,7 @@ impl BehringerCmdDV1 {
         for i in 0..duplicates {
             let control = start + (4 * i);
             if let Err(err) = output.send(event(note_on(MIDI_CHANNEL, control), state as u8)) {
-                error!("MIDI send error setting LED state {index} to {state}: {err}.");
+                error!("MIDI send error setting LED {index} state to {state}: {err}.");
             }
         }
     }
@@ -118,9 +118,9 @@ impl BehringerCmdDV1 {
     /// Note that the encoder rings have 15 LEDs, and acccept a value between 1 and 16.
     /// Need to debug this once the device is here. No checking is done that value
     /// is in range.
-    pub fn set_encoder_raw(&self, index: u8, value: u8, output: &mut Output<Device>) {
+    pub fn set_encoder_raw(&self, index: u8, value: u8, output: &mut Output) {
         if index >= 12 {
-            error!("CMD DV-1 encoder {index} out of range for LED state update");
+            error!("CMD DV-1 encoder {index} out of range for LED state update.");
             return;
         }
         // How many extra commands do we need to send to cover our bases?
@@ -132,25 +132,20 @@ impl BehringerCmdDV1 {
         for i in 0..duplicates {
             let control = start + (4 * i);
             if let Err(err) = output.send(event(cc(MIDI_CHANNEL, control), value)) {
-                error!("MIDI send error setting VU meter LED state: {err}.");
+                error!("MIDI send error setting encoder {index} LED state: {err}.");
             }
         }
     }
 
     /// Set an encoder ring from a unipolar value.
-    pub fn set_encoder_unipolar(
-        &self,
-        index: u8,
-        value: UnipolarFloat,
-        output: &mut Output<Device>,
-    ) {
+    pub fn set_encoder_unipolar(&self, index: u8, value: UnipolarFloat, output: &mut Output) {
         // FIXME: this range is probably wrong and likely includes the setting that
         // doesn't show a position.
         self.set_encoder_raw(index, unipolar_to_range(1, 16, value), output);
     }
 
     /// Set an encoder ring from a bipolar value.
-    pub fn set_encoder_bipolar(&self, index: u8, value: BipolarFloat, output: &mut Output<Device>) {
+    pub fn set_encoder_bipolar(&self, index: u8, value: BipolarFloat, output: &mut Output) {
         // FIXME: this range is probably wrong; confirm that 0 is centered
         self.set_encoder_unipolar(index, value.rescale_as_unipolar(), output);
     }
