@@ -142,6 +142,8 @@ fn run_show(args: RunArgs) -> Result<()> {
         Clocks::internal(audio_device)
     };
 
+    let internal_clocks = matches!(clocks, Clocks::Internal { .. });
+
     let animation_service = prompt_start_animation_service(&zmq_ctx)?;
 
     match local_ip() {
@@ -152,14 +154,17 @@ fn run_show(args: RunArgs) -> Result<()> {
     let osc_controllers = prompt_osc_config(args.osc_receive_port)?.unwrap_or_default();
 
     let (midi_inputs, midi_outputs) = list_ports()?;
-    let mut midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all())?;
-
-    for d in &midi_devices {
-        if matches!(d.device, Device::CmdMM1(_) | Device::Amx(_))
-            && matches!(clocks, Clocks::Service(_))
-        {
-            bail!("Configured a {} but the clock service is active; do not activate the clock service if you want local clock controls.", d.device);
+    let mut midi_devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
+    if midi_devices.is_empty() {
+        println!("No known MIDI devices were automatically discovered.");
+    } else {
+        println!("These known MIDI devices were found:");
+        for d in &midi_devices {
+            println!("  - {}", d.device);
         }
+    }
+    if !prompt_bool("Does this look correct?")? {
+        midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all(internal_clocks))?;
     }
 
     if prompt_bool("Use a color organ?")? {
