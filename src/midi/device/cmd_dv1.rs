@@ -5,7 +5,7 @@
 //! that change the MIDI controls sent by the different banks of controls, and
 //! there is no way to change this behavior.
 //!
-//! As such, we paper of this by putting a piece of tape over all of the buttons
+//! As such, we paper over this by putting a piece of tape over all of the buttons
 //! that act as modal selectors; then, we map all 3 or 4 possible controls to the
 //! same binding, and send LED or encoder ring state to all 3 or 4 possible
 //! controls on every update.  It still has a lot of buttons, but it sure would
