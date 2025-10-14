@@ -5,7 +5,10 @@ use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
     midi::{cc, event, note_on, Event, EventType, Output},
-    midi_controls::{bipolar_from_midi, unipolar_from_midi, MidiDevice},
+    midi_controls::{
+        audio::{envelope_edge_from_midi, filter_from_midi, gain_from_midi},
+        bipolar_from_midi, unipolar_from_midi, MidiDevice,
+    },
 };
 
 use tunnels::audio::StateChange as AudioStateChange;
@@ -44,6 +47,22 @@ impl BehringerCmdMM1 {
         Some(match event.mapping.event_type {
             EventType::ControlChange => {
                 match control {
+                    1 => SmallKnob {
+                        index: 0,
+                        val: event.value,
+                    },
+                    2 => SmallKnob {
+                        index: 1,
+                        val: event.value,
+                    },
+                    4 => SmallKnob {
+                        index: 2,
+                        val: event.value,
+                    },
+                    5 => SmallKnob {
+                        index: 3,
+                        val: event.value,
+                    },
                     6..=21 => {
                         // Figure out which row and channel.
                         let index = control - 6;
@@ -137,6 +156,12 @@ pub enum CmdMM1ControlEvent {
         channel: u8,
         event: CmdMM1ChannelControlEvent,
     },
+    /// The small knobs at the top of the device.
+    /// Indexed left to right.
+    SmallKnob {
+        index: u8,
+        val: u8,
+    },
     Single(CmdMM1Single),
 }
 
@@ -201,6 +226,23 @@ impl MidiHandler for BehringerCmdMM1 {
                     },
                 },
             }),
+            SmallKnob { index, val } => {
+                use tunnels::audio::ControlMessage::Set;
+                use tunnels::audio::StateChange::*;
+                match index {
+                    0 => {
+                        ShowControlMessage::Audio(Set(EnvelopeAttack(envelope_edge_from_midi(val))))
+                    }
+                    1 => ShowControlMessage::Audio(Set(EnvelopeRelease(envelope_edge_from_midi(
+                        val,
+                    )))),
+                    2 => ShowControlMessage::Audio(Set(FilterCutoff(filter_from_midi(val)))),
+                    3 => ShowControlMessage::Audio(Set(Gain(gain_from_midi(val)))),
+                    _ => {
+                        return None;
+                    }
+                }
+            }
             Single(event) => match event {
                 CmdMM1Single::Monitor => {
                     ShowControlMessage::Audio(tunnels::audio::ControlMessage::ToggleMonitor)
@@ -234,6 +276,18 @@ impl MidiHandler for BehringerCmdMM1 {
             AudioStateChange::Monitor(v) => output.send(event(note_on(MIDI_CHANNEL, 18), *v as u8)),
             AudioStateChange::EnvelopeValue(v) => {
                 self.set_vu_meter(true, *v, output);
+                Ok(())
+            }
+            AudioStateChange::IsClipping(v) => {
+                self.set_vu_meter(
+                    false,
+                    if *v {
+                        UnipolarFloat::ONE
+                    } else {
+                        UnipolarFloat::ZERO
+                    },
+                    output,
+                );
                 Ok(())
             }
             _ => Ok(()),

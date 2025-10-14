@@ -1597,7 +1597,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cea14ef9355e3beab063703aa9dab15afd25f0667c341310c1e5274bb1d0da18"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4287,7 +4287,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4300,7 +4300,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4888,7 +4888,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.0.7",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5406,7 +5406,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#581523a41d8cd76b3b94de535ee1f8f2727c314e"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#4bead057dc1c8c18f73d8a27130bb0fbac5d188e"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -5433,7 +5433,7 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#581523a41d8cd76b3b94de535ee1f8f2727c314e"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#4bead057dc1c8c18f73d8a27130bb0fbac5d188e"
 dependencies = [
  "anyhow",
  "derive_more 2.0.1",
@@ -6914,7 +6914,7 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#581523a41d8cd76b3b94de535ee1f8f2727c314e"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#4bead057dc1c8c18f73d8a27130bb0fbac5d188e"
 dependencies = [
  "anyhow",
  "async-dnssd",
