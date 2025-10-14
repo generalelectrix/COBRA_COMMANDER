@@ -11,24 +11,13 @@
 //! controls on every update.  It still has a lot of buttons, but it sure would
 //! have been nice to get those other 13 back...
 
-use log::{debug, error};
+use log::error;
 use number::{BipolarFloat, UnipolarFloat};
-use strum_macros::Display;
-use tunnels::{
-    clock_bank::ClockIdxExt,
-    midi::{cc, event, note_on, Event, EventType, Output},
-    midi_controls::{bipolar_from_midi, unipolar_from_midi},
-};
+use tunnels::midi::{cc, event, note_on, Event, EventType, Output};
 
-use tunnels::audio::StateChange as AudioStateChange;
-use tunnels::clock::{ControlMessage as ClockControlMessage, StateChange as ClockStateChange};
-use tunnels::clock_bank::{
-    ControlMessage as ClockBankControlMessage, StateChange as ClockBankStateChange,
-};
 
 use crate::{
-    midi::{Device, MidiHandler},
-    show::ShowControlMessage,
+    midi::Device,
     util::unipolar_to_range,
 };
 
