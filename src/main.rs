@@ -44,6 +44,7 @@ mod master;
 mod midi;
 mod osc;
 mod show;
+mod strobe;
 mod util;
 mod wled;
 
