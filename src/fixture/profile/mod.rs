@@ -18,6 +18,7 @@ pub mod iwash_led;
 pub mod leko;
 pub mod lumasphere;
 pub mod lumitone;
+pub mod quadphase;
 pub mod radiance;
 pub mod rotosphere_q3;
 pub mod rug_doctor;

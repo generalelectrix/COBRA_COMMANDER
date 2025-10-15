@@ -1,7 +1,6 @@
 //! Basic control profile for 8-channel auto program control of the Chauvet
 //! Freedom Stick.
 
-//! Control profle for the Chauvet Rotosphere Q3, aka Son Of Spherion.
 use super::color::{Color, Model as ColorModel};
 
 use crate::{color::ColorSpace, fixture::prelude::*};

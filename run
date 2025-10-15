@@ -1,2 +1,2 @@
 cargo build --release
-./target/release/cobra_commander run $1
+./target/release/cobra_commander run $@

@@ -10,7 +10,6 @@ pub struct TriPhase {
     red: Bool<()>,
     green: Bool<()>,
     blue: Bool<()>,
-    white: Bool<()>,
 
     #[channel_control]
     #[animate]
@@ -28,7 +27,6 @@ impl Default for TriPhase {
             red: Bool::new_off("Red", ()),
             green: Bool::new_off("Green", ()),
             blue: Bool::new_off("Blue", ()),
-            white: Bool::new_off("White", ()),
             dimmer: Unipolar::full_channel("Dimmer", 3).with_channel_level(),
             strobe: Strobe::channel("Strobe", 2, 1, 255, 0),
             rotation: Bipolar::split_channel("Rotation", 1, 120, 10, 135, 245, 0)
@@ -57,32 +55,20 @@ impl AnimatedFixture for TriPhase {
             dmx_buf,
         );
 
-        dmx_buf[0] = match (
-            self.red.val(),
-            self.green.val(),
-            self.blue.val(),
-            self.white.val(),
-        ) {
-            (false, false, false, false) => {
-                // All off - override the dimmer setting to 0.
-                dmx_buf[3] = 0;
-                0
-            }
-            (true, false, false, false) => 0,
-            (false, true, false, false) => 17,
-            (false, false, true, false) => 34,
-            (false, false, false, true) => 51,
-            (true, true, false, false) => 68,
-            (true, false, true, false) => 85,
-            (true, false, false, true) => 102,
-            (false, true, true, false) => 119,
-            (false, true, false, true) => 136,
-            (false, false, true, true) => 153,
-            (true, true, true, false) => 170,
-            (true, true, false, true) => 187,
-            (true, false, true, true) => 204,
-            (false, true, true, true) => 221,
-            (true, true, true, true) => 238,
-        };
+        dmx_buf[0] = 32
+            * match (self.red.val(), self.green.val(), self.blue.val()) {
+                (false, false, false) => {
+                    // belt and suspenders - dimmer should be off
+                    dmx_buf[3] = 0;
+                    0
+                }
+                (true, false, false) => 1,
+                (false, true, false) => 2,
+                (false, false, true) => 3,
+                (true, true, false) => 4,
+                (true, false, true) => 5,
+                (false, true, true) => 6,
+                (true, true, true) => 7,
+            };
     }
 }
