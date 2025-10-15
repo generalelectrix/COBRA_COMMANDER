@@ -1,0 +1,10 @@
+- fixture: TriPhase
+  patches:
+    - addr: 1
+    - addr: 10
+      mirror: true
+- fixture: QuadPhase
+  patches:
+    - addr: 20
+    - addr: 30
+      mirror: true
