@@ -46,7 +46,7 @@ impl OscListener {
     ) -> Result<(), OscError> {
         match packet {
             OscPacket::Message(m) => {
-                // info!("Received OSC message: {:?}", m);
+                // log::info!("Received OSC message: {:?}", m);
                 // Set TouchOSC pages to send this message, and ignore them all here.
                 if m.addr == "/ignore" {
                     return Ok(());
