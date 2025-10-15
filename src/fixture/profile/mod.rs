@@ -24,6 +24,7 @@ pub mod rug_doctor;
 pub mod rush_wizard;
 pub mod solar_system;
 pub mod starlight;
+pub mod triphase;
 pub mod ufo;
 pub mod uv_led_brick;
 pub mod venus;
