@@ -10,7 +10,6 @@ mod profile;
 
 pub use fixture::{Control, EmitState, RenderMode};
 pub use group::FixtureGroup;
-use number::UnipolarFloat;
 pub use patch::Patch;
 pub use profile::*;
 

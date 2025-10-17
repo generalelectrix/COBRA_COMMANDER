@@ -97,7 +97,7 @@ impl<R: RenderToDmx<Option<UnipolarFloat>>> RenderToDmxWithAnimations for Strobe
         dmx_buf: &mut [u8],
     ) {
         self.render
-            .render(&self.val_with_master(&group_controls.strobe()), dmx_buf);
+            .render(&self.val_with_master(group_controls.strobe()), dmx_buf);
     }
 }
 
@@ -238,7 +238,7 @@ impl<S: OscControl<T> + RenderToDmxWithAnimations, R: RenderToDmx<Option<Unipola
         animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        if let Some(rate) = self.strobe.val_with_master(&group_controls.strobe()) {
+        if let Some(rate) = self.strobe.val_with_master(group_controls.strobe()) {
             self.strobe.render.render(&Some(rate), dmx_buf);
         } else {
             self.shutter.render(group_controls, animations, dmx_buf);
