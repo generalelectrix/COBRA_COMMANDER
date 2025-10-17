@@ -10,8 +10,8 @@
 //!
 //! The advantage vs. using any given onboard strobe control is that we can
 //! easily synchronize the strobing of multiple fixture types across the rig.
-use anyhow::{bail, Result};
-use std::{sync::LazyLock, time::Duration};
+use anyhow::Result;
+use std::time::Duration;
 
 use number::UnipolarFloat;
 use tunnels::{
@@ -20,10 +20,9 @@ use tunnels::{
 };
 
 use crate::{
-    control::EmitControlMessage,
-    fixture::prelude::{Bool, OscControl},
+    fixture::prelude::OscControl,
     midi::EmitMidiMasterMessage,
-    osc::{prelude::*, Control, ScopedControlEmitter},
+    osc::{prelude::*, ScopedControlEmitter},
 };
 
 pub struct StrobeClock {
@@ -140,7 +139,7 @@ impl StrobeClock {
             Rate(v) => self.clock.rate_coarse = v.val() * RATE_SCALE,
             Ticked(_) => (),
         }
-        emit_state_change(&msg, emitter);
+        emit_state_change(msg, emitter);
     }
 }
 
