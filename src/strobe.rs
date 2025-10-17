@@ -173,12 +173,14 @@ pub enum StateChange {
 /// Knob at full = 20 fps strobing.
 const RATE_SCALE: f64 = 20.0;
 
-const TAP: Button = button("Tap");
+const FLASH: Button = button("StrobeFlash");
+const TAP: Button = button("StrobeTap");
 const STROBE_ON: Button = button("StrobeOn");
-const RATE: Unipolar = unipolar("Rate");
+const RATE: Unipolar = unipolar("StrobeRate");
 
 fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
     use ControlMessage::*;
+    FLASH.map_trigger(map, || FlashNow);
     TAP.map_trigger(map, || Tap);
     STROBE_ON.map_trigger(map, || ToggleStrobeOn);
     RATE.map(map, |v| Set(StateChange::Rate(v)));
