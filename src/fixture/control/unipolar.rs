@@ -158,7 +158,7 @@ impl<R: RenderToDmx<UnipolarFloat>> RenderToDmxWithAnimations for Unipolar<R> {
         animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        if self.strobed {
+        if self.strobed && group_controls.strobe_enabled {
             let strobe_state = group_controls.strobe();
             if strobe_state.strobe_on {
                 self.render.render(&strobe_state.intensity, dmx_buf);

@@ -6,6 +6,7 @@ use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 use crate::{color::*, config::Options, fixture::prelude::*};
 
 #[derive(Debug, Control, EmitState, Update)]
+#[strobe]
 pub struct Color {
     #[channel_control]
     #[animate]
@@ -42,7 +43,10 @@ impl PatchFixture for Color {
             })
             .transpose()?
             .unwrap_or_default();
-        Ok(Self::for_subcontrol(None, space))
+        let mut fixture = Self::for_subcontrol(None, space);
+        // Wire up strobing when a color is used as a stand-alone fixture.
+        fixture.val.control = fixture.val.control.strobed();
+        Ok(fixture)
     }
 
     fn patch_config(options: &mut Options) -> Result<PatchConfig> {
