@@ -12,6 +12,7 @@ use crate::{
     master::StateChange as MasterStateChange,
     midi::device::{amx::AkaiAmx, cmd_dv1::BehringerCmdDV1, cmd_mm1::BehringerCmdMM1},
     show::ShowControlMessage,
+    strobe::StateChange as StrobeStateChange,
 };
 use tunnels::{
     midi::{DeviceSpec, Event, Manager, Output},

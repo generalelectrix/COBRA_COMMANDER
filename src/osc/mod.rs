@@ -2,7 +2,7 @@ use crate::channel::{ChannelStateChange, ChannelStateEmitter};
 use crate::config::FixtureGroupKey;
 use crate::control::ControlMessage;
 use crate::control::EmitControlMessage;
-use crate::midi::EmitMidiAnimationMessage;
+use crate::midi::{EmitMidiAnimationMessage, EmitMidiMasterMessage};
 use crate::osc::listener::OscListener;
 use crate::osc::sender::{OscSender, OscSenderCommand};
 use crate::wled::EmitWledControlMessage;
@@ -174,6 +174,12 @@ impl<'a> EmitMidiAnimationMessage for ScopedControlEmitter<'a> {
     }
 }
 
+impl<'a> EmitMidiMasterMessage for ScopedControlEmitter<'a> {
+    fn emit_midi_master_message(&self, msg: &crate::master::StateChange) {
+        self.emitter.emit_midi_master_message(msg);
+    }
+}
+
 /// An OSC message that is implicitly scoped to a particular entity.
 /// Only the name of the control and the value to be sent are required.
 /// TODO: decide how to handle situations where we need more address.
@@ -342,7 +348,7 @@ impl OscControlMessage {
 }
 
 pub mod prelude {
-    pub use super::basic_controls::{button, Button};
+    pub use super::basic_controls::{button, unipolar, Button, Unipolar};
     pub use super::bipolar_array::{bipolar_array, BipolarArray};
     pub use super::button_array::{button_array, ButtonArray};
     pub use super::label_array::LabelArray;

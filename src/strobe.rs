@@ -10,3 +10,186 @@
 //!
 //! The advantage vs. using any given onboard strobe control is that we can
 //! easily synchronize the strobing of multiple fixture types across the rig.
+use anyhow::{bail, Result};
+use std::{sync::LazyLock, time::Duration};
+
+use number::UnipolarFloat;
+use tunnels::{
+    clock::{Clock, TapSync},
+    transient_indicator::TransientIndicator,
+};
+
+use crate::{
+    control::EmitControlMessage,
+    fixture::prelude::{Bool, OscControl},
+    midi::EmitMidiMasterMessage,
+    osc::{prelude::*, Control, ScopedControlEmitter},
+};
+
+pub struct StrobeClock {
+    clock: Clock,
+    tap_sync: TapSync,
+    tick_indicator: TransientIndicator,
+    /// The current flash state; if Some, the inner duration represents the
+    /// time remaining in the flash.  TODO: we might want to consider expressing
+    /// this in terms of integer state updates instead of a fixed time duration,
+    /// to align the strobe edges with update frame boundaries. This may provide
+    /// more stable strobing.
+    flash: Option<Duration>,
+    /// If true, the strobe clock is running.
+    strobe_on: bool,
+    /// How long should a flash last?
+    flash_duration: Duration,
+    osc_controls: GroupControlMap<ControlMessage>,
+}
+
+impl Default for StrobeClock {
+    fn default() -> Self {
+        let mut osc_controls = GroupControlMap::default();
+        map_controls(&mut osc_controls);
+        Self {
+            clock: Default::default(),
+            tap_sync: Default::default(),
+            tick_indicator: Default::default(),
+            flash: Default::default(),
+            strobe_on: false,
+            flash_duration: Duration::from_millis(40),
+            osc_controls,
+        }
+    }
+}
+
+impl StrobeClock {
+    pub fn update(
+        &mut self,
+        delta_t: Duration,
+        audio_envelope: UnipolarFloat,
+        emitter: &ScopedControlEmitter,
+    ) {
+        self.clock.update_state(delta_t, audio_envelope);
+        // Update the tap sync/rate flasher.
+        if let Some(tick_state) = self
+            .tick_indicator
+            .update_state(delta_t, self.clock.ticked())
+        {
+            emit_state_change(&StateChange::Ticked(tick_state), emitter);
+        }
+        // Age the flash if we have one running.
+        if let Some(flash) = self.flash {
+            self.flash = flash.checked_sub(delta_t);
+        }
+        // If the strobe clock ticked this frame and we're strobing, flash.
+        if self.strobe_on && self.clock.ticked() {
+            self.flash = Some(self.flash_duration);
+        }
+    }
+
+    fn scaled_rate(&self) -> UnipolarFloat {
+        UnipolarFloat::new(self.clock.rate_coarse / RATE_SCALE)
+    }
+
+    pub fn emit_state(&self, emitter: &ScopedControlEmitter) {
+        use StateChange::*;
+        emit_state_change(&Ticked(self.tick_indicator.state()), emitter);
+        emit_state_change(&StrobeOn(self.strobe_on), emitter);
+        emit_state_change(&Rate(self.scaled_rate()), emitter);
+    }
+
+    pub fn control(&mut self, msg: &ControlMessage, emitter: &ScopedControlEmitter) {
+        use ControlMessage::*;
+        use StateChange::*;
+        match msg {
+            Set(msg) => self.handle_state_change(msg, emitter),
+            Tap => {
+                if let Some(new_rate) = self.tap_sync.tap() {
+                    self.clock.rate_coarse = new_rate;
+                    emit_state_change(&Rate(self.scaled_rate()), emitter);
+                }
+            }
+            ToggleStrobeOn => {
+                self.handle_state_change(&StrobeOn(!self.strobe_on), emitter);
+            }
+            FlashNow => {
+                self.flash = Some(self.flash_duration);
+            }
+        }
+    }
+
+    pub fn control_osc(
+        &mut self,
+        msg: &OscControlMessage,
+        emitter: &ScopedControlEmitter,
+    ) -> Result<()> {
+        let Some((msg, _)) = self.osc_controls.handle(msg)? else {
+            return Ok(());
+        };
+        self.control(&msg, emitter);
+        Ok(())
+    }
+
+    fn handle_state_change(&mut self, msg: &StateChange, emitter: &ScopedControlEmitter) {
+        use StateChange::*;
+        match *msg {
+            StrobeOn(v) => {
+                self.strobe_on = v;
+                // If we're activating the strobe, make sure we flash immediately.
+                if v {
+                    self.clock.reset_next_update();
+                }
+            }
+            Rate(v) => self.clock.rate_coarse = v.val() * RATE_SCALE,
+            Ticked(_) => (),
+        }
+        emit_state_change(&msg, emitter);
+    }
+}
+
+fn emit_state_change(sc: &StateChange, emitter: &ScopedControlEmitter) {
+    use StateChange::*;
+    emitter.emit_midi_strobe_message(sc);
+    match sc {
+        Ticked(v) => TAP.send(*v, emitter),
+        StrobeOn(v) => STROBE_ON.send(*v, emitter),
+        Rate(v) => RATE.send(*v, emitter),
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ControlMessage {
+    Set(StateChange),
+    Tap,
+    ToggleStrobeOn,
+    FlashNow,
+}
+
+#[derive(Debug, Clone)]
+pub enum StateChange {
+    /// Outgoing only, no effect as a control.
+    Ticked(bool),
+    StrobeOn(bool),
+    Rate(UnipolarFloat),
+}
+
+/// Knob at full = 20 fps strobing.
+const RATE_SCALE: f64 = 20.0;
+
+const TAP: Button = button("Tap");
+const STROBE_ON: Button = button("StrobeOn");
+const RATE: Unipolar = unipolar("Rate");
+
+fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
+    use ControlMessage::*;
+    TAP.map_trigger(map, || Tap);
+    STROBE_ON.map_trigger(map, || ToggleStrobeOn);
+    RATE.map(map, |v| Set(StateChange::Rate(v)));
+}
+
+trait EmitMidiStrobeMessage {
+    fn emit_midi_strobe_message(&self, msg: &StateChange);
+}
+
+impl<T: EmitMidiMasterMessage> EmitMidiStrobeMessage for T {
+    fn emit_midi_strobe_message(&self, msg: &StateChange) {
+        self.emit_midi_master_message(&crate::master::StateChange::Strobe(msg.clone()));
+    }
+}

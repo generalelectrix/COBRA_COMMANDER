@@ -228,7 +228,8 @@ impl Show {
     /// Update the state of the show using the provided timestep.
     fn update(&mut self, delta_t: Duration) {
         self.clocks.update(delta_t, &mut self.controller);
-        self.master_controls.update(delta_t);
+        self.master_controls
+            .update(delta_t, &self.controller.sender_with_metadata(None));
         for fixture in self.patch.iter_mut() {
             fixture.update(&self.master_controls, delta_t, UnipolarFloat::ZERO);
         }

@@ -5406,7 +5406,6 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#4bead057dc1c8c18f73d8a27130bb0fbac5d188e"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -5433,7 +5432,6 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#4bead057dc1c8c18f73d8a27130bb0fbac5d188e"
 dependencies = [
  "anyhow",
  "derive_more 2.0.1",
@@ -6914,7 +6912,6 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#4bead057dc1c8c18f73d8a27130bb0fbac5d188e"
 dependencies = [
  "anyhow",
  "async-dnssd",

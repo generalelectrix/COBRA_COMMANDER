@@ -7,11 +7,10 @@ use tunnels::clock_server::StaticClockBank;
 
 use crate::fixture::prelude::*;
 use crate::osc::ScopedControlEmitter;
+use crate::strobe::StrobeClock;
 
 pub struct MasterControls {
-    strobe_on: Bool<()>,
-    strobe_rate: Unipolar<()>,
-    use_master_rate: Bool<()>,
+    strobe_clock: StrobeClock,
     pub clock_state: StaticClockBank,
     pub audio_envelope: UnipolarFloat,
 }
@@ -19,41 +18,36 @@ pub struct MasterControls {
 impl MasterControls {
     pub fn new() -> Self {
         Self {
-            strobe_on: Bool::new_off("StrobeOn", ()),
-            strobe_rate: Unipolar::new("StrobeRate", ()),
-            use_master_rate: Bool::new_off("UseMasterStrobeRate", ()),
+            strobe_clock: Default::default(),
             clock_state: Default::default(),
             audio_envelope: Default::default(),
         }
     }
 
     pub fn strobe(&self) -> Strobe {
+        // TODO: decide what we want to do with this data structure
         Strobe {
-            on: self.strobe_on.val(),
-            rate: self.strobe_rate.val(),
-            use_master_rate: self.use_master_rate.val(),
+            on: false,
+            rate: UnipolarFloat::ZERO,
+            use_master_rate: false,
         }
     }
 
-    pub fn update(&mut self, _delta_t: Duration) {}
-
-    pub fn emit_state(&self, emitter: &dyn EmitControlMessage) {
-        let scoped_emitter = &ScopedControlEmitter {
+    pub fn update(&mut self, delta_t: Duration, emitter: &dyn EmitControlMessage) {
+        let emitter = &ScopedControlEmitter {
             entity: GROUP,
             emitter,
         };
-        self.strobe_on
-            .emit_state_with_callback(scoped_emitter, |v| {
-                emitter.emit_midi_master_message(&StateChange::StrobeOn(*v));
-            });
-        self.strobe_rate
-            .emit_state_with_callback(scoped_emitter, |v| {
-                emitter.emit_midi_master_message(&StateChange::StrobeRate(*v));
-            });
-        self.strobe_on
-            .emit_state_with_callback(scoped_emitter, |v| {
-                emitter.emit_midi_master_message(&StateChange::UseMasterStrobeRate(*v));
-            });
+        self.strobe_clock
+            .update(delta_t, self.audio_envelope, emitter);
+    }
+
+    pub fn emit_state(&self, emitter: &dyn EmitControlMessage) {
+        let emitter = &ScopedControlEmitter {
+            entity: GROUP,
+            emitter,
+        };
+        self.strobe_clock.emit_state(emitter);
     }
 
     pub fn control(
@@ -61,24 +55,17 @@ impl MasterControls {
         msg: &ControlMessage,
         emitter: &dyn EmitControlMessage,
     ) -> anyhow::Result<()> {
-        let scoped_emitter = &ScopedControlEmitter {
+        let emitter = &ScopedControlEmitter {
             entity: GROUP,
             emitter,
         };
 
         match msg {
-            StateChange::StrobeOn(v) => {
-                self.strobe_on.control_direct(*v, scoped_emitter)?;
-            }
-            StateChange::StrobeRate(v) => {
-                self.strobe_rate.control_direct(*v, scoped_emitter)?;
-            }
-            StateChange::UseMasterStrobeRate(v) => {
-                self.use_master_rate.control_direct(*v, scoped_emitter)?;
+            ControlMessage::Strobe(sc) => {
+                self.strobe_clock.control(sc, emitter);
             }
         }
 
-        emitter.emit_midi_master_message(msg);
         Ok(())
     }
 
@@ -87,35 +74,24 @@ impl MasterControls {
         msg: &OscControlMessage,
         emitter: &dyn EmitControlMessage,
     ) -> anyhow::Result<()> {
-        let scoped_emitter = &ScopedControlEmitter {
+        let emitter = &ScopedControlEmitter {
             entity: GROUP,
             emitter,
         };
-        if self.strobe_on.control(msg, scoped_emitter)? {
-            emitter.emit_midi_master_message(&StateChange::StrobeOn(self.strobe_on.val()));
-            return Ok(());
-        }
-        if self.strobe_rate.control(msg, scoped_emitter)? {
-            emitter.emit_midi_master_message(&StateChange::StrobeRate(self.strobe_rate.val()));
-            return Ok(());
-        }
-        if self.use_master_rate.control(msg, scoped_emitter)? {
-            emitter.emit_midi_master_message(&StateChange::UseMasterStrobeRate(
-                self.use_master_rate.val(),
-            ));
-            return Ok(());
-        }
-        Ok(())
+        // FIXME: need to refactor how GroupControlMap works or lift it up
+        // to this level to have more than one receiver...
+        self.strobe_clock.control_osc(msg, emitter)
     }
 }
 
-pub type ControlMessage = StateChange;
+#[derive(Debug, Clone)]
+pub enum ControlMessage {
+    Strobe(crate::strobe::ControlMessage),
+}
 
 #[derive(Debug, Clone)]
 pub enum StateChange {
-    StrobeOn(bool),
-    StrobeRate(UnipolarFloat),
-    UseMasterStrobeRate(bool),
+    Strobe(crate::strobe::StateChange),
 }
 
 #[derive(Debug, Default)]
