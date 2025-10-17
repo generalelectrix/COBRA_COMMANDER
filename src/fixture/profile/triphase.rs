@@ -55,20 +55,19 @@ impl AnimatedFixture for TriPhase {
             dmx_buf,
         );
 
-        dmx_buf[0] = 32
-            * match (self.red.val(), self.green.val(), self.blue.val()) {
-                (false, false, false) => {
-                    // belt and suspenders - dimmer should be off
-                    dmx_buf[3] = 0;
-                    0
-                }
-                (true, false, false) => 1,
-                (false, true, false) => 2,
-                (false, false, true) => 3,
-                (true, true, false) => 4,
-                (true, false, true) => 5,
-                (false, true, true) => 6,
-                (true, true, true) => 7,
-            };
+        dmx_buf[0] = match (self.red.val(), self.green.val(), self.blue.val()) {
+            (false, false, false) => {
+                // belt and suspenders - dimmer should be off
+                dmx_buf[3] = 0;
+                0
+            }
+            (true, false, false) => 0,
+            (false, true, false) => 82,
+            (false, false, true) => 163,
+            (true, true, false) => 46,
+            (true, false, true) => 206,
+            (false, true, true) => 126,
+            (true, true, true) => 255,
+        };
     }
 }
