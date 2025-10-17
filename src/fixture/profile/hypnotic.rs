@@ -57,6 +57,6 @@ impl AnimatedFixture for Hypnotic {
             }
         };
         self.rotation
-            .render_with_group(group_controls, animation_vals.all(), dmx_buf);
+            .render(group_controls, animation_vals.all(), dmx_buf);
     }
 }

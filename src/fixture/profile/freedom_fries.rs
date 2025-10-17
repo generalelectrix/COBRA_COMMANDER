@@ -48,7 +48,7 @@ impl AnimatedFixture for FreedomFries {
             .render_without_animations(ColorModel::Rgb, &mut dmx_buf[1..4]);
         dmx_buf[4] = 0;
         self.strobe
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
+            .render(group_controls, std::iter::empty(), dmx_buf);
         self.program.render(std::iter::empty(), dmx_buf);
     }
 }

@@ -143,7 +143,12 @@ impl<R: RenderToDmx<UnipolarFloat>> OscControl<UnipolarFloat> for Unipolar<R> {
 }
 
 impl<R: RenderToDmx<UnipolarFloat>> RenderToDmxWithAnimations for Unipolar<R> {
-    fn render(&self, animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
+    fn render(
+        &self,
+        _group_controls: &crate::fixture::FixtureGroupControls,
+        animations: impl Iterator<Item = f64>,
+        dmx_buf: &mut [u8],
+    ) {
         self.render.render(&self.val_with_anim(animations), dmx_buf);
     }
 }

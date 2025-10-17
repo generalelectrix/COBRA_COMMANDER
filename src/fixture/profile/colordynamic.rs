@@ -65,6 +65,6 @@ impl AnimatedFixture for Colordynamic {
             dmx_buf,
         );
         self.shutter
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
+            .render(group_controls, std::iter::empty(), dmx_buf);
     }
 }

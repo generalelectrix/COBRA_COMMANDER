@@ -121,7 +121,12 @@ impl<R: RenderToDmx<bool>> OscControl<bool> for Bool<R> {
 }
 
 impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
-    fn render(&self, _animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
+    fn render(
+        &self,
+        _group_controls: &crate::fixture::FixtureGroupControls,
+        _animations: impl Iterator<Item = f64>,
+        dmx_buf: &mut [u8],
+    ) {
         self.render.render(&self.val, dmx_buf);
     }
 }

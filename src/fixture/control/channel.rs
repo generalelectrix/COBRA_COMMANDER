@@ -145,20 +145,13 @@ where
     C: OscControl<T> + RenderToDmxWithAnimations,
     H: ChannelHandler<T>,
 {
-    fn render(&self, animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
-        self.control.render(animations, dmx_buf);
-    }
-    fn render_no_anim(&self, dmx_buf: &mut [u8]) {
-        self.control.render_no_anim(dmx_buf);
-    }
-    fn render_with_group(
+    fn render(
         &self,
         group_controls: &crate::fixture::FixtureGroupControls,
         animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        self.control
-            .render_with_group(group_controls, animations, dmx_buf);
+        self.control.render(group_controls, animations, dmx_buf);
     }
 }
 

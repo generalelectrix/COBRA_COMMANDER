@@ -83,7 +83,7 @@ impl AnimatedFixture for RushWizard {
         dmx_buf: &mut [u8],
     ) {
         self.strobe
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
+            .render(group_controls, std::iter::empty(), dmx_buf);
         self.dimmer.render_with_group(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),

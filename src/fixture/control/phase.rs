@@ -129,7 +129,12 @@ impl<R: RenderToDmx<Phase>> OscControl<Phase> for PhaseControl<R> {
 }
 
 impl<R: RenderToDmx<Phase>> RenderToDmxWithAnimations for PhaseControl<R> {
-    fn render(&self, animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
+    fn render(
+        &self,
+        _group_controls: &crate::fixture::FixtureGroupControls,
+        animations: impl Iterator<Item = f64>,
+        dmx_buf: &mut [u8],
+    ) {
         self.render.render(&self.val_with_anim(animations), dmx_buf);
     }
 }

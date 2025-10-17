@@ -5,6 +5,7 @@ use number::BipolarFloat;
 
 use crate::{
     channel::KnobIndex,
+    fixture::FixtureGroupControls,
     osc::{EmitScopedOscMessage, OscControlMessage},
     util::{bipolar_fader_with_detent, unipolar_to_range},
 };
@@ -191,7 +192,12 @@ impl<R: RenderToDmx<BipolarFloat>> OscControl<BipolarFloat> for Bipolar<R> {
 }
 
 impl<R: RenderToDmx<BipolarFloat>> RenderToDmxWithAnimations for Bipolar<R> {
-    fn render(&self, animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
+    fn render(
+        &self,
+        _group_controls: &FixtureGroupControls,
+        animations: impl Iterator<Item = f64>,
+        dmx_buf: &mut [u8],
+    ) {
         // TODO: configurable coercing modes
         self.render.render(&self.val_with_anim(animations), dmx_buf);
     }
@@ -285,13 +291,7 @@ impl<R: RenderToDmx<BipolarFloat>> Mirrored<R> {
 }
 
 impl<R: RenderToDmx<BipolarFloat>> RenderToDmxWithAnimations for Mirrored<R> {
-    fn render(&self, animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
-        // FIXME: should strive to eliminate this code path
-        // ignores mirroring when no group controls provided
-        self.control.render(animations, dmx_buf);
-    }
-
-    fn render_with_group(
+    fn render(
         &self,
         group_controls: &crate::fixture::FixtureGroupControls,
         animations: impl Iterator<Item = f64>,

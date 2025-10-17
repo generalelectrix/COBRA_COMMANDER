@@ -90,16 +90,7 @@ impl<R: RenderToDmx<Option<UnipolarFloat>>> OscControl<()> for Strobe<R> {
 }
 
 impl<R: RenderToDmx<Option<UnipolarFloat>>> RenderToDmxWithAnimations for Strobe<R> {
-    fn render(&self, _animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
-        // FIXME: need to tweak traits around to avoid the need for this
-        if self.on.val() {
-            self.render.render(&Some(self.rate.val()), dmx_buf);
-        } else {
-            self.render.render(&None, dmx_buf);
-        }
-    }
-
-    fn render_with_group(
+    fn render(
         &self,
         group_controls: &crate::fixture::FixtureGroupControls,
         _animations: impl Iterator<Item = f64>,
@@ -241,16 +232,7 @@ impl<S: OscControl<T> + RenderToDmxWithAnimations, R: RenderToDmx<Option<Unipola
 impl<S: OscControl<T> + RenderToDmxWithAnimations, R: RenderToDmx<Option<UnipolarFloat>>, T>
     RenderToDmxWithAnimations for ShutterStrobe<S, R, T>
 {
-    fn render(&self, animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
-        // FIXME: need to tweak traits around to avoid the need for this
-        if self.strobe.on.val() {
-            self.strobe.render(std::iter::empty(), dmx_buf);
-        } else {
-            self.shutter.render(animations, dmx_buf);
-        }
-    }
-
-    fn render_with_group(
+    fn render(
         &self,
         group_controls: &crate::fixture::FixtureGroupControls,
         animations: impl Iterator<Item = f64>,
@@ -259,7 +241,7 @@ impl<S: OscControl<T> + RenderToDmxWithAnimations, R: RenderToDmx<Option<Unipola
         if let Some(rate) = self.strobe.val_with_master(&group_controls.strobe()) {
             self.strobe.render.render(&Some(rate), dmx_buf);
         } else {
-            self.shutter.render(animations, dmx_buf);
+            self.shutter.render(group_controls, animations, dmx_buf);
         }
     }
 }

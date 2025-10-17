@@ -32,8 +32,8 @@ impl AnimatedFixture for Aquarius {
         dmx_buf: &mut [u8],
     ) {
         self.rotation
-            .render_with_group(group_controls, animation_vals.all(), dmx_buf);
+            .render(group_controls, animation_vals.all(), dmx_buf);
         self.lamp_on
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
+            .render(group_controls, std::iter::empty(), dmx_buf);
     }
 }
