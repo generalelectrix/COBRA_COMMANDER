@@ -20,7 +20,6 @@ use tunnels::{
 };
 
 use crate::{
-    fixture::prelude::OscControl,
     midi::EmitMidiMasterMessage,
     osc::{prelude::*, ScopedControlEmitter},
 };
@@ -175,7 +174,7 @@ const RATE_SCALE: f64 = 20.0;
 const FLASH: Button = button("StrobeFlash");
 const TAP: Button = button("StrobeTap");
 const STROBE_ON: Button = button("StrobeOn");
-const RATE: Unipolar = unipolar("StrobeRate");
+const RATE: UnipolarOsc = unipolar("StrobeRate");
 
 fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
     use ControlMessage::*;

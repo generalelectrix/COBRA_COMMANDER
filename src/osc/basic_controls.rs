@@ -48,15 +48,15 @@ impl Button {
 
 /// An OSC unipolar control.
 #[derive(Clone)]
-pub struct Unipolar {
+pub struct UnipolarOsc {
     pub control: &'static str,
 }
 
-pub const fn unipolar(control: &'static str) -> Unipolar {
-    Unipolar { control }
+pub const fn unipolar(control: &'static str) -> UnipolarOsc {
+    UnipolarOsc { control }
 }
 
-impl Unipolar {
+impl UnipolarOsc {
     pub fn map<F, T>(&self, map: &mut super::GroupControlMap<T>, process: F)
     where
         F: Fn(UnipolarFloat) -> T + 'static + Copy,
