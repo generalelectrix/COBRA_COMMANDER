@@ -72,25 +72,25 @@ impl AnimatedFixture for FusionRoll {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.drum_swivel.render_with_group(
+        self.drum_swivel.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumSwivel),
             dmx_buf,
         );
-        self.drum_rotation.render_with_group(
+        self.drum_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumRotation),
             dmx_buf,
         );
-        self.color.render_no_anim(dmx_buf);
-        self.laser_rotation.render_with_group(
+        self.color.render(group_controls, std::iter::empty(), dmx_buf);
+        self.laser_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::LaserRotation),
             dmx_buf,
         );
         self.led_strobe
             .render(group_controls, std::iter::empty(), dmx_buf);
-        self.dimmer.render_with_group(
+        self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
             dmx_buf,

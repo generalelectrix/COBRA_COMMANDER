@@ -32,18 +32,24 @@ impl Default for Comet {
 const PATTERN_DMX_VALS: [u8; 10] = [12, 35, 65, 85, 112, 140, 165, 190, 212, 240];
 
 impl NonAnimatedFixture for Comet {
-    fn render(&self, _group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
+    fn render(&self, group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
         if !self.shutter_open.val() {
-            self.shutter_open.render_no_anim(dmx_buf);
+            self.shutter_open
+                .render(group_controls, std::iter::empty(), dmx_buf);
         } else if self.shutter_sound_active.val() {
-            self.shutter_sound_active.render_no_anim(dmx_buf);
+            self.shutter_sound_active
+                .render(group_controls, std::iter::empty(), dmx_buf);
         } else {
-            self.strobe.render_no_anim(dmx_buf);
+            self.strobe
+                .render(group_controls, std::iter::empty(), dmx_buf);
         }
-        self.macro_pattern.render_no_anim(dmx_buf);
-        self.mirror_speed.render_no_anim(dmx_buf);
+        self.macro_pattern
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.mirror_speed
+            .render(group_controls, std::iter::empty(), dmx_buf);
         dmx_buf[3] = self.trigger_state.render();
-        self.reset.render_no_anim(dmx_buf);
+        self.reset
+            .render(group_controls, std::iter::empty(), dmx_buf);
     }
 }
 impl Update for Comet {

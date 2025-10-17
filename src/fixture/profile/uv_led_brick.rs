@@ -22,11 +22,12 @@ impl AnimatedFixture for UvLedBrick {
 
     fn render_with_animations(
         &self,
-        _group_controls: &FixtureGroupControls,
+        group_controls: &FixtureGroupControls,
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.level.render(animation_vals.all(), dmx_buf);
+        self.level
+            .render(group_controls, animation_vals.all(), dmx_buf);
         dmx_buf[4] = 255;
         dmx_buf[5] = 255;
         dmx_buf[6] = 255;

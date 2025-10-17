@@ -41,9 +41,9 @@ impl AnimatedFixture for FreedomFries {
         dmx_buf: &mut [u8],
     ) {
         self.dimmer
-            .render(animation_vals.filter(&AnimationTarget::Dimmer), dmx_buf);
+            .render(group_controls, animation_vals.filter(&AnimationTarget::Dimmer), dmx_buf);
         self.speed
-            .render(animation_vals.filter(&AnimationTarget::Speed), dmx_buf);
+            .render(group_controls, animation_vals.filter(&AnimationTarget::Speed), dmx_buf);
         self.color
             .render_without_animations(ColorModel::Rgb, &mut dmx_buf[1..4]);
         dmx_buf[4] = 0;

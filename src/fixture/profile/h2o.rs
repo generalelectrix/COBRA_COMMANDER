@@ -60,24 +60,24 @@ impl AnimatedFixture for H2O {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.dimmer.render_with_group(
+        self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
             dmx_buf,
         );
-        self.rotation.render_with_group(
+        self.rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Rotation),
             dmx_buf,
         );
         if self.color_rotate.val() {
-            self.color_rotation.render_with_group(
+            self.color_rotation.render(
                 group_controls,
                 animation_vals.filter(&AnimationTarget::ColorRotation),
                 dmx_buf,
             );
         } else {
-            self.fixed_color.render_no_anim(dmx_buf);
+            self.fixed_color.render(group_controls, std::iter::empty(), dmx_buf);
         }
     }
 }

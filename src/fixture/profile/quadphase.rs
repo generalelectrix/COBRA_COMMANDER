@@ -50,10 +50,10 @@ impl AnimatedFixture for QuadPhase {
         dmx_buf: &mut [u8],
     ) {
         self.shutter
-            .render(animation_vals.filter(&AnimationTarget::Shutter), dmx_buf);
+            .render(group_controls, animation_vals.filter(&AnimationTarget::Shutter), dmx_buf);
         self.strobe
             .render(group_controls, std::iter::empty(), dmx_buf);
-        self.rotation.render_with_group(
+        self.rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Rotation),
             dmx_buf,

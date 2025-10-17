@@ -22,10 +22,11 @@ impl AnimatedFixture for Dimmer {
 
     fn render_with_animations(
         &self,
-        _group_controls: &FixtureGroupControls,
+        group_controls: &FixtureGroupControls,
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.level.render(animation_vals.all(), dmx_buf);
+        self.level
+            .render(group_controls, animation_vals.all(), dmx_buf);
     }
 }

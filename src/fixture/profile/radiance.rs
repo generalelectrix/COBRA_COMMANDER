@@ -61,7 +61,7 @@ impl AnimatedFixture for Radiance {
 
     fn render_with_animations(
         &self,
-        _group_controls: &FixtureGroupControls,
+        group_controls: &FixtureGroupControls,
         _animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
@@ -72,8 +72,9 @@ impl AnimatedFixture for Radiance {
                 return;
             }
         }
-        self.haze.render_no_anim(dmx_buf);
-        self.fan.render_no_anim(dmx_buf);
+        self.haze
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.fan.render(group_controls, std::iter::empty(), dmx_buf);
     }
 }
 

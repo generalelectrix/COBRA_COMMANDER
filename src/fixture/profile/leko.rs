@@ -99,7 +99,7 @@ impl AnimatedFixture for Leko {
         match model {
             Model::Dimmer => {
                 self.level
-                    .render(animation_vals.filter(&AnimationTarget::Level), dmx_buf);
+                    .render(group_controls, animation_vals.filter(&AnimationTarget::Level), dmx_buf);
             }
             Model::GoboSpinnaz => {
                 render_gobo_spinna(

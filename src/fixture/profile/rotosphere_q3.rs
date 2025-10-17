@@ -64,7 +64,7 @@ impl AnimatedFixture for RotosphereQ3 {
         );
         self.strobe
             .render(group_controls, std::iter::empty(), dmx_buf);
-        self.rotation.render_with_group(
+        self.rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Rotation),
             dmx_buf,

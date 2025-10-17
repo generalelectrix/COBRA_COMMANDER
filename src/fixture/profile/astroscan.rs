@@ -76,32 +76,38 @@ impl AnimatedFixture for Astroscan {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.iris
-            .render(animation_vals.filter(&AnimationTarget::Iris), dmx_buf);
-        self.color.render_no_anim(dmx_buf);
-        self.lamp_on.render_no_anim(dmx_buf);
-        self.shutter.render_with_group(
+        self.iris.render(
+            group_controls,
+            animation_vals.filter(&AnimationTarget::Iris),
+            dmx_buf,
+        );
+        self.color
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.lamp_on
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.shutter.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Shutter),
             dmx_buf,
         );
-        self.pan.render_with_group(
+        self.pan.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Pan),
             dmx_buf,
         );
-        self.tilt.render_with_group(
+        self.tilt.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Tilt),
             dmx_buf,
         );
-        self.gobo.render_no_anim(dmx_buf);
-        self.gobo_rotation.render_with_group(
+        self.gobo
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.gobo_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::GoboRotation),
             dmx_buf,
         );
-        self.mirror_rotation.render_with_group(
+        self.mirror_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::MirrorRotation),
             dmx_buf,

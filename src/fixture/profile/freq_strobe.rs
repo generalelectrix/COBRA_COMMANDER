@@ -71,7 +71,7 @@ impl AnimatedFixture for FreqStrobe {
         dmx_buf: &mut [u8],
     ) {
         self.flasher.render(group_controls, dmx_buf);
-        self.dimmer.render_with_group(
+        self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
             dmx_buf,

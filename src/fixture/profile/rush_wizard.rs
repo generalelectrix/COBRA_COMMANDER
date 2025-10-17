@@ -84,32 +84,32 @@ impl AnimatedFixture for RushWizard {
     ) {
         self.strobe
             .render(group_controls, std::iter::empty(), dmx_buf);
-        self.dimmer.render_with_group(
+        self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
             dmx_buf,
         );
         if self.twinkle.val() {
-            self.twinkle_speed.render_with_group(
+            self.twinkle_speed.render(
                 group_controls,
                 animation_vals.filter(&AnimationTarget::TwinkleSpeed),
                 dmx_buf,
             );
         } else {
-            self.color.render_no_anim(dmx_buf);
+            self.color.render(group_controls, std::iter::empty(), dmx_buf);
         }
-        self.gobo.render_no_anim(dmx_buf);
-        self.drum_rotation.render_with_group(
+        self.gobo.render(group_controls, std::iter::empty(), dmx_buf);
+        self.drum_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumRotation),
             dmx_buf,
         );
-        self.drum_swivel.render_with_group(
+        self.drum_swivel.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumSwivel),
             dmx_buf,
         );
-        self.reflector_rotation.render_with_group(
+        self.reflector_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::ReflectorRotation),
             dmx_buf,
