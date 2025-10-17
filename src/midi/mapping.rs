@@ -80,9 +80,10 @@ impl MidiHandler for NovationLaunchControlXL {
                 Button(TrackFocus) => {
                     ChannelControlMessage::SelectChannel(channel as usize + self.channel_offset)
                 }
-                Button(_) => {
-                    return None;
-                }
+                Button(TrackControl) => ChannelControlMessage::Control {
+                    channel_id: Some(channel as usize + self.channel_offset),
+                    msg: ScopedChannelControlMessage::ToggleStrobe,
+                },
             },
             SideButton(_) => {
                 return None;
@@ -119,6 +120,16 @@ impl MidiHandler for NovationLaunchControlXL {
                         output,
                     ),
                     SpecificChannelStateChange::Level(_) => (),
+                    SpecificChannelStateChange::Strobe(v) => {
+                        self.emit(
+                            LaunchControlXLStateChange::ChannelButton {
+                                channel,
+                                button: LaunchControlXLChannelButton::TrackControl,
+                                state: if *v { LedState::RED } else { LedState::OFF },
+                            },
+                            output,
+                        );
+                    }
                 }
             }
             ChannelStateChange::ChannelLabels(_) => (),

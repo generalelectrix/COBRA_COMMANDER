@@ -1,6 +1,7 @@
 use crate::channel::{ChannelControlMessage, ChannelStateChange, Channels, KnobIndex};
 use crate::channel::{ControlMessage, StateChange};
 
+use crate::osc::prelude::ButtonArray;
 use crate::osc::{GroupControlMap, RadioButton};
 
 use super::label_array::LabelArray;
@@ -14,6 +15,10 @@ pub(crate) const GROUP: &str = "Show";
 impl Channels {
     pub fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
         CHANNEL_SELECT.map(map, ControlMessage::SelectChannel);
+        CHANNEL_STROBE.map(map, |channel_id| ControlMessage::Control {
+            channel_id: Some(channel_id),
+            msg: ChannelControlMessage::ToggleStrobe,
+        });
         CHANNEL_FADERS.map(map, |channel_id, level| {
             Ok(ControlMessage::Control {
                 channel_id: Some(channel_id),
@@ -56,6 +61,9 @@ impl Channels {
                 ChannelStateChange::Knob { index, value } => {
                     send.emit_float(&format!("ChannelKnob/{index}"), value.as_unipolar().val());
                 }
+                ChannelStateChange::Strobe(v) => {
+                    CHANNEL_STROBE.set(channel_id.into(), v, send);
+                }
             },
         }
     }
@@ -65,6 +73,10 @@ const CHANNEL_SELECT: RadioButton = RadioButton {
     control: "Channel",
     n: N_CHANNELS,
     x_primary_coordinate: false,
+};
+
+const CHANNEL_STROBE: ButtonArray = ButtonArray {
+    control: "ChannelStrobe",
 };
 
 const CHANNEL_LABELS: LabelArray = LabelArray {

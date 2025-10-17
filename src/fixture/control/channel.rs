@@ -79,7 +79,7 @@ where
             return Ok(false);
         };
         emitter.emit_channel(if self.exact_echo {
-            *msg
+            msg.as_state_change()?
         } else {
             self.handler.emit(&v)
         });

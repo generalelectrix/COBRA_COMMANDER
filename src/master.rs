@@ -7,10 +7,11 @@ use tunnels::clock_server::StaticClockBank;
 
 use crate::fixture::prelude::*;
 use crate::osc::ScopedControlEmitter;
-use crate::strobe::StrobeClock;
+use crate::strobe::{StrobeClock, StrobeState};
 
 pub struct MasterControls {
     strobe_clock: StrobeClock,
+    pub strobe_state: StrobeState,
     pub clock_state: StaticClockBank,
     pub audio_envelope: UnipolarFloat,
 }
@@ -19,17 +20,9 @@ impl MasterControls {
     pub fn new() -> Self {
         Self {
             strobe_clock: Default::default(),
+            strobe_state: Default::default(),
             clock_state: Default::default(),
             audio_envelope: Default::default(),
-        }
-    }
-
-    pub fn strobe(&self) -> Strobe {
-        // TODO: decide what we want to do with this data structure
-        Strobe {
-            on: false,
-            rate: UnipolarFloat::ZERO,
-            use_master_rate: false,
         }
     }
 
@@ -40,6 +33,7 @@ impl MasterControls {
         };
         self.strobe_clock
             .update(delta_t, self.audio_envelope, emitter);
+        self.strobe_state = self.strobe_clock.state();
     }
 
     pub fn emit_state(&self, emitter: &dyn EmitControlMessage) {
@@ -94,13 +88,6 @@ pub enum ControlMessage {
 pub enum StateChange {
     #[expect(unused)]
     Strobe(crate::strobe::StateChange),
-}
-
-#[derive(Debug, Default)]
-pub struct Strobe {
-    pub on: bool,
-    pub rate: UnipolarFloat,
-    pub use_master_rate: bool,
 }
 
 pub const GROUP: &str = "Master";

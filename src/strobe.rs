@@ -24,6 +24,23 @@ use crate::{
     osc::{prelude::*, ScopedControlEmitter},
 };
 
+/// Strobe state that subscribers will use to follow the global strobe clock.
+/// If active, whatever we fill in for the intensity field should override the
+/// channel level when rendering.
+#[derive(Default, Debug, Clone, Copy)]
+pub struct StrobeState {
+    /// If true, strobing behavior should be active.
+    pub strobe_on: bool,
+    /// Render this intensity.
+    pub intensity: UnipolarFloat,
+    /// The current strobe rate - this is provided as a potential shim to allow
+    /// fixtures that can't be strobed well from DMX to use the legacy strobing
+    /// behavior.
+    pub rate: UnipolarFloat,
+    /// TODO: elimiate this parameter
+    pub use_master_rate: bool,
+}
+
 pub struct StrobeClock {
     clock: Clock,
     tap_sync: TapSync,
@@ -38,6 +55,8 @@ pub struct StrobeClock {
     strobe_on: bool,
     /// How long should a flash last?
     flash_duration: Duration,
+    /// Intensity of the flash.
+    intensity: UnipolarFloat,
     osc_controls: GroupControlMap<ControlMessage>,
 }
 
@@ -52,12 +71,27 @@ impl Default for StrobeClock {
             flash: Default::default(),
             strobe_on: false,
             flash_duration: Duration::from_millis(40),
+            intensity: UnipolarFloat::ONE,
             osc_controls,
         }
     }
 }
 
 impl StrobeClock {
+    /// Return the current strobing state.
+    pub fn state(&self) -> StrobeState {
+        StrobeState {
+            strobe_on: self.strobe_on || self.flash.is_some(),
+            intensity: self
+                .flash
+                .is_some()
+                .then_some(self.intensity)
+                .unwrap_or_default(),
+            rate: self.scaled_rate(),
+            use_master_rate: true,
+        }
+    }
+
     pub fn update(
         &mut self,
         delta_t: Duration,
@@ -136,6 +170,7 @@ impl StrobeClock {
                 }
             }
             Rate(v) => self.clock.rate_coarse = v.val() * RATE_SCALE,
+            Intensity(v) => self.intensity = v,
             Ticked(_) => (),
         }
         emit_state_change(msg, emitter);
@@ -145,10 +180,11 @@ impl StrobeClock {
 fn emit_state_change(sc: &StateChange, emitter: &ScopedControlEmitter) {
     use StateChange::*;
     emitter.emit_midi_strobe_message(sc);
-    match sc {
-        Ticked(v) => TAP.send(*v, emitter),
-        StrobeOn(v) => STROBE_ON.send(*v, emitter),
-        Rate(v) => RATE.send(*v, emitter),
+    match *sc {
+        Ticked(v) => TAP.send(v, emitter),
+        StrobeOn(v) => STROBE_ON.send(v, emitter),
+        Rate(v) => RATE.send(v, emitter),
+        Intensity(v) => INTENSITY.send(v, emitter),
     }
 }
 
@@ -166,6 +202,7 @@ pub enum StateChange {
     Ticked(bool),
     StrobeOn(bool),
     Rate(UnipolarFloat),
+    Intensity(UnipolarFloat),
 }
 
 /// Knob at full = 20 fps strobing.
@@ -175,6 +212,7 @@ const FLASH: Button = button("StrobeFlash");
 const TAP: Button = button("StrobeTap");
 const STROBE_ON: Button = button("StrobeOn");
 const RATE: UnipolarOsc = unipolar("StrobeRate");
+const INTENSITY: UnipolarOsc = unipolar("StrobeIntensity");
 
 fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
     use ControlMessage::*;
@@ -182,6 +220,7 @@ fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
     TAP.map_trigger(map, || Tap);
     STROBE_ON.map_trigger(map, || ToggleStrobeOn);
     RATE.map(map, |v| Set(StateChange::Rate(v)));
+    INTENSITY.map(map, |v| Set(StateChange::Intensity(v)))
 }
 
 trait EmitMidiStrobeMessage {

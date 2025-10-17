@@ -148,6 +148,10 @@ impl crate::fixture::Control for Lumasphere {
     ) -> anyhow::Result<bool> {
         Ok(false)
     }
+
+    fn can_strobe(&self) -> bool {
+        true
+    }
 }
 
 impl Update for Lumasphere {

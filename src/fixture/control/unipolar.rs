@@ -20,6 +20,8 @@ pub struct Unipolar<R: RenderToDmx<UnipolarFloat>> {
     val: UnipolarFloat,
     name: String,
     render: R,
+    /// If true, enable override/modulation by the global strobe clock.
+    strobed: bool,
 }
 
 /// A unipolar control that renders into a single DMX channel over a range.
@@ -32,12 +34,19 @@ impl<R: RenderToDmx<UnipolarFloat>> Unipolar<R> {
             val: UnipolarFloat::ZERO,
             name: name.into(),
             render,
+            strobed: false,
         }
     }
 
     /// Set the initial value of this control to 1.
     pub fn at_full(mut self) -> Self {
         self.val = UnipolarFloat::ONE;
+        self
+    }
+
+    /// Listen to the global strobe clock.
+    pub fn strobed(mut self) -> Self {
+        self.strobed = true;
         self
     }
 
@@ -145,10 +154,17 @@ impl<R: RenderToDmx<UnipolarFloat>> OscControl<UnipolarFloat> for Unipolar<R> {
 impl<R: RenderToDmx<UnipolarFloat>> RenderToDmxWithAnimations for Unipolar<R> {
     fn render(
         &self,
-        _group_controls: &crate::fixture::FixtureGroupControls,
+        group_controls: &crate::fixture::FixtureGroupControls,
         animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
+        if self.strobed {
+            let strobe_state = group_controls.strobe();
+            if strobe_state.strobe_on {
+                self.render.render(&strobe_state.intensity, dmx_buf);
+                return;
+            }
+        }
         self.render.render(&self.val_with_anim(animations), dmx_buf);
     }
 }
