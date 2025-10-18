@@ -104,6 +104,9 @@ impl FixtureGroup {
 
     /// Emit the current state of all controls.
     pub fn emit_state(&self, emitter: ChannelStateEmitter) {
+        emitter.emit(crate::channel::ChannelStateChange::Strobe(
+            self.strobe_enabled,
+        ));
         self.fixture
             .emit_state(&FixtureStateEmitter::new(&self.key, emitter));
     }

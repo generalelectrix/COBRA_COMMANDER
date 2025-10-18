@@ -10,6 +10,7 @@ mod profile;
 
 pub use fixture::{Control, EmitState, RenderMode};
 pub use group::FixtureGroup;
+use number::UnipolarFloat;
 pub use patch::Patch;
 pub use profile::*;
 
@@ -31,6 +32,14 @@ pub struct FixtureGroupControls<'a> {
 impl<'a> FixtureGroupControls<'a> {
     pub fn strobe(&self) -> &StrobeState {
         &self.master_controls.strobe_state
+    }
+
+    /// Return Some containing a strobe intensity if strobe override is active.
+    pub fn strobe_level(&self) -> Option<UnipolarFloat> {
+        if self.strobe_enabled && self.master_controls.strobe_state.strobe_on {
+            return Some(self.master_controls.strobe_state.intensity);
+        }
+        None
     }
 }
 

@@ -22,6 +22,7 @@ use crate::{
         ChannelStateChange as SpecificChannelStateChange, ControlMessage as ChannelControlMessage,
         KnobValue, StateChange as ChannelStateChange,
     },
+    midi::device::launch_control_xl::LaunchControlXLSideButton,
     show::ShowControlMessage,
 };
 
@@ -64,8 +65,9 @@ impl MidiHandler for NovationLaunchControlXL {
         use LaunchControlXLChannelButton::*;
         use LaunchControlXLChannelControlEvent::*;
         use LaunchControlXLControlEvent::*;
-        Some(ShowControlMessage::Channel(match self.parse(event)? {
-            Channel { channel, event } => match event {
+        use LaunchControlXLSideButton::*;
+        Some(match self.parse(event)? {
+            Channel { channel, event } => ShowControlMessage::Channel(match event {
                 Fader(val) => ChannelControlMessage::Control {
                     channel_id: Some(channel as usize + self.channel_offset),
                     msg: ScopedChannelControlMessage::Level(unipolar_from_midi(val)),
@@ -84,11 +86,16 @@ impl MidiHandler for NovationLaunchControlXL {
                     channel_id: Some(channel as usize + self.channel_offset),
                     msg: ScopedChannelControlMessage::ToggleStrobe,
                 },
+            }),
+            SideButton(b) => match b {
+                Record => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
+                    crate::strobe::ControlMessage::ToggleStrobeOn,
+                )),
+                _ => {
+                    return None;
+                }
             },
-            SideButton(_) => {
-                return None;
-            }
-        }))
+        })
     }
 
     fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output) {
@@ -133,6 +140,22 @@ impl MidiHandler for NovationLaunchControlXL {
                 }
             }
             ChannelStateChange::ChannelLabels(_) => (),
+        }
+    }
+
+    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {
+        #[expect(clippy::single_match)]
+        match msg {
+            crate::master::StateChange::Strobe(crate::strobe::StateChange::StrobeOn(v)) => {
+                self.emit(
+                    LaunchControlXLStateChange::SideButton {
+                        button: LaunchControlXLSideButton::Record,
+                        state: if *v { LedState::RED } else { LedState::OFF },
+                    },
+                    output,
+                );
+            }
+            _ => (),
         }
     }
 }

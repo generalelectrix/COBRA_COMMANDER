@@ -43,10 +43,7 @@ impl PatchFixture for Color {
             })
             .transpose()?
             .unwrap_or_default();
-        let mut fixture = Self::for_subcontrol(None, space);
-        // Wire up strobing when a color is used as a stand-alone fixture.
-        fixture.val.control = fixture.val.control.strobed();
-        Ok(fixture)
+        Ok(Self::for_subcontrol(None, space))
     }
 
     fn patch_config(options: &mut Options) -> Result<PatchConfig> {
@@ -156,6 +153,7 @@ impl Color {
     ) {
         // If a color override has been provided, render it scaled by the level.
         if let Some(mut color_override) = group_controls.color.clone() {
+            // TODO: do we want to allow strobing to layer on top of a color override?
             color_override.lightness *= self.val.control.val();
             model.render(dmx_buf, color_override);
             return;
@@ -172,6 +170,10 @@ impl Color {
                 Sat => sat += anim_val,
                 Val => val += anim_val,
             }
+        }
+
+        if let Some(strobe_intensity) = group_controls.strobe_level() {
+            val = strobe_intensity.val();
         }
 
         match self.space {

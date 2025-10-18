@@ -8,6 +8,7 @@ use crate::fixture::{
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 12]
+#[strobe]
 pub struct IWashLed {
     #[channel_control]
     #[animate_subtarget(Hue, Sat, Val)]

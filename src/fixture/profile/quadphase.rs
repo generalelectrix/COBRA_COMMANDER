@@ -49,8 +49,11 @@ impl AnimatedFixture for QuadPhase {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.shutter
-            .render(group_controls, animation_vals.filter(&AnimationTarget::Shutter), dmx_buf);
+        self.shutter.render(
+            group_controls,
+            animation_vals.filter(&AnimationTarget::Shutter),
+            dmx_buf,
+        );
         self.strobe
             .render(group_controls, std::iter::empty(), dmx_buf);
         self.rotation.render(

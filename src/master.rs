@@ -80,13 +80,11 @@ impl MasterControls {
 
 #[derive(Debug, Clone)]
 pub enum ControlMessage {
-    #[expect(unused)]
     Strobe(crate::strobe::ControlMessage),
 }
 
 #[derive(Debug, Clone)]
 pub enum StateChange {
-    #[expect(unused)]
     Strobe(crate::strobe::StateChange),
 }
 

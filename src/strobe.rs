@@ -70,7 +70,7 @@ impl Default for StrobeClock {
             tick_indicator: Default::default(),
             flash: Default::default(),
             strobe_on: false,
-            flash_duration: Duration::from_millis(40),
+            flash_duration: Duration::from_millis(20), // DMX running at 40 fps, or 25 ms/frame. This is the shortest flash we can possibly render.
             intensity: UnipolarFloat::ONE,
             osc_controls,
         }
@@ -205,8 +205,8 @@ pub enum StateChange {
     Intensity(UnipolarFloat),
 }
 
-/// Knob at full = 20 fps strobing.
-const RATE_SCALE: f64 = 20.0;
+/// Knob at full = 10 fps strobing.
+const RATE_SCALE: f64 = 10.0;
 
 const FLASH: Button = button("StrobeFlash");
 const TAP: Button = button("StrobeTap");
