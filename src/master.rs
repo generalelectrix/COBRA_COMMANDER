@@ -6,7 +6,7 @@ use number::UnipolarFloat;
 use tunnels::clock_server::StaticClockBank;
 
 use crate::fixture::prelude::*;
-use crate::osc::ScopedControlEmitter;
+use crate::osc::{EmitScopedOscMessage, ScopedControlEmitter};
 use crate::strobe::{Distributor, StrobeClock};
 
 #[derive(Default)]
@@ -14,6 +14,7 @@ pub struct MasterControls {
     strobe_clock: StrobeClock,
     pub clock_state: StaticClockBank,
     pub audio_envelope: UnipolarFloat,
+    pub update_adjust: BipolarFloat,
 }
 
 impl MasterControls {
@@ -62,6 +63,15 @@ impl MasterControls {
             entity: GROUP,
             emitter,
         };
+        if msg.control() == "UpdateAdjust" {
+            self.update_adjust = msg.get_bipolar()?;
+            emitter.emit_float("UpdateAdjust", self.update_adjust.val());
+            println!(
+                "update adjust: {}",
+                (self.update_adjust.val() * 1000.) as i64
+            );
+            return Ok(());
+        }
         // FIXME: need to refactor how GroupControlMap works or lift it up
         // to this level to have more than one receiver...
         self.strobe_clock.control_osc(msg, emitter)
