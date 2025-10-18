@@ -58,6 +58,7 @@ pub struct StrobeClock {
     /// Intensity of the flash.
     intensity: UnipolarFloat,
     osc_controls: GroupControlMap<ControlMessage>,
+    update_count: usize,
 }
 
 impl Default for StrobeClock {
@@ -73,6 +74,7 @@ impl Default for StrobeClock {
             flash_duration: Duration::from_millis(20), // DMX running at 40 fps, or 25 ms/frame. This is the shortest flash we can possibly render.
             intensity: UnipolarFloat::ONE,
             osc_controls,
+            update_count: 0,
         }
     }
 }
@@ -113,6 +115,12 @@ impl StrobeClock {
         // If the strobe clock ticked this frame and we're strobing, flash.
         if self.strobe_on && self.clock.ticked() {
             self.flash = Some(self.flash_duration);
+        }
+        self.update_count += 1;
+        if self.update_count % 4 == 0 {
+            self.flash = Some(Duration::ZERO);
+        } else {
+            self.flash = None;
         }
     }
 
