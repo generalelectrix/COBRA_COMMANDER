@@ -82,6 +82,7 @@ pub struct StrobeClock {
     /// Intensity of the flash.
     intensity: UnipolarFloat,
     osc_controls: GroupControlMap<ControlMessage>,
+    update_count: usize,
 }
 
 impl Default for StrobeClock {
@@ -101,6 +102,7 @@ impl Default for StrobeClock {
             flash_duration_long: 3,
             intensity: UnipolarFloat::ONE,
             osc_controls,
+            update_count: 0,
         }
     }
 }
@@ -153,6 +155,13 @@ impl StrobeClock {
             } else {
                 self.flash = Some(flash_age + 1);
             }
+        }
+
+        self.update_count += 1;
+        if self.update_count % 4 == 0 {
+            self.flash = Some(0);
+        } else {
+            self.flash = None;
         }
     }
 

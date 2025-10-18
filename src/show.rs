@@ -48,7 +48,7 @@ impl Show {
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
-        let master_controls = MasterControls::new();
+        let master_controls = MasterControls::default();
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
@@ -67,6 +67,11 @@ impl Show {
         Ok(show)
     }
 
+    fn update_interval(&self) -> Duration {
+        let update_adjust = self.master_controls.update_adjust.val();
+        Duration::from_micros((25000 + (update_adjust * 1000.) as i64) as u64)
+    }
+
     /// Run the show forever in the current thread.
     pub fn run(&mut self, dmx_ports: &mut [Box<dyn DmxPort>]) {
         let mut last_update = Instant::now();
@@ -81,12 +86,13 @@ impl Show {
             let mut now = Instant::now();
             let mut time_since_last_update = now - last_update;
             let mut should_render = false;
-            while time_since_last_update > UPDATE_INTERVAL {
+            let update_interval = self.update_interval();
+            while time_since_last_update > update_interval {
                 // Update the state of the show.
-                self.update(UPDATE_INTERVAL);
+                self.update(update_interval);
                 should_render = true;
 
-                last_update += UPDATE_INTERVAL;
+                last_update += update_interval;
                 now = Instant::now();
                 time_since_last_update = now - last_update;
             }
