@@ -62,8 +62,11 @@ impl Default for StrobeClock {
     fn default() -> Self {
         let mut osc_controls = GroupControlMap::default();
         map_controls(&mut osc_controls);
+        // Set initial rate to our minimum.
+        let mut clock = Clock::default();
+        clock.rate_coarse = MIN_STROBE_RATE;
         Self {
-            clock: Default::default(),
+            clock,
             tap_sync: Default::default(),
             tick_indicator: Default::default(),
             flash: None,
@@ -85,7 +88,7 @@ impl StrobeClock {
                 .is_some()
                 .then_some(self.intensity)
                 .unwrap_or_default(),
-            rate: self.scaled_rate(),
+            rate: unipolar_from_rate(self.clock.rate_coarse),
             use_master_rate: true,
         }
     }
@@ -116,24 +119,19 @@ impl StrobeClock {
             } else {
                 self.flash = Some(flash_age + 1);
             }
-            println!("flash: {:?}", self.flash);
         }
         // If the strobe clock ticked this frame and we're strobing, flash.
         if self.strobe_on && self.clock.ticked() {
             self.flash();
-            println!("ticked flash: {:?}", self.flash);
         }
-    }
-
-    fn scaled_rate(&self) -> UnipolarFloat {
-        UnipolarFloat::new(self.clock.rate_coarse / RATE_SCALE)
     }
 
     pub fn emit_state(&self, emitter: &ScopedControlEmitter) {
         use StateChange::*;
         emit_state_change(&Ticked(self.tick_indicator.state()), emitter);
         emit_state_change(&StrobeOn(self.strobe_on), emitter);
-        emit_state_change(&Rate(self.scaled_rate()), emitter);
+        emit_state_change(&Rate(unipolar_from_rate(self.clock.rate_coarse)), emitter);
+        emit_state_change(&Intensity(self.intensity), emitter);
     }
 
     pub fn control(&mut self, msg: &ControlMessage, emitter: &ScopedControlEmitter) {
@@ -144,7 +142,7 @@ impl StrobeClock {
             Tap => {
                 if let Some(new_rate) = self.tap_sync.tap() {
                     self.clock.rate_coarse = new_rate;
-                    emit_state_change(&Rate(self.scaled_rate()), emitter);
+                    emit_state_change(&Rate(unipolar_from_rate(self.clock.rate_coarse)), emitter);
                 }
             }
             ToggleStrobeOn => {
@@ -152,7 +150,6 @@ impl StrobeClock {
             }
             FlashNow => {
                 self.flash();
-                println!("flash now: {:?}", self.flash);
             }
         }
     }
@@ -179,7 +176,7 @@ impl StrobeClock {
                     self.clock.reset_next_update();
                 }
             }
-            Rate(v) => self.clock.rate_coarse = v.val() * RATE_SCALE,
+            Rate(v) => self.clock.rate_coarse = rate_from_unipolar(v),
             Intensity(v) => self.intensity = v,
             Ticked(_) => (),
         }
@@ -198,6 +195,29 @@ fn emit_state_change(sc: &StateChange, emitter: &ScopedControlEmitter) {
     }
 }
 
+/// Convert a unipolar control value into a strobe rate.
+/// Unlike most clocks, we don't actually want to be able to set a hard 0 for
+/// strobe rate, since this would just be confusing.
+fn rate_from_unipolar(v: UnipolarFloat) -> f64 {
+    MIN_STROBE_RATE + (v.val() * (MAX_STROBE_RATE - MIN_STROBE_RATE))
+}
+
+/// Convert a strobe rate into a unipolar control parameter.
+/// Clamp the incoming value to the expected range to handle values outside of
+/// our expected range.
+fn unipolar_from_rate(r: f64) -> UnipolarFloat {
+    UnipolarFloat::new(
+        (r.max(MIN_STROBE_RATE) - MIN_STROBE_RATE) / (MAX_STROBE_RATE - MIN_STROBE_RATE),
+    )
+}
+
+/// Rate at 0 = strobing once per 2 seconds.
+const MIN_STROBE_RATE: f64 = 0.5;
+
+/// Max rate: 10 fps (this is pretty fast and unlikely we can do better than
+/// this with cheap fixtures and DMX timing).
+const MAX_STROBE_RATE: f64 = 10.;
+
 #[derive(Debug, Clone)]
 pub enum ControlMessage {
     Set(StateChange),
@@ -214,9 +234,6 @@ pub enum StateChange {
     Rate(UnipolarFloat),
     Intensity(UnipolarFloat),
 }
-
-/// Knob at full = 10 fps strobing.
-const RATE_SCALE: f64 = 10.0;
 
 const FLASH: Button = button("StrobeFlash");
 const TAP: Button = button("StrobeTap");

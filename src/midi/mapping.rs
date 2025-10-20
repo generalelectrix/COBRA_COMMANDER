@@ -174,7 +174,6 @@ impl MidiHandler for NovationLaunchControlXL {
                 }
                 _ => (),
             },
-            _ => (),
         }
     }
 }
