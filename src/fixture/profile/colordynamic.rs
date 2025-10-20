@@ -25,7 +25,7 @@ impl Default for Colordynamic {
     fn default() -> Self {
         Colordynamic {
             shutter: Bool::full_channel("ShutterOpen", 3)
-                .strobed()
+                .strobed_long()
                 .with_channel_level(),
             // shutter: ShutterStrobe::new(
             //     Bool::full_channel("ShutterOpen", 3),

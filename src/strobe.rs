@@ -24,6 +24,13 @@ use crate::{
     osc::{prelude::*, ScopedControlEmitter},
 };
 
+/// Should a fixture use the short or long flash duration?
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StrobeResponse {
+    Short,
+    Long,
+}
+
 /// Strobe state that subscribers will use to follow the global strobe clock.
 /// If active, whatever we fill in for the intensity field should override the
 /// channel level when rendering.
@@ -31,14 +38,25 @@ use crate::{
 pub struct StrobeState {
     /// If true, strobing behavior should be active.
     pub strobe_on: bool,
-    /// Render this intensity.
-    pub intensity: UnipolarFloat,
+    /// Render this intensity for short-flash fixtures.
+    intensity_short: UnipolarFloat,
+    /// Render this intensity for long-flash fixtures.
+    intensity_long: UnipolarFloat,
     /// The current strobe rate - this is provided as a potential shim to allow
     /// fixtures that can't be strobed well from DMX to use the legacy strobing
     /// behavior.
     pub rate: UnipolarFloat,
     /// TODO: elimiate this parameter
     pub use_master_rate: bool,
+}
+
+impl StrobeState {
+    pub fn intensity(&self, response: StrobeResponse) -> UnipolarFloat {
+        match response {
+            StrobeResponse::Short => self.intensity_short,
+            StrobeResponse::Long => self.intensity_long,
+        }
+    }
 }
 
 pub struct StrobeClock {
@@ -51,8 +69,10 @@ pub struct StrobeClock {
     flash: Option<u8>,
     /// If true, the strobe clock is running.
     strobe_on: bool,
-    /// How many frame updates should a flash last for?
-    flash_duration: u8,
+    /// How many frame updates should a short flash last for?
+    flash_duration_short: u8,
+    /// How many frame updates should a long flash last for?
+    flash_duration_long: u8,
     /// Intensity of the flash.
     intensity: UnipolarFloat,
     osc_controls: GroupControlMap<ControlMessage>,
@@ -71,7 +91,8 @@ impl Default for StrobeClock {
             tick_indicator: Default::default(),
             flash: None,
             strobe_on: false,
-            flash_duration: 1, // Single-frame flash.
+            flash_duration_short: 1,
+            flash_duration_long: 3,
             intensity: UnipolarFloat::ONE,
             osc_controls,
         }
@@ -81,13 +102,15 @@ impl Default for StrobeClock {
 impl StrobeClock {
     /// Return the current strobing state.
     pub fn state(&self) -> StrobeState {
+        let (short, long) = if let Some(flash_age) = self.flash {
+            (flash_age < self.flash_duration_short, true)
+        } else {
+            (false, false)
+        };
         StrobeState {
             strobe_on: self.strobe_on || self.flash.is_some(),
-            intensity: self
-                .flash
-                .is_some()
-                .then_some(self.intensity)
-                .unwrap_or_default(),
+            intensity_short: short.then_some(self.intensity).unwrap_or_default(),
+            intensity_long: long.then_some(self.intensity).unwrap_or_default(),
             rate: unipolar_from_rate(self.clock.rate_coarse),
             use_master_rate: true,
         }
@@ -114,7 +137,7 @@ impl StrobeClock {
         }
         // Age the flash if we have one running.
         if let Some(flash_age) = self.flash {
-            if flash_age >= self.flash_duration {
+            if flash_age >= self.flash_duration_long {
                 self.flash = None;
             } else {
                 self.flash = Some(flash_age + 1);

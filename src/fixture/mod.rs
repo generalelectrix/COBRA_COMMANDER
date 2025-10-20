@@ -1,4 +1,8 @@
-use crate::{color::Hsluv, master::MasterControls, strobe::StrobeState};
+use crate::{
+    color::Hsluv,
+    master::MasterControls,
+    strobe::{StrobeResponse, StrobeState},
+};
 
 pub mod animation_target;
 mod control;
@@ -35,9 +39,9 @@ impl<'a> FixtureGroupControls<'a> {
     }
 
     /// Return Some containing a strobe intensity if strobe override is active.
-    pub fn strobe_level(&self) -> Option<UnipolarFloat> {
+    pub fn strobe_level(&self, response: StrobeResponse) -> Option<UnipolarFloat> {
         if self.strobe_enabled && self.master_controls.strobe_state.strobe_on {
-            return Some(self.master_controls.strobe_state.intensity);
+            return Some(self.master_controls.strobe_state.intensity(response));
         }
         None
     }

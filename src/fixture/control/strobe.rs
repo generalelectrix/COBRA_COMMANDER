@@ -1,4 +1,8 @@
 //! Control for a generic strobe function.
+//!
+//! This is intended to model fixtures that provide a specific DMX channel or
+//! range for strobe control, and that for one reason or another do not play
+//! nicely with the strobe clock feature.
 
 use std::marker::PhantomData;
 

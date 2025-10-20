@@ -6,6 +6,7 @@ use number::UnipolarFloat;
 use crate::{
     channel::KnobIndex,
     osc::{EmitScopedOscMessage, OscControlMessage},
+    strobe::StrobeResponse,
     util::unipolar_to_range,
 };
 
@@ -20,8 +21,7 @@ pub struct Unipolar<R: RenderToDmx<UnipolarFloat>> {
     val: UnipolarFloat,
     name: String,
     render: R,
-    /// If true, enable override/modulation by the global strobe clock.
-    strobed: bool,
+    strobed: Option<StrobeResponse>,
 }
 
 /// A unipolar control that renders into a single DMX channel over a range.
@@ -34,7 +34,7 @@ impl<R: RenderToDmx<UnipolarFloat>> Unipolar<R> {
             val: UnipolarFloat::ZERO,
             name: name.into(),
             render,
-            strobed: false,
+            strobed: None,
         }
     }
 
@@ -44,9 +44,15 @@ impl<R: RenderToDmx<UnipolarFloat>> Unipolar<R> {
         self
     }
 
-    /// Listen to the global strobe clock.
-    pub fn strobed(mut self) -> Self {
-        self.strobed = true;
+    /// Listen to the global strobe clock, short pulse width.
+    pub fn strobed_short(mut self) -> Self {
+        self.strobed = Some(StrobeResponse::Short);
+        self
+    }
+
+    /// Listen to the global strobe clock, long pulse width.
+    pub fn strobed_long(mut self) -> Self {
+        self.strobed = Some(StrobeResponse::Long);
         self
     }
 
@@ -158,11 +164,14 @@ impl<R: RenderToDmx<UnipolarFloat>> RenderToDmxWithAnimations for Unipolar<R> {
         animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        if self.strobed && group_controls.strobe_enabled {
-            let strobe_state = group_controls.strobe();
-            if strobe_state.strobe_on {
-                self.render.render(&strobe_state.intensity, dmx_buf);
-                return;
+        if group_controls.strobe_enabled {
+            if let Some(response) = self.strobed {
+                let strobe_state = group_controls.strobe();
+                if strobe_state.strobe_on {
+                    self.render
+                        .render(&strobe_state.intensity(response), dmx_buf);
+                    return;
+                }
             }
         }
         self.render.render(&self.val_with_anim(animations), dmx_buf);

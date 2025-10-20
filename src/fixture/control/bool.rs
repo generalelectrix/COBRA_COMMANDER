@@ -3,7 +3,10 @@
 use anyhow::Context;
 use number::UnipolarFloat;
 
-use crate::osc::{EmitScopedOscMessage, OscControlMessage};
+use crate::{
+    osc::{EmitScopedOscMessage, OscControlMessage},
+    strobe::StrobeResponse,
+};
 
 use super::{
     ChannelControl, ChannelLevelBool, ChannelLevelHandler, OscControl, RenderToDmx,
@@ -16,8 +19,7 @@ pub struct Bool<R: RenderToDmx<bool>> {
     val: bool,
     name: String,
     render: R,
-    /// If true, enable override/modulation by the global strobe clock.
-    strobed: bool,
+    strobed: Option<StrobeResponse>,
 }
 
 /// A bool control that renders into a single DMX channel at full range.
@@ -31,7 +33,7 @@ impl<R: RenderToDmx<bool>> Bool<R> {
             val: false,
             name: name.into(),
             render,
-            strobed: false,
+            strobed: None,
         }
     }
 
@@ -42,7 +44,7 @@ impl<R: RenderToDmx<bool>> Bool<R> {
             val: true,
             name: name.into(),
             render,
-            strobed: false,
+            strobed: None,
         }
     }
 
@@ -50,9 +52,15 @@ impl<R: RenderToDmx<bool>> Bool<R> {
         self.val
     }
 
-    /// Listen to the global strobe clock.
-    pub fn strobed(mut self) -> Self {
-        self.strobed = true;
+    /// Listen to the global strobe clock, short pulse width.
+    pub fn strobed_short(mut self) -> Self {
+        self.strobed = Some(StrobeResponse::Short);
+        self
+    }
+
+    /// Listen to the global strobe clock, long pulse width.
+    pub fn strobed_long(mut self) -> Self {
+        self.strobed = Some(StrobeResponse::Long);
         self
     }
 
@@ -138,12 +146,16 @@ impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
         _animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        if self.strobed && group_controls.strobe_enabled {
-            let strobe_state = group_controls.strobe();
-            if strobe_state.strobe_on {
-                self.render
-                    .render(&(strobe_state.intensity > UnipolarFloat::ZERO), dmx_buf);
-                return;
+        if group_controls.strobe_enabled {
+            if let Some(response) = self.strobed {
+                let strobe_state = group_controls.strobe();
+                if strobe_state.strobe_on {
+                    self.render.render(
+                        &(strobe_state.intensity(response) > UnipolarFloat::ZERO),
+                        dmx_buf,
+                    );
+                    return;
+                }
             }
         }
         self.render.render(&self.val, dmx_buf);

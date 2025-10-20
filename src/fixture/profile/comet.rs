@@ -19,7 +19,7 @@ impl Default for Comet {
     fn default() -> Self {
         Self {
             shutter_open: Bool::full_channel("Shutter", 0)
-                .strobed()
+                .strobed_long()
                 .with_channel_level(),
             trigger_state: TriggerState::default(),
             // strobe: Strobe::channel("Strobe", 0, 151, 255, 75),

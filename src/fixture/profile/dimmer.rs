@@ -14,7 +14,9 @@ impl Default for Dimmer {
     fn default() -> Self {
         Self {
             level: Unipolar::full_channel("Level", 0)
-                .strobed()
+                // TODO: if we need to use a dimmer channel for something
+                // besides conventionals, make this configurable.
+                .strobed_long()
                 .with_channel_level(),
         }
     }
