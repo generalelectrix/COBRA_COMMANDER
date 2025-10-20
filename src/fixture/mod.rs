@@ -34,6 +34,11 @@ pub struct FixtureGroupControls<'a> {
 }
 
 impl<'a> FixtureGroupControls<'a> {
+    // TODO: eliminate the need for this method
+    pub fn strobe(&self) -> &StrobeState {
+        &self.master_controls.strobe_state
+    }
+
     /// Return Some containing a strobe intensity if strobe override is active.
     ///
     /// Return None if we should not be strobing.

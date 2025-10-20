@@ -4,10 +4,12 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 10]
+#[strobe]
 pub struct RushWizard {
     #[channel_control]
     #[animate]
     dimmer: ChannelLevelUnipolar<UnipolarChannel>,
+    // TODO: figure out what's up with this fixture/how we should strobe it
     strobe: StrobeChannel,
     color: LabeledSelect,
     twinkle: Bool<()>,
@@ -96,9 +98,11 @@ impl AnimatedFixture for RushWizard {
                 dmx_buf,
             );
         } else {
-            self.color.render(group_controls, std::iter::empty(), dmx_buf);
+            self.color
+                .render(group_controls, std::iter::empty(), dmx_buf);
         }
-        self.gobo.render(group_controls, std::iter::empty(), dmx_buf);
+        self.gobo
+            .render(group_controls, std::iter::empty(), dmx_buf);
         self.drum_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumRotation),

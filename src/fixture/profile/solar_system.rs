@@ -47,13 +47,15 @@ impl AnimatedFixture for SolarSystem {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.front_gobo.render(group_controls, std::iter::empty(), dmx_buf);
+        self.front_gobo
+            .render(group_controls, std::iter::empty(), dmx_buf);
         self.front_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::FrontRotation),
             dmx_buf,
         );
-        self.rear_gobo.render(group_controls, std::iter::empty(), dmx_buf);
+        self.rear_gobo
+            .render(group_controls, std::iter::empty(), dmx_buf);
         self.rear_gobo.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::RearRotation),

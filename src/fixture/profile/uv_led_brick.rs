@@ -3,6 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 7]
+#[strobe]
 pub struct UvLedBrick {
     #[channel_control]
     #[animate]
@@ -12,7 +13,9 @@ pub struct UvLedBrick {
 impl Default for UvLedBrick {
     fn default() -> Self {
         Self {
-            level: Unipolar::full_channel("Level", 0).with_channel_level(),
+            level: Unipolar::full_channel("Level", 0)
+                .strobed_short()
+                .with_channel_level(),
         }
     }
 }

@@ -1,7 +1,6 @@
 //! A control for boolean values.
 
 use anyhow::Context;
-use number::UnipolarFloat;
 
 use crate::{
     osc::{EmitScopedOscMessage, OscControlMessage},
