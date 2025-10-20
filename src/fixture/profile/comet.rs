@@ -4,10 +4,11 @@ use crate::{fixture::prelude::*, osc::OscControlMessage, util::unipolar_to_range
 
 #[derive(Debug, EmitState, Control, PatchFixture)]
 #[channel_count = 5]
+#[strobe]
 pub struct Comet {
-    shutter_open: BoolChannel,
+    shutter_open: ChannelLevelBool<BoolChannel>,
     trigger_state: TriggerState,
-    strobe: StrobeChannel,
+    // strobe: StrobeChannel,
     shutter_sound_active: BoolChannel,
     macro_pattern: IndexedSelectMenu,
     mirror_speed: UnipolarChannel,
@@ -17,10 +18,11 @@ pub struct Comet {
 impl Default for Comet {
     fn default() -> Self {
         Self {
-            shutter_open: Bool::full_channel("Shutter", 0),
+            shutter_open: Bool::full_channel("Shutter", 0)
+                .strobed()
+                .with_channel_level(),
             trigger_state: TriggerState::default(),
-            // FIXME: need to make strobe rate a quadratic fader
-            strobe: Strobe::channel("Strobe", 0, 151, 255, 75),
+            // strobe: Strobe::channel("Strobe", 0, 151, 255, 75),
             shutter_sound_active: Bool::channel("ShutterSoundActive", 0, 0, 125),
             macro_pattern: IndexedSelect::fixed_values("SelectMacro", 1, true, &PATTERN_DMX_VALS),
             mirror_speed: Unipolar::full_channel("Mspeed", 2),
@@ -33,14 +35,11 @@ const PATTERN_DMX_VALS: [u8; 10] = [12, 35, 65, 85, 112, 140, 165, 190, 212, 240
 
 impl NonAnimatedFixture for Comet {
     fn render(&self, group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
-        if !self.shutter_open.val() {
+        if !self.shutter_open.control.val() {
             self.shutter_open
                 .render(group_controls, std::iter::empty(), dmx_buf);
         } else if self.shutter_sound_active.val() {
             self.shutter_sound_active
-                .render(group_controls, std::iter::empty(), dmx_buf);
-        } else {
-            self.strobe
                 .render(group_controls, std::iter::empty(), dmx_buf);
         }
         self.macro_pattern
