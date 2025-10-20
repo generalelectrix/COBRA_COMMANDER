@@ -3,6 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 2]
+#[strobe]
 pub struct Hypnotic {
     #[channel_control]
     on: ChannelLevelBool<Bool<()>>,
@@ -38,7 +39,12 @@ impl AnimatedFixture for Hypnotic {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        dmx_buf[0] = if !self.on.control.val() {
+        let shutter_open = self.on.control.val()
+            || group_controls
+                .strobe_shutter(crate::strobe::StrobeResponse::Short)
+                .unwrap_or_default();
+
+        dmx_buf[0] = if !shutter_open {
             0
         } else {
             match (
@@ -57,6 +63,6 @@ impl AnimatedFixture for Hypnotic {
             }
         };
         self.rotation
-            .render_with_group(group_controls, animation_vals.all(), dmx_buf);
+            .render(group_controls, animation_vals.all(), dmx_buf);
     }
 }

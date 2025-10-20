@@ -142,6 +142,9 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 ///
 /// Fields that may be absent (defined as an Option) can set #[optional] to
 /// conditionally handle if Some.
+///
+/// If the fixture is capable of using global strobing, annotate the struct with
+/// the #[strobe] attribute.
 #[proc_macro_derive(
     Control,
     attributes(
@@ -150,11 +153,14 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
         animate,
         animate_subtarget,
         on_change,
-        optional
+        optional,
+        strobe,
     )
 )]
 pub fn derive_control(input: TokenStream) -> TokenStream {
-    let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
+    let DeriveInput {
+        ident, attrs, data, ..
+    } = parse_macro_input!(input as DeriveInput);
 
     let Data::Struct(struct_data) = data else {
         panic!("Can only derive Control for structs.");
@@ -167,6 +173,8 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
 
     let mut animate_target_idents = vec![];
     let mut animate_subtarget_types = vec![];
+
+    let can_strobe = has_attr(&attrs, "strobe");
 
     for field in fields.named.iter() {
         if field_has_attr(field, "skip_control") {
@@ -293,6 +301,10 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
                 #channel_control_lines
                 Ok(false)
             }
+
+            fn can_strobe(&self) -> bool {
+                #can_strobe
+            }
         }
 
         #anim_target_enum
@@ -338,10 +350,11 @@ fn insert_optional_call(
 }
 
 fn field_has_attr(field: &Field, ident: &str) -> bool {
-    field
-        .attrs
-        .iter()
-        .any(|attr| attr.meta.path().is_ident(ident))
+    has_attr(&field.attrs, ident)
+}
+
+fn has_attr(attrs: &[Attribute], ident: &str) -> bool {
+    attrs.iter().any(|attr| attr.meta.path().is_ident(ident))
 }
 
 fn get_attr_and_payload(attrs: &[Attribute], ident: &str) -> Option<String> {

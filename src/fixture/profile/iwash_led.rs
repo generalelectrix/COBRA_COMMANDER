@@ -8,6 +8,7 @@ use crate::fixture::{
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 12]
+#[strobe]
 pub struct IWashLed {
     #[channel_control]
     #[animate_subtarget(Hue, Sat, Val)]
@@ -37,12 +38,12 @@ impl AnimatedFixture for IWashLed {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.pan.render_with_group(
+        self.pan.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Pan),
             dmx_buf,
         );
-        self.tilt.render_with_group(
+        self.tilt.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Tilt),
             dmx_buf,

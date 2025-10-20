@@ -18,6 +18,7 @@ use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update)]
+#[strobe]
 pub struct Leko {
     #[channel_control]
     #[animate]
@@ -41,7 +42,9 @@ pub struct Leko {
 impl Default for Leko {
     fn default() -> Self {
         Self {
-            level: Unipolar::full_channel("Level", 0).with_channel_level(),
+            level: Unipolar::full_channel("Level", 0)
+                .strobed_long()
+                .with_channel_level(),
             gobo1: Bipolar::new("Gobo1", ()).with_detent().with_channel_knob(0),
             gobo2: Bipolar::new("Gobo2", ()).with_detent().with_channel_knob(1),
             roto_q_lut: roto_q_lut(),
@@ -98,8 +101,11 @@ impl AnimatedFixture for Leko {
         };
         match model {
             Model::Dimmer => {
-                self.level
-                    .render(animation_vals.filter(&AnimationTarget::Level), dmx_buf);
+                self.level.render(
+                    group_controls,
+                    animation_vals.filter(&AnimationTarget::Level),
+                    dmx_buf,
+                );
             }
             Model::GoboSpinnaz => {
                 render_gobo_spinna(

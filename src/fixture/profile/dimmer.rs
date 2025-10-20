@@ -3,6 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 1]
+#[strobe]
 pub struct Dimmer {
     #[channel_control]
     #[animate]
@@ -12,7 +13,11 @@ pub struct Dimmer {
 impl Default for Dimmer {
     fn default() -> Self {
         Self {
-            level: Unipolar::full_channel("Level", 0).with_channel_level(),
+            level: Unipolar::full_channel("Level", 0)
+                // TODO: if we need to use a dimmer channel for something
+                // besides conventionals, make this configurable.
+                .strobed_long()
+                .with_channel_level(),
         }
     }
 }
@@ -22,10 +27,11 @@ impl AnimatedFixture for Dimmer {
 
     fn render_with_animations(
         &self,
-        _group_controls: &FixtureGroupControls,
+        group_controls: &FixtureGroupControls,
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.level.render(animation_vals.all(), dmx_buf);
+        self.level
+            .render(group_controls, animation_vals.all(), dmx_buf);
     }
 }

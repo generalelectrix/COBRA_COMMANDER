@@ -148,6 +148,10 @@ impl crate::fixture::Control for Lumasphere {
     ) -> anyhow::Result<bool> {
         Ok(false)
     }
+
+    fn can_strobe(&self) -> bool {
+        true
+    }
 }
 
 impl Update for Lumasphere {
@@ -261,4 +265,44 @@ where
     map.add_unipolar(&format!("strobe_{index}_intensity"), move |v| {
         wrap(Intensity(v))
     });
+}
+
+/// Most basic strobe control - active/not, plus rate.
+#[derive(Default, Clone, Debug)]
+pub struct GenericStrobe {
+    pub on: bool,
+    pub rate: UnipolarFloat,
+}
+
+impl GenericStrobe {
+    pub fn on(&self) -> bool {
+        self.on
+    }
+
+    pub fn rate(&self) -> UnipolarFloat {
+        self.rate
+    }
+
+    pub fn emit_state<F>(&self, emit: &mut F)
+    where
+        F: FnMut(GenericStrobeStateChange),
+    {
+        use GenericStrobeStateChange::*;
+        emit(On(self.on));
+        emit(Rate(self.rate));
+    }
+
+    pub fn handle_state_change(&mut self, sc: &GenericStrobeStateChange) {
+        use GenericStrobeStateChange::*;
+        match sc {
+            On(v) => self.on = *v,
+            Rate(v) => self.rate = *v,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum GenericStrobeStateChange {
+    On(bool),
+    Rate(UnipolarFloat),
 }

@@ -73,15 +73,18 @@ impl AnimatedFixture for Astera {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.dimmer.render_with_group(
+        self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
             dmx_buf,
         );
         dmx_buf[1] = 0; // strobe off
-        self.speed.render_no_anim(dmx_buf);
-        self.fade.render_no_anim(dmx_buf);
-        self.program.render_no_anim(dmx_buf);
+        self.speed
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.fade
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.program
+            .render(group_controls, std::iter::empty(), dmx_buf);
         dmx_buf[5] = match (self.pattern_direction.val(), self.pattern_loop.val()) {
             (true, true) => 0,
             (true, false) => 64,

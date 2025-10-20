@@ -22,6 +22,7 @@ use crate::{
         ChannelStateChange as SpecificChannelStateChange, ControlMessage as ChannelControlMessage,
         KnobValue, StateChange as ChannelStateChange,
     },
+    midi::device::launch_control_xl::LaunchControlXLSideButton,
     show::ShowControlMessage,
 };
 
@@ -64,8 +65,9 @@ impl MidiHandler for NovationLaunchControlXL {
         use LaunchControlXLChannelButton::*;
         use LaunchControlXLChannelControlEvent::*;
         use LaunchControlXLControlEvent::*;
-        Some(ShowControlMessage::Channel(match self.parse(event)? {
-            Channel { channel, event } => match event {
+        use LaunchControlXLSideButton::*;
+        Some(match self.parse(event)? {
+            Channel { channel, event } => ShowControlMessage::Channel(match event {
                 Fader(val) => ChannelControlMessage::Control {
                     channel_id: Some(channel as usize + self.channel_offset),
                     msg: ScopedChannelControlMessage::Level(unipolar_from_midi(val)),
@@ -80,14 +82,26 @@ impl MidiHandler for NovationLaunchControlXL {
                 Button(TrackFocus) => {
                     ChannelControlMessage::SelectChannel(channel as usize + self.channel_offset)
                 }
-                Button(_) => {
+                Button(TrackControl) => ChannelControlMessage::Control {
+                    channel_id: Some(channel as usize + self.channel_offset),
+                    msg: ScopedChannelControlMessage::ToggleStrobe,
+                },
+            }),
+            SideButton(b) => match b {
+                Record => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
+                    crate::strobe::ControlMessage::ToggleStrobeOn,
+                )),
+                Solo => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
+                    crate::strobe::ControlMessage::Tap,
+                )),
+                Mute => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
+                    crate::strobe::ControlMessage::FlashNow,
+                )),
+                _ => {
                     return None;
                 }
             },
-            SideButton(_) => {
-                return None;
-            }
-        }))
+        })
     }
 
     fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output) {
@@ -119,9 +133,55 @@ impl MidiHandler for NovationLaunchControlXL {
                         output,
                     ),
                     SpecificChannelStateChange::Level(_) => (),
+                    SpecificChannelStateChange::Strobe(v) => {
+                        self.emit(
+                            LaunchControlXLStateChange::ChannelButton {
+                                channel,
+                                button: LaunchControlXLChannelButton::TrackControl,
+                                state: if *v { LedState::RED } else { LedState::OFF },
+                            },
+                            output,
+                        );
+                    }
                 }
             }
             ChannelStateChange::ChannelLabels(_) => (),
         }
+    }
+
+    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {
+        use crate::strobe::StateChange::*;
+        match msg {
+            crate::master::StateChange::Strobe(s) => match s {
+                StrobeOn(v) => {
+                    self.emit(
+                        LaunchControlXLStateChange::SideButton {
+                            button: LaunchControlXLSideButton::Record,
+                            state: side_button_state(*v),
+                        },
+                        output,
+                    );
+                }
+                Ticked(v) => {
+                    self.emit(
+                        LaunchControlXLStateChange::SideButton {
+                            button: LaunchControlXLSideButton::Solo,
+                            state: side_button_state(*v),
+                        },
+                        output,
+                    );
+                }
+                _ => (),
+            },
+        }
+    }
+}
+
+fn side_button_state(v: bool) -> LedState {
+    // Side buttons can only be yellow or off...
+    if v {
+        LedState::YELLOW
+    } else {
+        LedState::OFF
     }
 }

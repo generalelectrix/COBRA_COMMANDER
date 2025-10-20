@@ -41,3 +41,8 @@ ansi-escapes = "0.2.0"
 egui_plot = "0.33.0"
 eframe = "0.32.3"
 enum_dispatch = "0.3.13"
+
+# [patch.'https://github.com/generalelectrix/tunnels']
+# tunnels = { path = "../tunnels/tunnels" }
+# tunnels_lib = { path = "../tunnels/tunnels_lib" }
+# zero_configure = { path = "../tunnels/zero_configure" }

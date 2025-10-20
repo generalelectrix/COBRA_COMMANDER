@@ -70,28 +70,18 @@ pub trait OscControl<T> {
 pub trait RenderToDmxWithAnimations {
     /// Render a control into a DMX buffer.
     ///
-    /// Handle animation values if any are provided.
-    fn render(&self, animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]);
-
-    /// Render a control into a DMX buffer, optionally making use of group controls.
-    #[allow(unused)]
-    fn render_with_group(
+    /// Handle animation values if any are provided. Also potentially make use
+    /// of the group controls.
+    fn render(
         &self,
         group_controls: &FixtureGroupControls,
         animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
-    ) {
-        self.render(animations, dmx_buf);
-    }
-
-    /// Render a control into a DMX buffer, without any animations.
-    fn render_no_anim(&self, dmx_buf: &mut [u8]) {
-        self.render(std::iter::empty(), dmx_buf);
-    }
+    );
 }
 
 pub trait RenderToDmx<T> {
-    /// Render a control into a DMX buffer using some strategy.
+    /// Render a value into a DMX buffer using some strategy.
     fn render(&self, val: &T, dmx_buf: &mut [u8]);
 }
 

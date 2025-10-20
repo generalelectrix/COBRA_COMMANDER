@@ -6,6 +6,7 @@ use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 use crate::{color::*, config::Options, fixture::prelude::*};
 
 #[derive(Debug, Control, EmitState, Update)]
+#[strobe]
 pub struct Color {
     #[channel_control]
     #[animate]
@@ -152,6 +153,7 @@ impl Color {
     ) {
         // If a color override has been provided, render it scaled by the level.
         if let Some(mut color_override) = group_controls.color.clone() {
+            // TODO: do we want to allow strobing to layer on top of a color override?
             color_override.lightness *= self.val.control.val();
             model.render(dmx_buf, color_override);
             return;
@@ -168,6 +170,12 @@ impl Color {
                 Sat => sat += anim_val,
                 Val => val += anim_val,
             }
+        }
+
+        if let Some(strobe_intensity) =
+            group_controls.strobe_intensity(crate::strobe::StrobeResponse::Short)
+        {
+            val = strobe_intensity.val();
         }
 
         match self.space {

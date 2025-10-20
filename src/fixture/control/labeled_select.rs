@@ -130,7 +130,12 @@ impl OscControl<&str> for LabeledSelect {
 }
 
 impl RenderToDmxWithAnimations for LabeledSelect {
-    fn render(&self, _animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
+    fn render(
+        &self,
+        _group_controls: &crate::fixture::FixtureGroupControls,
+        _animations: impl Iterator<Item = f64>,
+        dmx_buf: &mut [u8],
+    ) {
         let mut val = self.options[self.selected].1;
         if let Some(split) = &self.split {
             if split.split_on.val() {

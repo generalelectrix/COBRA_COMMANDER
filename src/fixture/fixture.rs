@@ -102,6 +102,9 @@ pub trait Control {
         msg: &ChannelControlMessage,
         emitter: &FixtureStateEmitter,
     ) -> anyhow::Result<bool>;
+
+    /// Return true if this fixture can strobe.
+    fn can_strobe(&self) -> bool;
 }
 
 /// Update time-driven internal state.
@@ -206,6 +209,10 @@ impl<F: AnimatedFixture> Control for FixtureWithAnimations<F> {
         emitter: &FixtureStateEmitter,
     ) -> anyhow::Result<bool> {
         self.fixture.control_from_channel(msg, emitter)
+    }
+
+    fn can_strobe(&self) -> bool {
+        self.fixture.can_strobe()
     }
 }
 

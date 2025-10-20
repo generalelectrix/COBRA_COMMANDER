@@ -1,4 +1,6 @@
 //! Profile for the Big Bar, the American DJ Freq Strobe 16.
+//!
+//! TODO: migrate strobe mechanism to the global strobe clock.
 use std::{iter::zip, time::Duration};
 
 use log::error;
@@ -10,6 +12,7 @@ const CELL_COUNT: usize = 16;
 
 #[derive(EmitState, Control, PatchFixture)]
 #[channel_count = 18]
+#[strobe]
 pub struct FreqStrobe {
     #[channel_control]
     #[animate]
@@ -43,10 +46,9 @@ impl Default for FreqStrobe {
 
 impl Update for FreqStrobe {
     fn update(&mut self, master_controls: &MasterControls, dt: std::time::Duration) {
-        let master_strobe = master_controls.strobe();
-        let run = master_strobe.on && self.run.val();
-        let rate = if master_strobe.use_master_rate {
-            master_strobe.rate
+        let run = master_controls.strobe_state.strobe_on && self.run.val();
+        let rate = if true {
+            master_controls.strobe_state.rate
         } else {
             self.rate.control.val()
         };
@@ -71,7 +73,7 @@ impl AnimatedFixture for FreqStrobe {
         dmx_buf: &mut [u8],
     ) {
         self.flasher.render(group_controls, dmx_buf);
-        self.dimmer.render_with_group(
+        self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
             dmx_buf,
@@ -147,6 +149,7 @@ fn interval_from_rate(rate: UnipolarFloat) -> Duration {
     // highest rate: 50 flash/sec => 20 ms interval
     // use exact frame intervals
     // FIXME: this should depend on the show framerate explicitly.
+    // FIXME: DMX is actually limited to 40 fps, not 50
     let raw_interval = (100. / (rate.val() + 0.09)) as u64 - 70;
     let coerced_interval = ((raw_interval / 20) * 20).max(20);
     Duration::from_millis(coerced_interval)

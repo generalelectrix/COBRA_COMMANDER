@@ -1,6 +1,10 @@
 - fixture: Color
   control_color_space: Hsluv
   patches:
-    - addr:
-        start: 1
-        count: 4
+    - addr: 1
+      kind: Rgbw
+- fixture: Color
+  group: Test
+  control_color_space: Hsluv
+  patches:
+    - addr: 5

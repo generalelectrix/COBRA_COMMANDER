@@ -3,10 +3,11 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 11]
+#[strobe]
 pub struct WizardExtreme {
     #[channel_control]
     #[animate]
-    shutter: ChannelLevelUnipolar<DimmerStrobe>,
+    shutter: ChannelLevelUnipolar<UnipolarChannel>,
     color: LabeledSelect,
     twinkle: Bool<()>,
     #[animate]
@@ -26,11 +27,9 @@ pub struct WizardExtreme {
 impl Default for WizardExtreme {
     fn default() -> Self {
         Self {
-            shutter: ShutterStrobe::new(
-                Unipolar::channel("Dimmer", 0, 0, 129),
-                Strobe::channel("Strobe", 0, 189, 130, 0),
-            )
-            .with_channel_level(),
+            shutter: Unipolar::channel("Dimmer", 0, 0, 129)
+                .strobed_long()
+                .with_channel_level(),
             color: LabeledSelect::new(
                 "Color",
                 2,
@@ -75,32 +74,35 @@ impl AnimatedFixture for WizardExtreme {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.shutter.render_with_group(
+        self.shutter.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Shutter),
             dmx_buf,
         );
-        self.reflector_rotation.render_with_group(
+        self.reflector_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::ReflectorRotation),
             dmx_buf,
         );
         if self.twinkle.val() {
             self.twinkle_speed.render(
+                group_controls,
                 animation_vals.filter(&AnimationTarget::TwinkleSpeed),
                 dmx_buf,
             );
         } else {
-            self.color.render_no_anim(dmx_buf);
+            self.color
+                .render(group_controls, std::iter::empty(), dmx_buf);
         }
-        self.gobo.render_no_anim(dmx_buf);
+        self.gobo
+            .render(group_controls, std::iter::empty(), dmx_buf);
 
-        self.drum_swivel.render_with_group(
+        self.drum_swivel.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumSwivel),
             dmx_buf,
         );
-        self.drum_rotation.render_with_group(
+        self.drum_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumRotation),
             dmx_buf,

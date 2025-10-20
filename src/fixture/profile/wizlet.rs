@@ -3,6 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 12]
+#[strobe]
 pub struct Wizlet {
     #[channel_control]
     #[animate]
@@ -75,25 +76,26 @@ impl AnimatedFixture for Wizlet {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.drum_swivel.render_with_group(
+        self.drum_swivel.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumSwivel),
             dmx_buf,
         );
-        self.drum_rotation.render_with_group(
+        self.drum_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumRotation),
             dmx_buf,
         );
-        self.gobo.render_no_anim(dmx_buf);
-        self.reflector_rotation.render_with_group(
+        self.gobo
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.reflector_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::ReflectorRotation),
             dmx_buf,
         );
         self.strobe
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
-        self.dimmer.render_with_group(
+            .render(group_controls, std::iter::empty(), dmx_buf);
+        self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
             dmx_buf,

@@ -316,6 +316,30 @@ pub enum ControlMessage {
     },
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum ChannelControlMessage {
+    Level(UnipolarFloat),
+    Knob { index: KnobIndex, value: KnobValue },
+    ToggleStrobe,
+}
+
+impl ChannelControlMessage {
+    /// Convert this control message directly into a state change.
+    ///
+    /// This code path is needed in certain places that try to directly echo a
+    /// channel command. We can't actually do this for button presses, because
+    /// we do not assume that we can store state in a hardware button.
+    pub fn as_state_change(self) -> Result<ChannelStateChange> {
+        match self {
+            Self::Level(v) => Ok(ChannelStateChange::Level(v)),
+            Self::Knob { index, value } => Ok(ChannelStateChange::Knob { index, value }),
+            Self::ToggleStrobe => {
+                bail!("cannot convert a strobe toggle command into a state change")
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum StateChange {
     SelectChannel(ChannelId),
@@ -332,6 +356,7 @@ pub type KnobIndex = u8;
 pub enum ChannelStateChange {
     Level(UnipolarFloat),
     Knob { index: KnobIndex, value: KnobValue },
+    Strobe(bool),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -363,5 +388,3 @@ impl KnobValue {
         }
     }
 }
-
-pub type ChannelControlMessage = ChannelStateChange;

@@ -181,6 +181,14 @@ impl NovationLaunchControlXL {
                     );
                 }
             }
+            ChannelButton {
+                channel,
+                button,
+                state,
+            } => {
+                let index = button.sysex_set_led_offset() + channel;
+                set_led(index, state, output);
+            }
             SideButton { button, state } => set_led(
                 match button {
                     Up => 44,
@@ -260,6 +268,12 @@ pub enum LaunchControlXLStateChange {
         button: LaunchControlXLChannelButton,
         state: LedState,
     },
+    /// Set the specified channel on or off.
+    ChannelButton {
+        channel: u8,
+        button: LaunchControlXLChannelButton,
+        state: LedState,
+    },
     #[allow(unused)]
     SideButton {
         button: LaunchControlXLSideButton,
@@ -289,6 +303,7 @@ pub struct LedState {
 impl LedState {
     pub const OFF: Self = Self { red: 0, green: 0 };
     pub const YELLOW: Self = Self { red: 3, green: 3 };
+    pub const RED: Self = Self { red: 3, green: 0 };
 
     fn as_byte(self) -> u8 {
         0b1100 + self.red + (self.green << 4)

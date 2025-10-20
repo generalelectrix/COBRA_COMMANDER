@@ -1,6 +1,7 @@
 use crate::{
     color::Hsluv,
-    master::{MasterControls, Strobe},
+    master::MasterControls,
+    strobe::{StrobeResponse, StrobeState},
 };
 
 pub mod animation_target;
@@ -13,13 +14,14 @@ mod profile;
 
 pub use fixture::{Control, EmitState, RenderMode};
 pub use group::FixtureGroup;
+use number::UnipolarFloat;
 pub use patch::Patch;
 pub use profile::*;
 
 /// Wrap up the master and group-level controls into a single struct to pass
 /// into fixtures.
 pub struct FixtureGroupControls<'a> {
-    /// Master controls.
+    /// State of the master controls.
     master_controls: &'a MasterControls,
     /// True if the fixture should render in mirrored mode.
     mirror: bool,
@@ -27,11 +29,32 @@ pub struct FixtureGroupControls<'a> {
     render_mode: Option<RenderMode>,
     /// A color value for this fixture to use in rendering.
     color: Option<Hsluv>,
+    /// Is master strobing enabled for this group?
+    strobe_enabled: bool,
 }
 
 impl<'a> FixtureGroupControls<'a> {
-    pub fn strobe(&self) -> Strobe {
-        self.master_controls.strobe()
+    // TODO: eliminate the need for this method
+    pub fn strobe(&self) -> &StrobeState {
+        &self.master_controls.strobe_state
+    }
+
+    /// Return Some containing a strobe intensity if strobe override is active.
+    ///
+    /// Return None if we should not be strobing.
+    pub fn strobe_intensity(&self, response: StrobeResponse) -> Option<UnipolarFloat> {
+        if !self.strobe_enabled {
+            return None;
+        }
+        self.master_controls.strobe_state.intensity(response)
+    }
+
+    /// Return Some containing a strobe state if strobe override is active.
+    ///
+    /// Return None if we should not be strobing.
+    pub fn strobe_shutter(&self, response: StrobeResponse) -> Option<bool> {
+        self.strobe_intensity(response)
+            .map(|i| i > UnipolarFloat::ZERO)
     }
 }
 

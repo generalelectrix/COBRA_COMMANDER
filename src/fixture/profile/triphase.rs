@@ -6,6 +6,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
+#[strobe]
 pub struct TriPhase {
     red: Bool<()>,
     green: Bool<()>,
@@ -14,7 +15,6 @@ pub struct TriPhase {
     #[channel_control]
     #[animate]
     dimmer: ChannelLevelUnipolar<UnipolarChannel>,
-    strobe: StrobeChannel,
 
     #[channel_control]
     #[animate]
@@ -27,8 +27,10 @@ impl Default for TriPhase {
             red: Bool::new_off("Red", ()),
             green: Bool::new_off("Green", ()),
             blue: Bool::new_off("Blue", ()),
-            dimmer: Unipolar::full_channel("Dimmer", 3).with_channel_level(),
-            strobe: Strobe::channel("Strobe", 2, 1, 255, 0),
+            dimmer: Unipolar::full_channel("Dimmer", 3)
+                .strobed_short()
+                .with_channel_level(),
+            // strobe: Strobe::channel("Strobe", 2, 1, 255, 0),
             rotation: Bipolar::split_channel("Rotation", 1, 120, 10, 135, 245, 0)
                 .with_detent()
                 .with_mirroring(true)
@@ -45,11 +47,13 @@ impl AnimatedFixture for TriPhase {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.dimmer
-            .render(animation_vals.filter(&AnimationTarget::Dimmer), dmx_buf);
-        self.strobe
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
-        self.rotation.render_with_group(
+        self.dimmer.render(
+            group_controls,
+            animation_vals.filter(&AnimationTarget::Dimmer),
+            dmx_buf,
+        );
+        dmx_buf[2] = 0; // strobe
+        self.rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Rotation),
             dmx_buf,

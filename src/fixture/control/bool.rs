@@ -2,7 +2,10 @@
 
 use anyhow::Context;
 
-use crate::osc::{EmitScopedOscMessage, OscControlMessage};
+use crate::{
+    osc::{EmitScopedOscMessage, OscControlMessage},
+    strobe::StrobeResponse,
+};
 
 use super::{
     ChannelControl, ChannelLevelBool, ChannelLevelHandler, OscControl, RenderToDmx,
@@ -15,6 +18,7 @@ pub struct Bool<R: RenderToDmx<bool>> {
     val: bool,
     name: String,
     render: R,
+    strobed: Option<StrobeResponse>,
 }
 
 /// A bool control that renders into a single DMX channel at full range.
@@ -28,6 +32,7 @@ impl<R: RenderToDmx<bool>> Bool<R> {
             val: false,
             name: name.into(),
             render,
+            strobed: None,
         }
     }
 
@@ -38,11 +43,24 @@ impl<R: RenderToDmx<bool>> Bool<R> {
             val: true,
             name: name.into(),
             render,
+            strobed: None,
         }
     }
 
     pub fn val(&self) -> bool {
         self.val
+    }
+
+    /// Listen to the global strobe clock, short pulse width.
+    pub fn strobed_short(mut self) -> Self {
+        self.strobed = Some(StrobeResponse::Short);
+        self
+    }
+
+    /// Listen to the global strobe clock, long pulse width.
+    pub fn strobed_long(mut self) -> Self {
+        self.strobed = Some(StrobeResponse::Long);
+        self
     }
 
     pub fn with_channel_level(self) -> ChannelLevelBool<Self> {
@@ -121,7 +139,20 @@ impl<R: RenderToDmx<bool>> OscControl<bool> for Bool<R> {
 }
 
 impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
-    fn render(&self, _animations: impl Iterator<Item = f64>, dmx_buf: &mut [u8]) {
+    fn render(
+        &self,
+        group_controls: &crate::fixture::FixtureGroupControls,
+        _animations: impl Iterator<Item = f64>,
+        dmx_buf: &mut [u8],
+    ) {
+        if group_controls.strobe_enabled {
+            if let Some(response) = self.strobed {
+                if let Some(state) = group_controls.strobe_shutter(response) {
+                    self.render.render(&state, dmx_buf);
+                    return;
+                }
+            }
+        }
         self.render.render(&self.val, dmx_buf);
     }
 }

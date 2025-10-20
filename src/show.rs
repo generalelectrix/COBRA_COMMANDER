@@ -32,8 +32,12 @@ pub struct Show {
     animation_service: Option<AnimationPublisher>,
 }
 
-const CONTROL_TIMEOUT: Duration = Duration::from_millis(1);
-const UPDATE_INTERVAL: Duration = Duration::from_millis(20);
+const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
+/// The enttec hypothetically outputs 40 fps. This seems to only truly be the
+/// case when no writes are being performed. Writing at the port framerate (or
+/// even twice as fast) seems to bring the framerate down a bit - adding about
+/// 300 us or so in between frames. Thus this slightly odd update interval.
+pub const UPDATE_INTERVAL: Duration = Duration::from_micros(25300);
 
 impl Show {
     pub fn new(
@@ -228,7 +232,8 @@ impl Show {
     /// Update the state of the show using the provided timestep.
     fn update(&mut self, delta_t: Duration) {
         self.clocks.update(delta_t, &mut self.controller);
-        self.master_controls.update(delta_t);
+        self.master_controls
+            .update(delta_t, &self.controller.sender_with_metadata(None));
         for fixture in self.patch.iter_mut() {
             fixture.update(&self.master_controls, delta_t, UnipolarFloat::ZERO);
         }

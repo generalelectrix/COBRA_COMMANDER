@@ -31,6 +31,11 @@ pub struct FixtureGroup {
     color_organ: Option<ColorOrganHsluv>,
     /// The inner implementation of the fixture.
     fixture: Box<dyn Fixture>,
+    /// Is strobing enabled for this fixture?
+    /// FIXME: it feels a bit odd to have group-level controllable parameters.
+    /// This might be a side effect of not having a data structure that
+    /// represents "channel state".
+    strobe_enabled: bool,
 }
 
 impl FixtureGroup {
@@ -46,6 +51,7 @@ impl FixtureGroup {
             fixture_configs: vec![],
             color_organ: None,
             fixture,
+            strobe_enabled: false,
         }
     }
 
@@ -98,6 +104,9 @@ impl FixtureGroup {
 
     /// Emit the current state of all controls.
     pub fn emit_state(&self, emitter: ChannelStateEmitter) {
+        emitter.emit(crate::channel::ChannelStateChange::Strobe(
+            self.strobe_enabled,
+        ));
         self.fixture
             .emit_state(&FixtureStateEmitter::new(&self.key, emitter));
     }
@@ -126,8 +135,19 @@ impl FixtureGroup {
         msg: &ChannelControlMessage,
         channel_emitter: ChannelStateEmitter,
     ) -> anyhow::Result<bool> {
-        self.fixture
-            .control_from_channel(msg, &FixtureStateEmitter::new(&self.key, channel_emitter))
+        let emitter = &FixtureStateEmitter::new(&self.key, channel_emitter);
+        if matches!(msg, ChannelControlMessage::ToggleStrobe) {
+            // If the fixture can't strobe, ignore the control.
+            if !self.fixture.can_strobe() {
+                return Ok(true);
+            }
+            self.strobe_enabled = !self.strobe_enabled;
+            emitter.emit_channel(crate::channel::ChannelStateChange::Strobe(
+                self.strobe_enabled,
+            ));
+            return Ok(true);
+        }
+        self.fixture.control_from_channel(msg, emitter)
     }
 
     /// The master controls are provided to potentially alter the update.
@@ -167,6 +187,7 @@ impl FixtureGroup {
                             lightness: color.lightness,
                         })
                     }),
+                    strobe_enabled: self.strobe_enabled,
                 },
                 dmx_buf,
             );

@@ -1,33 +1,25 @@
 //! Control profle for the Chauvet Rotosphere Q3, aka Son Of Spherion.
 use super::color::Model::Rgbw;
 
-use crate::{color::Hsv, fixture::prelude::*};
+use crate::fixture::{color::Color, prelude::*};
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 9]
+#[strobe]
 pub struct RotosphereQ3 {
+    #[channel_control]
+    #[animate_subtarget(Hue, Sat, Val)]
+    color: Color,
     #[channel_control]
     #[animate]
     rotation: ChannelKnobBipolar<BipolarSplitChannelMirror>,
-    #[channel_control]
-    #[animate]
-    hue: ChannelKnobPhase<PhaseControl<()>>,
-    #[channel_control]
-    #[animate]
-    sat: ChannelKnobUnipolar<Unipolar<()>>,
-    #[channel_control]
-    #[animate]
-    val: ChannelLevelUnipolar<Unipolar<()>>,
-    strobe: StrobeChannel,
 }
 
 impl Default for RotosphereQ3 {
     fn default() -> Self {
         Self {
-            hue: PhaseControl::new("Hue", ()).at_half().with_channel_knob(0),
-            sat: Unipolar::new("Sat", ()).at_full().with_channel_knob(1),
-            val: Unipolar::new("Val", ()).with_channel_level(),
-            strobe: Strobe::channel("Strobe", 4, 1, 250, 0),
+            color: Color::for_subcontrol(None, crate::color::ColorSpace::Hsi),
+            // strobe: Strobe::channel("Strobe", 4, 1, 250, 0),
             rotation: Bipolar::split_channel("Rotation", 5, 1, 127, 129, 255, 0)
                 .with_detent()
                 .with_mirroring(true)
@@ -45,26 +37,14 @@ impl AnimatedFixture for RotosphereQ3 {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        Rgbw.render(
+        self.color.render_for_model(
+            Rgbw,
+            group_controls,
+            &animation_vals.subtarget(),
             &mut dmx_buf[0..4],
-            Hsv {
-                hue: self
-                    .hue
-                    .control
-                    .val_with_anim(animation_vals.filter(&AnimationTarget::Hue)),
-                sat: self
-                    .sat
-                    .control
-                    .val_with_anim(animation_vals.filter(&AnimationTarget::Sat)),
-                val: self
-                    .val
-                    .control
-                    .val_with_anim(animation_vals.filter(&AnimationTarget::Val)),
-            },
         );
-        self.strobe
-            .render_with_group(group_controls, std::iter::empty(), dmx_buf);
-        self.rotation.render_with_group(
+        dmx_buf[4] = 0; // built-in strobing
+        self.rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Rotation),
             dmx_buf,
