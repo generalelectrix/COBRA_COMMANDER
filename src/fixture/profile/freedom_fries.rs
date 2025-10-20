@@ -7,6 +7,7 @@ use crate::{color::ColorSpace, fixture::prelude::*};
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 8]
+#[strobe]
 pub struct FreedomFries {
     #[channel_control]
     #[animate]
@@ -40,10 +41,16 @@ impl AnimatedFixture for FreedomFries {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.dimmer
-            .render(group_controls, animation_vals.filter(&AnimationTarget::Dimmer), dmx_buf);
-        self.speed
-            .render(group_controls, animation_vals.filter(&AnimationTarget::Speed), dmx_buf);
+        self.dimmer.render(
+            group_controls,
+            animation_vals.filter(&AnimationTarget::Dimmer),
+            dmx_buf,
+        );
+        self.speed.render(
+            group_controls,
+            animation_vals.filter(&AnimationTarget::Speed),
+            dmx_buf,
+        );
         self.color
             .render_without_animations(ColorModel::Rgb, &mut dmx_buf[1..4]);
         dmx_buf[4] = 0;

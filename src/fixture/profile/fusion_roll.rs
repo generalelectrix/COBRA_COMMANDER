@@ -2,6 +2,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 11]
+#[strobe]
 pub struct FusionRoll {
     #[channel_control]
     #[animate]
@@ -82,7 +83,8 @@ impl AnimatedFixture for FusionRoll {
             animation_vals.filter(&AnimationTarget::DrumRotation),
             dmx_buf,
         );
-        self.color.render(group_controls, std::iter::empty(), dmx_buf);
+        self.color
+            .render(group_controls, std::iter::empty(), dmx_buf);
         self.laser_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::LaserRotation),

@@ -3,6 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
+#[strobe]
 pub struct Starlight {
     #[channel_control]
     #[animate]

@@ -3,6 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 12]
+#[strobe]
 pub struct Wizlet {
     #[channel_control]
     #[animate]
@@ -85,7 +86,8 @@ impl AnimatedFixture for Wizlet {
             animation_vals.filter(&AnimationTarget::DrumRotation),
             dmx_buf,
         );
-        self.gobo.render(group_controls, std::iter::empty(), dmx_buf);
+        self.gobo
+            .render(group_controls, std::iter::empty(), dmx_buf);
         self.reflector_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::ReflectorRotation),

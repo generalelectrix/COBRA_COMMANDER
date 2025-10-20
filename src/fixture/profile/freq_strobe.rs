@@ -12,6 +12,7 @@ const CELL_COUNT: usize = 16;
 
 #[derive(EmitState, Control, PatchFixture)]
 #[channel_count = 18]
+#[strobe]
 pub struct FreqStrobe {
     #[channel_control]
     #[animate]
