@@ -23,7 +23,9 @@ use crate::{
 pub use crate::channel::ChannelId;
 use anyhow::{bail, Result};
 use color_organ::{HsluvColor, IgnoreEmitter};
+use itertools::Itertools;
 use log::error;
+use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use rust_dmx::DmxPort;
 
 pub struct Show {
@@ -38,6 +40,8 @@ pub struct Show {
     clocks: Clocks,
     animation_service: Option<AnimationPublisher>,
     preview: Previewer,
+    render_interval: ConstGenericRingBuffer<Duration, 128>,
+    render_duration: ConstGenericRingBuffer<Duration, 128>,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -74,6 +78,8 @@ impl Show {
             clocks,
             animation_service,
             preview,
+            render_interval: Default::default(),
+            render_duration: Default::default(),
         };
         show.refresh_ui();
         Ok(show)
@@ -81,13 +87,14 @@ impl Show {
 
     fn update_interval(&self) -> Duration {
         let update_adjust = self.master_controls.update_adjust.val();
-        Duration::from_micros((25000 + (update_adjust * 1000.) as i64) as u64)
+        Duration::from_micros((25000 + (update_adjust * 20000.) as i64) as u64)
     }
 
     /// Run the show forever in the current thread.
     pub fn run(&mut self) {
         let mut last_update = Instant::now();
-
+        let mut last_render = Instant::now();
+        let mut render_count = 0usize;
         loop {
             // Process a control event if one is pending.
             if let Err(err) = self.control(CONTROL_TIMEOUT) {
@@ -112,10 +119,22 @@ impl Show {
             // Render the state of the show.
             if should_render {
                 self.render();
+                let start = Instant::now();
+                self.render_interval
+                    .enqueue(start.duration_since(last_render));
+                last_render = start;
                 for (port, buffer) in self.dmx_ports.iter_mut().zip(&self.dmx_buffers) {
                     if let Err(e) = port.write(buffer) {
                         error!("DMX write error: {e:#}.");
                     }
+                }
+                self.render_duration.enqueue(start.elapsed());
+
+                render_count += 1;
+
+                if render_count % 128 == 0 {
+                    stats(&self.render_interval, "render interval", 30000);
+                    stats(&self.render_duration, "render duration", 1000);
                 }
             }
         }
@@ -365,6 +384,20 @@ impl Show {
             fixture_count: group.fixture_configs().len(),
         })
     }
+}
+
+fn stats(s: &ConstGenericRingBuffer<Duration, 128>, ctx: &str, thresh: u64) {
+    let mean = s.iter().sum::<Duration>().as_secs_f64() / (s.len() as f64) * 1000.;
+    let (min, max) = s.iter().copied().minmax().into_option().unwrap_or_default();
+    println!(
+        "{ctx}: min: {:.2}, max: {:.2}, mean: {mean:.2}, outliers: {}",
+        min.as_secs_f64() * 1000.,
+        max.as_secs_f64() * 1000.,
+        s.iter()
+            .filter(|d| **d > Duration::from_micros(thresh))
+            .map(|d| (d.as_secs_f64() * 1000000.) as usize)
+            .join(", "),
+    );
 }
 
 /// Strongly-typed top-level show control messages.

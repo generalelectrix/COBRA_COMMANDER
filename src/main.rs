@@ -290,6 +290,7 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     println!("Running show.");
 
+    let _activity = macos_latency::begin_latency_critical_activity("DMX write timing stability");
     show.run();
 
     Ok(())
@@ -333,4 +334,74 @@ fn fixture_help(args: FixArgs) -> Result<()> {
     };
     println!("{fixture}");
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+mod macos_latency {
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2::runtime::NSObject;
+    use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+
+    /// RAII guard that keeps macOS in a latency-critical state
+    pub struct LatencyCriticalActivity(Retained<NSObject>);
+
+    impl LatencyCriticalActivity {
+        /// Begin a latency-critical activity that disables timer coalescing,
+        /// App Nap, and other background throttling systemwide for this process.
+        pub fn new(reason: &str) -> Self {
+            let process_info = NSProcessInfo::processInfo();
+            let ns_reason = NSString::from_str(reason);
+
+            let options = NSActivityOptions::IdleDisplaySleepDisabled
+                | NSActivityOptions::IdleSystemSleepDisabled
+                | NSActivityOptions::UserInitiated
+                | NSActivityOptions::LatencyCritical;
+
+            let activity: Retained<NSObject> = unsafe {
+                msg_send![&*process_info, beginActivityWithOptions: options, reason: &*ns_reason]
+            };
+
+            use libc::{pthread_set_qos_class_self_np, qos_class_t};
+
+            unsafe {
+                pthread_set_qos_class_self_np(qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0);
+            }
+
+            println!("set process as latency critical");
+
+            Self(activity)
+        }
+    }
+
+    impl Drop for LatencyCriticalActivity {
+        fn drop(&mut self) {
+            let process_info = NSProcessInfo::processInfo();
+            unsafe {
+                let _: () = msg_send![&*process_info, endActivity: &*self.0];
+            }
+        }
+    }
+
+    /// Optional helper so other modules can create it without importing internals
+    pub fn begin_latency_critical_activity(reason: &str) -> LatencyCriticalActivity {
+        LatencyCriticalActivity::new(reason)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod macos_latency {
+    /// No-op stub for non-macOS platforms.
+    pub struct LatencyCriticalActivity;
+
+    impl LatencyCriticalActivity {
+        pub fn new(_reason: &str) -> Self {
+            // On non-macOS, just return a dummy guard.
+            Self
+        }
+    }
+
+    pub fn begin_latency_critical_activity(_reason: &str) -> LatencyCriticalActivity {
+        LatencyCriticalActivity::new(_reason)
+    }
 }

@@ -68,7 +68,7 @@ impl MasterControls {
             emitter.emit_float("UpdateAdjust", self.update_adjust.val());
             println!(
                 "update adjust: {}",
-                (self.update_adjust.val() * 1000.) as i64
+                (self.update_adjust.val() * 20000.) as i64
             );
             return Ok(());
         }

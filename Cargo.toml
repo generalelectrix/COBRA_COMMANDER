@@ -43,8 +43,15 @@ enum_dispatch = "0.3.13"
 url = { version = "*", features = ["serde"] }
 termion = "4.0.5"
 owo-colors = "4.2.3"
+ringbuffer = "0.16.0"
+objc2 = "0.6.3"
+objc2-foundation = "0.3.2"
+libc = "0.2.177"
 
 # [patch.'https://github.com/generalelectrix/tunnels']
 # tunnels = { path = "../tunnels/tunnels" }
 # tunnels_lib = { path = "../tunnels/tunnels_lib" }
 # zero_configure = { path = "../tunnels/zero_configure" }
+
+[patch.crates-io]
+rust_dmx = { path = "../rust-dmx" }
