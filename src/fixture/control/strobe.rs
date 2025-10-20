@@ -39,11 +39,7 @@ impl<R: RenderToDmx<Option<UnipolarFloat>>> Strobe<R> {
 
     /// Get the current value of this strobe control, if active.
     pub fn val_with_master(&self, master: &crate::strobe::StrobeState) -> Option<UnipolarFloat> {
-        let rate = if master.use_master_rate {
-            master.rate
-        } else {
-            self.rate.val()
-        };
+        let rate = master.rate;
 
         (self.on.val() && master.strobe_on).then_some(rate)
     }

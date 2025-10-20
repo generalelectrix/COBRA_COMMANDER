@@ -46,15 +46,21 @@ pub struct StrobeState {
     /// fixtures that can't be strobed well from DMX to use the legacy strobing
     /// behavior.
     pub rate: UnipolarFloat,
-    /// TODO: elimiate this parameter
-    pub use_master_rate: bool,
 }
 
 impl StrobeState {
-    pub fn intensity(&self, response: StrobeResponse) -> UnipolarFloat {
+    /// Return Some if strobing is active, with the intensity that should be
+    /// rendered.
+    ///
+    /// Note that this will always be Some if strobing is active, and the
+    /// flash state will be encoded in the inner intensity.
+    pub fn intensity(&self, response: StrobeResponse) -> Option<UnipolarFloat> {
+        if !self.strobe_on {
+            return None;
+        }
         match response {
-            StrobeResponse::Short => self.intensity_short,
-            StrobeResponse::Long => self.intensity_long,
+            StrobeResponse::Short => Some(self.intensity_short),
+            StrobeResponse::Long => Some(self.intensity_long),
         }
     }
 }
@@ -112,7 +118,6 @@ impl StrobeClock {
             intensity_short: short.then_some(self.intensity).unwrap_or_default(),
             intensity_long: long.then_some(self.intensity).unwrap_or_default(),
             rate: unipolar_from_rate(self.clock.rate_coarse),
-            use_master_rate: true,
         }
     }
 

@@ -46,7 +46,7 @@ impl Default for FreqStrobe {
 impl Update for FreqStrobe {
     fn update(&mut self, master_controls: &MasterControls, dt: std::time::Duration) {
         let run = master_controls.strobe_state.strobe_on && self.run.val();
-        let rate = if master_controls.strobe_state.use_master_rate {
+        let rate = if true {
             master_controls.strobe_state.rate
         } else {
             self.rate.control.val()

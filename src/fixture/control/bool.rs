@@ -148,12 +148,8 @@ impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
     ) {
         if group_controls.strobe_enabled {
             if let Some(response) = self.strobed {
-                let strobe_state = group_controls.strobe();
-                if strobe_state.strobe_on {
-                    self.render.render(
-                        &(strobe_state.intensity(response) > UnipolarFloat::ZERO),
-                        dmx_buf,
-                    );
+                if let Some(state) = group_controls.strobe_shutter(response) {
+                    self.render.render(&state, dmx_buf);
                     return;
                 }
             }

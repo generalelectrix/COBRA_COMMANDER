@@ -8,6 +8,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
+#[strobe]
 pub struct QuadPhase {
     red: Bool<()>,
     green: Bool<()>,
@@ -17,7 +18,6 @@ pub struct QuadPhase {
     #[channel_control]
     #[animate]
     shutter: ChannelLevelBool<BoolChannel>,
-    strobe: StrobeChannel,
 
     #[channel_control]
     #[animate]
@@ -31,8 +31,10 @@ impl Default for QuadPhase {
             green: Bool::new_off("Green", ()),
             blue: Bool::new_off("Blue", ()),
             white: Bool::new_off("White", ()),
-            shutter: Bool::full_channel("Shutter", 3).with_channel_level(),
-            strobe: Strobe::channel("Strobe", 2, 1, 255, 0),
+            shutter: Bool::full_channel("Shutter", 3)
+                .strobed_short()
+                .with_channel_level(),
+            // strobe: Strobe::channel("Strobe", 2, 1, 255, 0),
             rotation: Bipolar::split_channel("Rotation", 1, 120, 10, 135, 245, 0)
                 .with_detent()
                 .with_mirroring(true)
@@ -54,8 +56,7 @@ impl AnimatedFixture for QuadPhase {
             animation_vals.filter(&AnimationTarget::Shutter),
             dmx_buf,
         );
-        self.strobe
-            .render(group_controls, std::iter::empty(), dmx_buf);
+        dmx_buf[2] = 0; // strobe
         self.rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Rotation),

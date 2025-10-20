@@ -3,6 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 3]
+#[strobe]
 pub struct H2O {
     #[channel_control]
     #[animate]
@@ -20,7 +21,9 @@ pub struct H2O {
 impl Default for H2O {
     fn default() -> Self {
         Self {
-            dimmer: Unipolar::full_channel("Dimmer", 0).with_channel_level(),
+            dimmer: Unipolar::full_channel("Dimmer", 0)
+                .strobed_short()
+                .with_channel_level(),
             rotation: Bipolar::split_channel("Rotation", 1, 120, 10, 135, 245, 0)
                 .with_detent()
                 .with_mirroring(true)
@@ -77,7 +80,8 @@ impl AnimatedFixture for H2O {
                 dmx_buf,
             );
         } else {
-            self.fixed_color.render(group_controls, std::iter::empty(), dmx_buf);
+            self.fixed_color
+                .render(group_controls, std::iter::empty(), dmx_buf);
         }
     }
 }

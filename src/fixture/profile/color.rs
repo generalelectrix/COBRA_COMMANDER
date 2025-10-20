@@ -173,7 +173,7 @@ impl Color {
         }
 
         if let Some(strobe_intensity) =
-            group_controls.strobe_level(crate::strobe::StrobeResponse::Short)
+            group_controls.strobe_intensity(crate::strobe::StrobeResponse::Short)
         {
             val = strobe_intensity.val();
         }

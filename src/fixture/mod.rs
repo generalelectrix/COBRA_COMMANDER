@@ -34,16 +34,22 @@ pub struct FixtureGroupControls<'a> {
 }
 
 impl<'a> FixtureGroupControls<'a> {
-    pub fn strobe(&self) -> &StrobeState {
-        &self.master_controls.strobe_state
+    /// Return Some containing a strobe intensity if strobe override is active.
+    ///
+    /// Return None if we should not be strobing.
+    pub fn strobe_intensity(&self, response: StrobeResponse) -> Option<UnipolarFloat> {
+        if !self.strobe_enabled {
+            return None;
+        }
+        self.master_controls.strobe_state.intensity(response)
     }
 
-    /// Return Some containing a strobe intensity if strobe override is active.
-    pub fn strobe_level(&self, response: StrobeResponse) -> Option<UnipolarFloat> {
-        if self.strobe_enabled && self.master_controls.strobe_state.strobe_on {
-            return Some(self.master_controls.strobe_state.intensity(response));
-        }
-        None
+    /// Return Some containing a strobe state if strobe override is active.
+    ///
+    /// Return None if we should not be strobing.
+    pub fn strobe_shutter(&self, response: StrobeResponse) -> Option<bool> {
+        self.strobe_intensity(response)
+            .map(|i| i > UnipolarFloat::ZERO)
     }
 }
 
