@@ -145,6 +145,7 @@ impl FixtureGroup {
             emitter.emit_channel(crate::channel::ChannelStateChange::Strobe(
                 self.strobe_enabled,
             ));
+            return Ok(true);
         }
         self.fixture.control_from_channel(msg, emitter)
     }
