@@ -45,16 +45,14 @@ pub struct StrobeClock {
     clock: Clock,
     tap_sync: TapSync,
     tick_indicator: TransientIndicator,
-    /// The current flash state; if Some, the inner duration represents the
-    /// time remaining in the flash.  TODO: we might want to consider expressing
-    /// this in terms of integer state updates instead of a fixed time duration,
-    /// to align the strobe edges with update frame boundaries. This may provide
-    /// more stable strobing.
-    flash: Option<Duration>,
+    /// The current flash state; if Some, the flash is on.
+    /// The value inside represents the number of state updates that the flash
+    /// has been active for, so we can decide when to disable it again.
+    flash: Option<u8>,
     /// If true, the strobe clock is running.
     strobe_on: bool,
-    /// How long should a flash last?
-    flash_duration: Duration,
+    /// How many frame updates should a flash last for?
+    flash_duration: u8,
     /// Intensity of the flash.
     intensity: UnipolarFloat,
     osc_controls: GroupControlMap<ControlMessage>,
@@ -68,9 +66,9 @@ impl Default for StrobeClock {
             clock: Default::default(),
             tap_sync: Default::default(),
             tick_indicator: Default::default(),
-            flash: Default::default(),
+            flash: None,
             strobe_on: false,
-            flash_duration: Duration::from_millis(20), // DMX running at 40 fps, or 25 ms/frame. This is the shortest flash we can possibly render.
+            flash_duration: 1, // Single-frame flash.
             intensity: UnipolarFloat::ONE,
             osc_controls,
         }
@@ -92,6 +90,11 @@ impl StrobeClock {
         }
     }
 
+    /// Start a flash.
+    fn flash(&mut self) {
+        self.flash = Some(0);
+    }
+
     pub fn update(
         &mut self,
         delta_t: Duration,
@@ -107,12 +110,18 @@ impl StrobeClock {
             emit_state_change(&StateChange::Ticked(tick_state), emitter);
         }
         // Age the flash if we have one running.
-        if let Some(flash) = self.flash {
-            self.flash = flash.checked_sub(delta_t);
+        if let Some(flash_age) = self.flash {
+            if flash_age >= self.flash_duration {
+                self.flash = None;
+            } else {
+                self.flash = Some(flash_age + 1);
+            }
+            println!("flash: {:?}", self.flash);
         }
         // If the strobe clock ticked this frame and we're strobing, flash.
         if self.strobe_on && self.clock.ticked() {
-            self.flash = Some(self.flash_duration);
+            self.flash();
+            println!("ticked flash: {:?}", self.flash);
         }
     }
 
@@ -142,7 +151,8 @@ impl StrobeClock {
                 self.handle_state_change(&StrobeOn(!self.strobe_on), emitter);
             }
             FlashNow => {
-                self.flash = Some(self.flash_duration);
+                self.flash();
+                println!("flash now: {:?}", self.flash);
             }
         }
     }

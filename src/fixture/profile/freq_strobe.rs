@@ -146,6 +146,7 @@ fn interval_from_rate(rate: UnipolarFloat) -> Duration {
     // highest rate: 50 flash/sec => 20 ms interval
     // use exact frame intervals
     // FIXME: this should depend on the show framerate explicitly.
+    // FIXME: DMX is actually limited to 40 fps, not 50
     let raw_interval = (100. / (rate.val() + 0.09)) as u64 - 70;
     let coerced_interval = ((raw_interval / 20) * 20).max(20);
     Duration::from_millis(coerced_interval)

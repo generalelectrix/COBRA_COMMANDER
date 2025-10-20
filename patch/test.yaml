@@ -2,8 +2,9 @@
   control_color_space: Hsluv
   patches:
     - addr: 1
+      kind: Rgbw
 - fixture: Color
   group: Test
   control_color_space: Hsluv
   patches:
-    - addr: 4
+    - addr: 5

@@ -91,6 +91,12 @@ impl MidiHandler for NovationLaunchControlXL {
                 Record => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
                     crate::strobe::ControlMessage::ToggleStrobeOn,
                 )),
+                Solo => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
+                    crate::strobe::ControlMessage::Tap,
+                )),
+                Mute => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
+                    crate::strobe::ControlMessage::FlashNow,
+                )),
                 _ => {
                     return None;
                 }
@@ -144,18 +150,40 @@ impl MidiHandler for NovationLaunchControlXL {
     }
 
     fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {
+        use crate::strobe::StateChange::*;
         #[expect(clippy::single_match)]
         match msg {
-            crate::master::StateChange::Strobe(crate::strobe::StateChange::StrobeOn(v)) => {
-                self.emit(
-                    LaunchControlXLStateChange::SideButton {
-                        button: LaunchControlXLSideButton::Record,
-                        state: if *v { LedState::RED } else { LedState::OFF },
-                    },
-                    output,
-                );
-            }
+            crate::master::StateChange::Strobe(s) => match s {
+                StrobeOn(v) => {
+                    self.emit(
+                        LaunchControlXLStateChange::SideButton {
+                            button: LaunchControlXLSideButton::Record,
+                            state: side_button_state(*v),
+                        },
+                        output,
+                    );
+                }
+                Ticked(v) => {
+                    self.emit(
+                        LaunchControlXLStateChange::SideButton {
+                            button: LaunchControlXLSideButton::Solo,
+                            state: side_button_state(*v),
+                        },
+                        output,
+                    );
+                }
+                _ => (),
+            },
             _ => (),
         }
+    }
+}
+
+fn side_button_state(v: bool) -> LedState {
+    // Side buttons can only be yellow or off...
+    if v {
+        LedState::YELLOW
+    } else {
+        LedState::OFF
     }
 }
