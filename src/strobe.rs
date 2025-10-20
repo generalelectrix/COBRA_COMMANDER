@@ -109,7 +109,8 @@ impl StrobeClock {
     /// Return the current strobing state.
     pub fn state(&self) -> StrobeState {
         let (short, long) = if let Some(flash_age) = self.flash {
-            (flash_age < self.flash_duration_short, true)
+            let short_on = flash_age <= self.flash_duration_short;
+            (short_on, true)
         } else {
             (false, false)
         };
@@ -140,6 +141,11 @@ impl StrobeClock {
         {
             emit_state_change(&StateChange::Ticked(tick_state), emitter);
         }
+        // If the strobe clock ticked this frame and we're strobing, flash.
+        if self.strobe_on && self.clock.ticked() {
+            self.flash();
+        }
+
         // Age the flash if we have one running.
         if let Some(flash_age) = self.flash {
             if flash_age >= self.flash_duration_long {
@@ -147,10 +153,6 @@ impl StrobeClock {
             } else {
                 self.flash = Some(flash_age + 1);
             }
-        }
-        // If the strobe clock ticked this frame and we're strobing, flash.
-        if self.strobe_on && self.clock.ticked() {
-            self.flash();
         }
     }
 
