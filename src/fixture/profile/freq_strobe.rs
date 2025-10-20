@@ -1,4 +1,6 @@
 //! Profile for the Big Bar, the American DJ Freq Strobe 16.
+//!
+//! TODO: migrate strobe mechanism to the global strobe clock.
 use std::{iter::zip, time::Duration};
 
 use log::error;

@@ -5,9 +5,10 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
+#[strobe]
 pub struct Colordynamic {
     #[channel_control]
-    shutter: ChannelLevelBool<FullShutterStrobe>,
+    shutter: ChannelLevelBool<BoolChannel>,
     #[channel_control]
     #[animate]
     color_position: ChannelKnobUnipolar<UnipolarChannel>,
@@ -23,11 +24,14 @@ pub struct Colordynamic {
 impl Default for Colordynamic {
     fn default() -> Self {
         Colordynamic {
-            shutter: ShutterStrobe::new(
-                Bool::full_channel("ShutterOpen", 3),
-                Strobe::channel("Strobe", 3, 16, 239, 255),
-            )
-            .with_channel_level(),
+            shutter: Bool::full_channel("ShutterOpen", 3)
+                .strobed()
+                .with_channel_level(),
+            // shutter: ShutterStrobe::new(
+            //     Bool::full_channel("ShutterOpen", 3),
+            //     Strobe::channel("Strobe", 3, 16, 239, 255),
+            // )
+            // .with_channel_level(),
             color_rotation_on: Bool::new_off("ColorRotationOn", ()),
             color_rotation_speed: Unipolar::channel("ColorRotationSpeed", 1, 128, 255)
                 .with_channel_knob(1),

@@ -3,6 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 1]
+#[strobe]
 pub struct Dimmer {
     #[channel_control]
     #[animate]
@@ -12,7 +13,9 @@ pub struct Dimmer {
 impl Default for Dimmer {
     fn default() -> Self {
         Self {
-            level: Unipolar::full_channel("Level", 0).with_channel_level(),
+            level: Unipolar::full_channel("Level", 0)
+                .strobed()
+                .with_channel_level(),
         }
     }
 }

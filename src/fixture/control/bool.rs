@@ -1,6 +1,7 @@
 //! A control for boolean values.
 
 use anyhow::Context;
+use number::UnipolarFloat;
 
 use crate::osc::{EmitScopedOscMessage, OscControlMessage};
 
@@ -15,6 +16,8 @@ pub struct Bool<R: RenderToDmx<bool>> {
     val: bool,
     name: String,
     render: R,
+    /// If true, enable override/modulation by the global strobe clock.
+    strobed: bool,
 }
 
 /// A bool control that renders into a single DMX channel at full range.
@@ -28,6 +31,7 @@ impl<R: RenderToDmx<bool>> Bool<R> {
             val: false,
             name: name.into(),
             render,
+            strobed: false,
         }
     }
 
@@ -38,11 +42,18 @@ impl<R: RenderToDmx<bool>> Bool<R> {
             val: true,
             name: name.into(),
             render,
+            strobed: false,
         }
     }
 
     pub fn val(&self) -> bool {
         self.val
+    }
+
+    /// Listen to the global strobe clock.
+    pub fn strobed(mut self) -> Self {
+        self.strobed = true;
+        self
     }
 
     pub fn with_channel_level(self) -> ChannelLevelBool<Self> {
@@ -123,10 +134,18 @@ impl<R: RenderToDmx<bool>> OscControl<bool> for Bool<R> {
 impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
     fn render(
         &self,
-        _group_controls: &crate::fixture::FixtureGroupControls,
+        group_controls: &crate::fixture::FixtureGroupControls,
         _animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
+        if self.strobed && group_controls.strobe_enabled {
+            let strobe_state = group_controls.strobe();
+            if strobe_state.strobe_on {
+                self.render
+                    .render(&(strobe_state.intensity > UnipolarFloat::ZERO), dmx_buf);
+                return;
+            }
+        }
         self.render.render(&self.val, dmx_buf);
     }
 }

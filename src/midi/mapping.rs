@@ -151,7 +151,6 @@ impl MidiHandler for NovationLaunchControlXL {
 
     fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {
         use crate::strobe::StateChange::*;
-        #[expect(clippy::single_match)]
         match msg {
             crate::master::StateChange::Strobe(s) => match s {
                 StrobeOn(v) => {
