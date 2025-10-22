@@ -85,7 +85,7 @@ type ChaseIndex = usize;
 
 #[derive(Default)]
 struct Flasher {
-    state: FlashState,
+    state: FlashState<CELL_COUNT>,
     selected_chase: ChaseIndex,
     selected_multiplier: usize,
     chases: Chases,
@@ -168,22 +168,22 @@ fn interval_from_rate(rate: UnipolarFloat) -> Duration {
     Duration::from_millis(coerced_interval)
 }
 
-struct FlashState {
-    cells: [Option<Flash>; CELL_COUNT],
+struct FlashState<const N: usize> {
+    cells: [Option<Flash>; N],
     /// How many frames should we leave a flash on?
     flash_len: u8,
 }
 
-impl Default for FlashState {
+impl<const N: usize> Default for FlashState<N> {
     fn default() -> Self {
         FlashState {
-            cells: Default::default(),
+            cells: [None; N],
             flash_len: 1,
         }
     }
 }
 
-impl FlashState {
+impl<const N: usize> FlashState<N> {
     pub fn set(&mut self, cell: CellIndex) {
         if cell >= CELL_COUNT {
             error!("FreqStrobe cell index {cell} out of range.");
@@ -205,16 +205,16 @@ impl FlashState {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 struct Flash {
     /// How many DMX frames has this flash been on for?
     age: u8,
 }
 
 struct Chases {
-    singles: Vec<Box<dyn Chase>>,
-    doubles: Vec<Box<dyn Chase>>,
-    quads: Vec<Box<dyn Chase>>,
+    singles: Vec<Box<dyn Chase<CELL_COUNT>>>,
+    doubles: Vec<Box<dyn Chase<CELL_COUNT>>>,
+    quads: Vec<Box<dyn Chase<CELL_COUNT>>>,
 }
 
 fn two_flash_spread() -> impl DoubleEndedIterator<Item = (CellIndex, CellIndex)> {
@@ -243,11 +243,11 @@ impl Default for Chases {
 
         // random single pulses, non-repeating until all cells flash
         // added manually to always strobe the right number of patterns
-        p.add_single(RandomPattern::take(1));
+        p.add_single(RandomPattern::<CELL_COUNT>::take(1));
         // random pairs, non-repeating until all cells flash
-        p.add_double(RandomPattern::take(2));
+        p.add_double(RandomPattern::<CELL_COUNT>::take(2));
         // random quads, non-repeating until all cells flash
-        p.add_quad(RandomPattern::take(4));
+        p.add_quad(RandomPattern::<CELL_COUNT>::take(4));
         p
     }
 }
@@ -258,7 +258,7 @@ impl Chases {
     }
 
     /// Add a chase, automatically creating multipliers using Lockstep.
-    pub fn add_auto_mult(&mut self, chase: impl Chase + 'static + Clone) {
+    pub fn add_auto_mult(&mut self, chase: impl Chase<CELL_COUNT> + 'static + Clone) {
         self.add_single(chase.clone());
         let double = Lockstep {
             c0: chase.clone(),
@@ -274,18 +274,21 @@ impl Chases {
     }
 
     /// Add a single-flash chase.
-    fn add_single(&mut self, chase: impl Chase + 'static) {
-        self.singles.push(Box::new(chase) as Box<dyn Chase>);
+    fn add_single(&mut self, chase: impl Chase<CELL_COUNT> + 'static) {
+        self.singles
+            .push(Box::new(chase) as Box<dyn Chase<CELL_COUNT>>);
     }
 
     /// Add a double-flash (2x mult) chase.
-    fn add_double(&mut self, chase: impl Chase + 'static) {
-        self.doubles.push(Box::new(chase) as Box<dyn Chase>);
+    fn add_double(&mut self, chase: impl Chase<CELL_COUNT> + 'static) {
+        self.doubles
+            .push(Box::new(chase) as Box<dyn Chase<CELL_COUNT>>);
     }
 
     /// Add a quad-flash (4x mult) chase.
-    fn add_quad(&mut self, chase: impl Chase + 'static) {
-        self.quads.push(Box::new(chase) as Box<dyn Chase>);
+    fn add_quad(&mut self, chase: impl Chase<CELL_COUNT> + 'static) {
+        self.quads
+            .push(Box::new(chase) as Box<dyn Chase<CELL_COUNT>>);
     }
 
     pub fn next(
@@ -293,7 +296,7 @@ impl Chases {
         i: ChaseIndex,
         multiplier: usize,
         reverse: bool,
-        state: &mut FlashState,
+        state: &mut FlashState<CELL_COUNT>,
     ) {
         let collection = match multiplier {
             0 => &mut self.singles,
@@ -329,19 +332,19 @@ impl Chases {
     }
 }
 
-trait Chase {
+trait Chase<const N: usize> {
     /// Add flashes into the provided state corresponding to the next chase step.
     /// Update the state of the chase to the next step.
     /// If reverse is true, roll the chase backwards if possible.
-    fn set_next(&mut self, reverse: bool, state: &mut FlashState);
+    fn set_next(&mut self, reverse: bool, state: &mut FlashState<N>);
 
     /// Reset this chase to the beginning.
     fn reset(&mut self);
 }
 
 #[derive(Clone)]
-struct PatternArray<const N: usize> {
-    items: Vec<[CellIndex; N]>,
+struct PatternArray<const P: usize> {
+    items: Vec<[CellIndex; P]>,
     next_item: usize,
 }
 
@@ -371,8 +374,8 @@ impl PatternArray<2> {
     }
 }
 
-impl<const N: usize> Chase for PatternArray<N> {
-    fn set_next(&mut self, reverse: bool, state: &mut FlashState) {
+impl<const P: usize, const N: usize> Chase<N> for PatternArray<P> {
+    fn set_next(&mut self, reverse: bool, state: &mut FlashState<N>) {
         for cell in self.items[self.next_item] {
             state.set(cell);
         }
@@ -394,16 +397,18 @@ impl<const N: usize> Chase for PatternArray<N> {
 }
 
 #[derive(Clone)]
-struct RandomPattern {
+struct RandomPattern<const N: usize> {
     rng: SmallRng,
-    cells: [u8; CELL_COUNT],
+    cells: [u8; N],
     next_item: usize,
     /// How many items should we take at a time?
-    /// Needs to be an even divisor of cell count, so basically 1, 2, or 4.
+    /// Needs to be an even divisor of cell count to always show this many;
+    /// otherwise, we will reset in the middle of a step and potentially show
+    /// fewer flashes.
     take: u8,
 }
 
-impl RandomPattern {
+impl<const C: usize> RandomPattern<C> {
     pub fn take(take: u8) -> Self {
         let mut rp = Self {
             rng: SmallRng::seed_from_u64(123456789),
@@ -415,7 +420,7 @@ impl RandomPattern {
         rp
     }
 
-    fn set_next_single(&mut self, state: &mut FlashState) {
+    fn set_next_single(&mut self, state: &mut FlashState<C>) {
         if self.next_item >= self.cells.len() {
             self.reset();
         }
@@ -424,13 +429,13 @@ impl RandomPattern {
     }
 }
 
-impl Chase for RandomPattern {
+impl<const C: usize> Chase<C> for RandomPattern<C> {
     fn reset(&mut self) {
         self.cells.shuffle(&mut self.rng);
         self.next_item = 0;
     }
 
-    fn set_next(&mut self, _reverse: bool, state: &mut FlashState) {
+    fn set_next(&mut self, _reverse: bool, state: &mut FlashState<C>) {
         for _ in 0..self.take {
             self.set_next_single(state);
         }
@@ -438,13 +443,13 @@ impl Chase for RandomPattern {
 }
 
 #[derive(Clone)]
-struct Lockstep<C0: Chase, C1: Chase> {
+struct Lockstep<const C: usize, C0: Chase<C>, C1: Chase<C>> {
     c0: C0,
     c1: C1,
     offset: usize,
 }
 
-impl<C0: Chase, C1: Chase> Chase for Lockstep<C0, C1> {
+impl<const C: usize, C0: Chase<C>, C1: Chase<C>> Chase<C> for Lockstep<C, C0, C1> {
     fn reset(&mut self) {
         self.c0.reset();
         self.c1.reset();
@@ -455,7 +460,7 @@ impl<C0: Chase, C1: Chase> Chase for Lockstep<C0, C1> {
         }
     }
 
-    fn set_next(&mut self, reverse: bool, state: &mut FlashState) {
+    fn set_next(&mut self, reverse: bool, state: &mut FlashState<C>) {
         self.c0.set_next(reverse, state);
         self.c1.set_next(reverse, state);
     }
