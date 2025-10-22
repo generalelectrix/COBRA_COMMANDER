@@ -31,9 +31,9 @@ impl MasterControls {
             entity: GROUP,
             emitter,
         };
-        self.strobe_clock
+        self.strobe_state = self
+            .strobe_clock
             .update(delta_t, self.audio_envelope, emitter);
-        self.strobe_state = self.strobe_clock.state();
     }
 
     pub fn emit_state(&self, emitter: &dyn EmitControlMessage) {

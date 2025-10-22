@@ -17,7 +17,7 @@ pub struct FreqStrobe {
     #[channel_control]
     #[animate]
     dimmer: ChannelLevelUnipolar<UnipolarChannel>,
-    run: Bool<()>,
+    follow_master: Bool<()>,
     #[channel_control]
     rate: ChannelKnobUnipolar<Unipolar<()>>,
     pattern: IndexedSelect<()>,
@@ -34,7 +34,7 @@ impl Default for FreqStrobe {
         Self {
             dimmer: Unipolar::channel("Dimmer", 16, 1, 255).with_channel_level(),
             // strobe: Strobe::channel("Strobe", 17, 9, 131, 0),
-            run: Bool::new_off("Run", ()),
+            follow_master: Bool::new_on("FollowMaster", ()),
             rate: Unipolar::new("Rate", ()).with_channel_knob(0),
             pattern: IndexedSelect::new("Chase", flasher.len(), false, ()),
             multiplier: IndexedSelect::new("Multiplier", 3, false, ()),
@@ -46,16 +46,15 @@ impl Default for FreqStrobe {
 
 impl Update for FreqStrobe {
     fn update(&mut self, master_controls: &MasterControls, dt: std::time::Duration) {
-        let run = master_controls.strobe_state.strobe_on && self.run.val();
-        let rate = if true {
-            master_controls.strobe_state.rate
+        let update = if self.follow_master.val() {
+            UpdateBehavior::Master(master_controls.strobe_state.ticked)
         } else {
-            self.rate.control.val()
+            UpdateBehavior::Internal(self.rate.control.val())
         };
         self.flasher.update(
             dt,
-            run,
-            rate,
+            master_controls.strobe_state.strobe_on,
+            update,
             self.pattern.selected(),
             self.multiplier.selected(),
             self.reverse.val(),
@@ -99,6 +98,13 @@ fn render_state_iter<'a>(iter: impl Iterator<Item = &'a Option<Flash>>, dmx_buf:
     }
 }
 
+enum UpdateBehavior {
+    /// Update flasher state using a continuous rate parameter.
+    Internal(UnipolarFloat),
+    /// Master control active - trigger a flash if true.
+    Master(bool),
+}
+
 impl Flasher {
     pub fn len(&self) -> usize {
         self.chases.len()
@@ -116,7 +122,7 @@ impl Flasher {
         &mut self,
         dt: Duration,
         run: bool,
-        rate: UnipolarFloat,
+        behavior: UpdateBehavior,
         selected_chase: ChaseIndex,
         selected_multiplier: usize,
         reverse: bool,
@@ -132,7 +138,13 @@ impl Flasher {
             self.chases.reset(selected_chase, selected_multiplier);
         }
 
-        if run && self.last_flash_age >= interval_from_rate(rate) {
+        let trigger_flash = match behavior {
+            UpdateBehavior::Internal(rate) => self.last_flash_age >= interval_from_rate(rate),
+
+            UpdateBehavior::Master(flash) => flash,
+        };
+
+        if run && trigger_flash {
             self.chases.next(
                 self.selected_chase,
                 self.selected_multiplier,
@@ -178,6 +190,7 @@ impl FlashState {
         self.cells[cell] = Some(Flash::default());
     }
 
+    /// Age all of the flashes and clear them if they are done.
     pub fn update(&mut self, dt: Duration) {
         for flash in &mut self.cells {
             if let Some(f) = flash {
