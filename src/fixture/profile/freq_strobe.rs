@@ -156,27 +156,29 @@ impl Flasher {
     }
 }
 
+/// Convert a rate scale control into a duration, coercing all values into
+/// integer numbers of frames to avoid aliasing.
 fn interval_from_rate(rate: UnipolarFloat) -> Duration {
     // lowest rate: 1 flash/sec => 1 sec interval
-    // highest rate: 50 flash/sec => 20 ms interval
+    // highest rate: 40 flash/sec => 25 ms interval
     // use exact frame intervals
     // FIXME: this should depend on the show framerate explicitly.
-    // FIXME: DMX is actually limited to 40 fps, not 50
-    let raw_interval = (100. / (rate.val() + 0.09)) as u64 - 70;
-    let coerced_interval = ((raw_interval / 20) * 20).max(20);
+    let raw_interval = (100. / (rate.val() + 0.09)) as u64 - 66;
+    let coerced_interval = ((raw_interval / 25) * 25).max(25);
     Duration::from_millis(coerced_interval)
 }
 
 struct FlashState {
     cells: [Option<Flash>; CELL_COUNT],
-    flash_len: Duration,
+    /// How many frames should we leave a flash on?
+    flash_len: u8,
 }
 
 impl Default for FlashState {
     fn default() -> Self {
         FlashState {
             cells: Default::default(),
-            flash_len: Duration::from_millis(40),
+            flash_len: 1,
         }
     }
 }
@@ -191,10 +193,10 @@ impl FlashState {
     }
 
     /// Age all of the flashes and clear them if they are done.
-    pub fn update(&mut self, dt: Duration) {
+    pub fn update(&mut self, _dt: Duration) {
         for flash in &mut self.cells {
             if let Some(f) = flash {
-                f.age += dt;
+                f.age += 1;
                 if f.age >= self.flash_len {
                     *flash = None;
                 }
@@ -205,7 +207,8 @@ impl FlashState {
 
 #[derive(Debug, Default)]
 struct Flash {
-    age: Duration,
+    /// How many DMX frames has this flash been on for?
+    age: u8,
 }
 
 struct Chases {
