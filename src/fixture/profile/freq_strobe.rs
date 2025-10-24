@@ -124,7 +124,7 @@ impl Flasher {
         selected_multiplier: usize,
         reverse: bool,
     ) {
-        self.state.update(dt);
+        self.state.update(1);
         self.last_flash_age += dt;
 
         let reset = selected_chase != self.selected_chase

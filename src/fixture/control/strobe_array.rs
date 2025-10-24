@@ -36,10 +36,10 @@ impl<const N: usize> FlashState<N> {
     }
 
     /// Age all of the flashes and clear them if they are done.
-    pub fn update(&mut self, _dt: Duration) {
+    pub fn update(&mut self, n_frames: u8) {
         for flash in &mut self.cells {
             if let Some(f) = flash {
-                f.age += 1;
+                f.age += n_frames;
                 if f.age >= self.flash_len {
                     *flash = None;
                 }
