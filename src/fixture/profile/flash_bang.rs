@@ -21,27 +21,40 @@ pub struct FlashBang {
     flasher: Box<dyn UnsizedFlasher>,
 }
 
-impl Default for FlashBang {
-    fn default() -> Self {
-        Self {
-            intensity: Unipolar::new("Intensity", ())
-                .at(UnipolarFloat::new(0.1))
-                .with_channel_knob(0),
-        }
-    }
-}
-
 impl PatchFixture for FlashBang {
-    fn patch_config(options: &mut Options) -> Result<PatchConfig> {
-        let double = options
-            .remove("double")
+    const NAME: FixtureType = FixtureType("FlashBang");
+
+    fn group_options() -> Vec<(String, PatchOption)> {
+        vec![("paired".to_string(), PatchOption::Bool)]
+    }
+
+    fn new(options: &mut Options) -> Result<Self> {
+        let paired = options
+            .remove("paired")
             .map(|d| {
                 d.parse::<bool>().with_context(|| {
-                    format!("invalid \"double\" option \"{d}\"; must be true or false")
+                    format!("invalid \"paired\" option \"{d}\"; must be true or false")
                 })
             })
             .transpose()?
             .unwrap_or_default();
+
+        let flasher = if paired {
+            Box::new(paired_flasher()) as Box<dyn UnsizedFlasher>
+        } else {
+            Box::new(single_flasher())
+        };
+
+        Ok(Self {
+            intensity: Unipolar::new("Intensity", ())
+                .at(UnipolarFloat::new(0.1))
+                .with_channel_knob(0),
+            flasher,
+        })
+    }
+
+    fn patch_options() -> Vec<(String, PatchOption)> {
+        vec![]
     }
 }
 
@@ -52,6 +65,13 @@ trait UnsizedFlasher {
     fn update(&mut self, run: bool, trigger_flash: bool, selected_chase: ChaseIndex, reverse: bool);
 }
 
+fn single_flasher() -> Flasher<5> {
+    todo!();
+}
+
+fn paired_flasher() -> Flasher<10> {
+    todo!();
+}
 #[derive(Default)]
 struct Flasher<const N: usize> {
     state: FlashState<N>,
