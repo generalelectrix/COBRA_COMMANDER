@@ -90,6 +90,16 @@ impl<const P: usize, const N: usize> PatternArray<P, N> {
     }
 }
 
+impl<const N: usize> PatternArray<N, N> {
+    pub fn all() -> Self {
+        let mut cells = [0usize; N];
+        for (i, c) in cells.iter_mut().enumerate() {
+            *c = i;
+        }
+        Self::new(vec![cells])
+    }
+}
+
 impl<const N: usize> PatternArray<1, N> {
     pub fn singles(cells: impl Iterator<Item = CellIndex>) -> Self {
         Self::new(cells.map(|i| [i]).collect())

@@ -1,3 +1,4 @@
 - fixture: FlashBang
+  paired: "true"
   patches:
     - addr: 1

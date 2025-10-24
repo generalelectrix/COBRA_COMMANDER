@@ -123,14 +123,34 @@ trait UnsizedFlasher {
 }
 
 fn single_flasher() -> Flasher<5> {
-    let mut f: Flasher<5> = Default::default();
-    f.add_chase(PatternArray::singles(0..5));
+    const CELLS: usize = 5;
+    let mut f: Flasher<CELLS> = Default::default();
+    // all
+    f.add_chase(PatternArray::all());
+    // single pulse
+    f.add_chase(PatternArray::singles(0..CELLS));
+    // single pulse bounce
+    f.add_chase(PatternArray::singles(
+        (0..CELLS).chain((1..CELLS - 1).rev()),
+    ));
+    // random
+    f.add_chase(RandomPattern::<CELLS>::take(1));
     f
 }
 
 fn paired_flasher() -> Flasher<10> {
-    let mut f: Flasher<10> = Default::default();
-    f.add_chase(PatternArray::singles(0..10));
+    const CELLS: usize = 10;
+    let mut f: Flasher<CELLS> = Default::default();
+    // all
+    f.add_chase(PatternArray::all());
+    // single pulse
+    f.add_chase(PatternArray::singles(0..CELLS));
+    // single pulse bounce
+    f.add_chase(PatternArray::singles(
+        (0..CELLS).chain((1..CELLS - 1).rev()),
+    ));
+    // random
+    f.add_chase(RandomPattern::<CELLS>::take(1));
     f
 }
 #[derive(Default)]
