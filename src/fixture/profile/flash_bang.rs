@@ -7,6 +7,7 @@
 use anyhow::Context;
 use log::error;
 
+use crate::color::print_color;
 use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
 
@@ -89,7 +90,7 @@ impl AnimatedFixture for FlashBang {
 
     fn render_with_animations(
         &self,
-        _group_controls: &FixtureGroupControls,
+        group_controls: &FixtureGroupControls,
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
@@ -101,8 +102,14 @@ impl AnimatedFixture for FlashBang {
                 .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity)),
         );
         for (state, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
-            *chan = if state.is_some() { intensity } else { 0 };
+            *chan = if group_controls.strobe_enabled && state.is_some() {
+                intensity
+            } else {
+                0
+            };
+            print_color([*chan, *chan, *chan]);
         }
+        println!();
     }
 }
 

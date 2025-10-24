@@ -1,6 +1,7 @@
 //! Some stateful controls for arrays of things that can strobe.
 //!
 //! Provides flash patterns, including sequences and true randomness.
+
 use log::error;
 use rand::prelude::*;
 
@@ -70,16 +71,16 @@ pub trait Chase<const N: usize> {
 
 /// A determinisitc sequence of cells.
 #[derive(Clone)]
-pub struct PatternArray<const P: usize> {
+pub struct PatternArray<const P: usize, const N: usize> {
     items: Vec<[CellIndex; P]>,
     next_item: usize,
 }
 
-impl<const N: usize> PatternArray<N> {
-    pub fn new(items: Vec<[CellIndex; N]>) -> Self {
+impl<const P: usize, const N: usize> PatternArray<P, N> {
+    pub fn new(items: Vec<[CellIndex; P]>) -> Self {
         for pattern in &items {
             for cell in pattern {
-                assert!(*cell < N);
+                assert!(*cell < N, "{cell} >= {N}");
             }
         }
         Self {
@@ -89,19 +90,19 @@ impl<const N: usize> PatternArray<N> {
     }
 }
 
-impl PatternArray<1> {
+impl<const N: usize> PatternArray<1, N> {
     pub fn singles(cells: impl Iterator<Item = CellIndex>) -> Self {
         Self::new(cells.map(|i| [i]).collect())
     }
 }
 
-impl PatternArray<2> {
+impl<const N: usize> PatternArray<2, N> {
     pub fn doubles(cells: impl Iterator<Item = (CellIndex, CellIndex)>) -> Self {
         Self::new(cells.map(|(i0, i1)| [i0, i1]).collect())
     }
 }
 
-impl<const P: usize, const N: usize> Chase<N> for PatternArray<P> {
+impl<const P: usize, const N: usize> Chase<N> for PatternArray<P, N> {
     fn set_next(&mut self, reverse: bool, state: &mut FlashState<N>) {
         for cell in self.items[self.next_item] {
             state.set(cell);
