@@ -75,6 +75,8 @@ impl CreatePatchConfig for Wled {
     }
 }
 
+register_patcher!(Wled);
+
 impl NonAnimatedFixture for Wled {
     fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}
 }
