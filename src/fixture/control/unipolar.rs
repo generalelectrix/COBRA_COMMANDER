@@ -39,8 +39,13 @@ impl<R: RenderToDmx<UnipolarFloat>> Unipolar<R> {
     }
 
     /// Set the initial value of this control to 1.
-    pub fn at_full(mut self) -> Self {
-        self.val = UnipolarFloat::ONE;
+    pub fn at_full(self) -> Self {
+        self.at(UnipolarFloat::ONE)
+    }
+
+    /// Set the initial value of this control to the provided value.
+    pub fn at(mut self, at: UnipolarFloat) -> Self {
+        self.val = at;
         self
     }
 

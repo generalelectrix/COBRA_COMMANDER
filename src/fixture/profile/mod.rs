@@ -8,6 +8,7 @@ pub mod cosmic_burst;
 pub mod dimmer;
 pub mod empty_channel;
 pub mod faderboard;
+pub mod flash_bang;
 pub mod freedom_fries;
 pub mod freq_strobe;
 pub mod fusion_roll;

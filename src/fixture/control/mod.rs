@@ -11,6 +11,7 @@ mod indexed_select;
 mod labeled_select;
 mod phase;
 mod strobe;
+pub mod strobe_array;
 mod unipolar;
 
 pub use bipolar::*;

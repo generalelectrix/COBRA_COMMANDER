@@ -37,7 +37,16 @@ pub enum StrobeResponse {
 #[derive(Default, Debug, Clone, Copy)]
 pub struct StrobeState {
     /// If true, strobing behavior should be active.
+    ///
+    /// This can be because the global strobe clock is running, or because a
+    /// manually-triggered flash is active.
     pub strobe_on: bool,
+
+    /// true if the strobe clock ticked during the last update.
+    ///
+    /// Fixtures that manage their own internal flash state can use this during
+    /// their update method to trigger flashes.
+    pub ticked: bool,
     /// Render this intensity for short-flash fixtures.
     intensity_short: UnipolarFloat,
     /// Render this intensity for long-flash fixtures.
@@ -107,7 +116,7 @@ impl Default for StrobeClock {
 
 impl StrobeClock {
     /// Return the current strobing state.
-    pub fn state(&self) -> StrobeState {
+    fn state(&self) -> StrobeState {
         let (short, long) = if let Some(flash_age) = self.flash {
             let short_on = flash_age <= self.flash_duration_short;
             (short_on, true)
@@ -116,6 +125,7 @@ impl StrobeClock {
         };
         StrobeState {
             strobe_on: self.strobe_on || self.flash.is_some(),
+            ticked: self.clock.ticked(),
             intensity_short: short.then_some(self.intensity).unwrap_or_default(),
             intensity_long: long.then_some(self.intensity).unwrap_or_default(),
             rate: unipolar_from_rate(self.clock.rate_coarse),
@@ -127,12 +137,13 @@ impl StrobeClock {
         self.flash = Some(0);
     }
 
+    /// Update the strobe clock state. Return the updated rendered state.
     pub fn update(
         &mut self,
         delta_t: Duration,
         audio_envelope: UnipolarFloat,
         emitter: &ScopedControlEmitter,
-    ) {
+    ) -> StrobeState {
         self.clock.update_state(delta_t, audio_envelope);
         // Update the tap sync/rate flasher.
         if let Some(tick_state) = self
@@ -154,6 +165,8 @@ impl StrobeClock {
                 self.flash = Some(flash_age + 1);
             }
         }
+
+        self.state()
     }
 
     pub fn emit_state(&self, emitter: &ScopedControlEmitter) {

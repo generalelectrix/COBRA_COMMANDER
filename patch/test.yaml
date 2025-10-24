@@ -1,10 +1,4 @@
-- fixture: Color
-  control_color_space: Hsluv
+- fixture: FlashBang
+  paired: "true"
   patches:
     - addr: 1
-      kind: Rgbw
-- fixture: Color
-  group: Test
-  control_color_space: Hsluv
-  patches:
-    - addr: 5
