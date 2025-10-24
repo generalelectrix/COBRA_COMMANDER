@@ -1,11 +1,9 @@
 //! Control profile for WLED via http/json API.
-use std::str::FromStr;
 
 use crate::{
     fixture::prelude::*,
     wled::{WledControlMessage, WledController},
 };
-use anyhow::anyhow;
 use reqwest::Url;
 use wled_json_api_library::structures::state::{Seg, State};
 
