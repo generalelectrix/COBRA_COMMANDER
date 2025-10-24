@@ -116,11 +116,15 @@ trait UnsizedFlasher {
 }
 
 fn single_flasher() -> Flasher<5> {
-    todo!();
+    let mut f: Flasher<5> = Default::default();
+    f.add_chase(PatternArray::singles(0..5));
+    f
 }
 
 fn paired_flasher() -> Flasher<10> {
-    todo!();
+    let mut f: Flasher<10> = Default::default();
+    f.add_chase(PatternArray::singles(0..10));
+    f
 }
 #[derive(Default)]
 struct Flasher<const N: usize> {
@@ -160,6 +164,10 @@ impl<const N: usize> UnsizedFlasher for Flasher<N> {
 }
 
 impl<const N: usize> Flasher<N> {
+    pub fn add_chase(&mut self, c: impl Chase<N> + 'static) {
+        self.chases.push(Box::new(c));
+    }
+
     fn reset(&mut self) {
         let Some(chase) = self.chases.get_mut(self.selected_chase) else {
             error!(
