@@ -60,7 +60,17 @@ impl PatchFixture for Leko {
         Ok(Default::default())
     }
 
-    fn patch_config(options: &mut Options) -> anyhow::Result<PatchConfig> {
+    fn group_options() -> Vec<(String, PatchOption)> {
+        vec![]
+    }
+
+    fn patch_options() -> Vec<(String, PatchOption)> {
+        vec![("kind".to_string(), Model::patch_option())]
+    }
+}
+
+impl CreatePatchConfig for Leko {
+    fn patch_config(&self, options: &mut Options) -> anyhow::Result<PatchConfig> {
         let Some(kind) = options.remove("kind") else {
             bail!("missing required option: kind");
         };
@@ -70,14 +80,6 @@ impl PatchFixture for Leko {
             channel_count: model.channel_count(),
             render_mode: Some(model.render_mode()),
         })
-    }
-
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![("kind".to_string(), Model::patch_option())]
     }
 }
 

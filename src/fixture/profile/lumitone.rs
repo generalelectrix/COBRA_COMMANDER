@@ -107,19 +107,21 @@ impl PatchFixture for Lumitone {
         Ok(l)
     }
 
-    fn patch_config(_options: &mut Options) -> Result<PatchConfig> {
-        Ok(PatchConfig {
-            channel_count: 0,
-            render_mode: None,
-        })
-    }
-
     fn group_options() -> Vec<(String, PatchOption)> {
         vec![(SOCKET_OPT.to_string(), PatchOption::SocketAddr)]
     }
 
     fn patch_options() -> Vec<(String, PatchOption)> {
         vec![]
+    }
+}
+
+impl CreatePatchConfig for Lumitone {
+    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: 0,
+            render_mode: None,
+        })
     }
 }
 

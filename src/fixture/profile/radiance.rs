@@ -38,19 +38,21 @@ impl PatchFixture for Radiance {
         Ok(s)
     }
 
-    fn patch_config(_options: &mut Options) -> Result<PatchConfig> {
-        Ok(PatchConfig {
-            channel_count: 2,
-            render_mode: None,
-        })
-    }
-
     fn group_options() -> Vec<(String, PatchOption)> {
         vec![]
     }
 
     fn patch_options() -> Vec<(String, PatchOption)> {
         vec![]
+    }
+}
+
+impl CreatePatchConfig for Radiance {
+    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: 2,
+            render_mode: None,
+        })
     }
 }
 
