@@ -7,7 +7,6 @@
 use anyhow::Context;
 use log::error;
 
-use crate::color::print_color;
 use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
 
@@ -107,9 +106,7 @@ impl AnimatedFixture for FlashBang {
             } else {
                 0
             };
-            print_color([*chan, *chan, *chan]);
         }
-        println!();
     }
 }
 
