@@ -91,6 +91,10 @@ struct RunArgs {
     /// URL to use to communicate with a WLED instance.
     #[arg(long)]
     wled_addr: Option<Url>,
+
+    /// If true, render fixture preview into the CLI.
+    #[arg(long)]
+    cli_preview: bool,
 }
 
 #[derive(Args)]
@@ -199,7 +203,13 @@ fn run_show(args: RunArgs) -> Result<()> {
         launch_animation_visualizer()?;
     }
 
-    let mut show = Show::new(patch, controller, clocks, animation_service)?;
+    let mut show = Show::new(
+        patch,
+        controller,
+        clocks,
+        animation_service,
+        args.cli_preview,
+    )?;
 
     println!("Running show.");
 

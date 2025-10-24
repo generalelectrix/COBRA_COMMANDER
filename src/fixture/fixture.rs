@@ -1,9 +1,11 @@
 //! Types related to specifying and controlling individual fixture models.
 use std::fmt::{Debug, Display};
+use std::io::Write;
 use std::ops::Deref;
 use std::time::Duration;
 
 use anyhow::{bail, Result};
+use log::debug;
 use number::Phase;
 use serde::{Deserialize, Serialize};
 use strum::VariantArray;
@@ -121,6 +123,16 @@ pub trait NonAnimatedFixture: Update + EmitState + Control + CreatePatchConfig {
     /// to the fixture's start address.
     /// The master controls are provided to potentially alter the render process.
     fn render(&self, group_controls: &FixtureGroupControls, dmx_buffer: &mut [u8]);
+
+    /// Render this fixture's state to a CLI-based preview.
+    #[expect(unused_variables)]
+    fn render_cli(
+        &self,
+        group_controls: &FixtureGroupControls,
+        w: &mut dyn std::io::Write,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 pub trait AnimatedFixture: Update + EmitState + Control + CreatePatchConfig {
@@ -132,6 +144,17 @@ pub trait AnimatedFixture: Update + EmitState + Control + CreatePatchConfig {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     );
+
+    /// Render this fixture's state to a CLI-based preview.
+    #[expect(unused_variables)]
+    fn render_cli(
+        &self,
+        group_controls: &FixtureGroupControls,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
+        w: &mut dyn std::io::Write,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 pub trait Fixture: Update + EmitState + Control + CreatePatchConfig {
@@ -147,6 +170,7 @@ pub trait Fixture: Update + EmitState + Control + CreatePatchConfig {
         offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
+        cli_preview: &mut Option<&mut dyn Write>,
     );
 
     /// Get the animation with the provided index.
@@ -167,8 +191,14 @@ where
         _offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
+        cli_preview: &mut Option<&mut dyn Write>,
     ) {
-        self.render(group_controls, dmx_buffer)
+        self.render(group_controls, dmx_buffer);
+        if let Some(w) = cli_preview {
+            if let Err(err) = self.render_cli(group_controls, w) {
+                debug!("CLI preview write error: {err}");
+            }
+        }
     }
 
     fn get_animation_mut(
@@ -243,6 +273,7 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
+        cli_preview: &mut Option<&mut dyn Write>,
     ) {
         let mut animation_vals = [(0.0, F::Target::default()); N_ANIM];
         // FIXME: implement unipolar variant of animations
@@ -257,11 +288,14 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
                 ta.target,
             );
         }
-        self.fixture.render_with_animations(
-            group_controls,
-            &TargetedAnimationValues(animation_vals),
-            dmx_buffer,
-        );
+        let ta = TargetedAnimationValues(animation_vals);
+        self.fixture
+            .render_with_animations(group_controls, &ta, dmx_buffer);
+        if let Some(w) = cli_preview {
+            if let Err(err) = self.fixture.render_cli(group_controls, &ta, w) {
+                debug!("CLI preview write error: {err}");
+            }
+        }
     }
 
     fn get_animation_mut(

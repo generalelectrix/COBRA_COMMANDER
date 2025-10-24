@@ -4,6 +4,7 @@ use anyhow::{ensure, Context, Result};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
 use std::fmt::{Debug, Display};
+use std::io::Write;
 use std::time::Duration;
 
 use log::debug;
@@ -172,7 +173,12 @@ impl FixtureGroup {
 
     /// Render into the provided DMX universe.
     /// The master controls are provided to potentially alter the render.
-    pub fn render(&self, master_controls: &MasterControls, dmx_buffers: &mut [DmxBuffer]) {
+    pub fn render(
+        &self,
+        master_controls: &MasterControls,
+        dmx_buffers: &mut [DmxBuffer],
+        cli_preview: &mut Option<&mut dyn Write>,
+    ) {
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
             let Some(dmx_addr) = cfg.dmx_addr else {
@@ -180,24 +186,21 @@ impl FixtureGroup {
             };
             let phase_offset = phase_offset_per_fixture * i as f64;
             let dmx_buf = &mut dmx_buffers[cfg.universe][dmx_addr..dmx_addr + cfg.channel_count];
-            self.fixture.render(
-                phase_offset,
-                i,
-                &FixtureGroupControls {
-                    master_controls,
-                    mirror: cfg.mirror,
-                    render_mode: cfg.render_mode,
-                    color: self.color_organ.as_ref().and_then(|color_organ| {
-                        color_organ.render(FixtureId(i as u32)).map(|color| Hsluv {
-                            hue: color.hue,
-                            sat: color.saturation,
-                            lightness: color.lightness,
-                        })
-                    }),
-                    strobe_enabled: self.strobe_enabled,
-                },
-                dmx_buf,
-            );
+            let group_controls = FixtureGroupControls {
+                master_controls,
+                mirror: cfg.mirror,
+                render_mode: cfg.render_mode,
+                color: self.color_organ.as_ref().and_then(|color_organ| {
+                    color_organ.render(FixtureId(i as u32)).map(|color| Hsluv {
+                        hue: color.hue,
+                        sat: color.saturation,
+                        lightness: color.lightness,
+                    })
+                }),
+                strobe_enabled: self.strobe_enabled,
+            };
+            self.fixture
+                .render(phase_offset, i, &group_controls, dmx_buf, cli_preview);
             debug!("{}@{}: {:?}", self.qualified_name(), dmx_addr + 1, dmx_buf);
         }
     }
