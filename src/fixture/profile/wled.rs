@@ -1,13 +1,16 @@
-//! Control profile for the Rug Doctor WLED interface.
+//! Control profile for WLED via http/json API.
+use std::str::FromStr;
+
 use crate::{
     fixture::prelude::*,
     wled::{WledControlMessage, WledController},
 };
+use anyhow::anyhow;
 use reqwest::Url;
 use wled_json_api_library::structures::state::{Seg, State};
 
 #[derive(Debug, EmitState, Control, Update)]
-pub struct RugDoctor {
+pub struct Wled {
     #[channel_control]
     #[on_change = "update_level"]
     level: ChannelLevelUnipolar<Unipolar<()>>,
@@ -25,9 +28,10 @@ pub struct RugDoctor {
 }
 
 const URL_OPT: &str = "url";
+const PRESET_COUNT_OPT: &str = "preset_count";
 
-impl PatchFixture for RugDoctor {
-    const NAME: FixtureType = FixtureType("RugDoctor");
+impl PatchFixture for Wled {
+    const NAME: FixtureType = FixtureType("Wled");
     fn new(options: &mut Options) -> Result<Self> {
         let Some(url) = options
             .remove(URL_OPT)
@@ -36,17 +40,27 @@ impl PatchFixture for RugDoctor {
         else {
             bail!("missing required option {URL_OPT}");
         };
+        let Some(preset_count) = options
+            .remove(PRESET_COUNT_OPT)
+            .map(|u| u.parse::<usize>())
+            .transpose()?
+        else {
+            bail!("missing required option {PRESET_COUNT_OPT}");
+        };
         Ok(Self {
             level: Unipolar::new("Level", ()).with_channel_level(),
             speed: Unipolar::new("Speed", ()).with_channel_knob(0),
             size: Unipolar::new("Size", ()).with_channel_knob(1),
-            preset: IndexedSelect::new("Preset", 6, false, ()),
+            preset: IndexedSelect::new("Preset", preset_count, false, ()),
             controller: WledController::run(url),
         })
     }
 
     fn group_options() -> Vec<(String, PatchOption)> {
-        vec![(URL_OPT.to_string(), PatchOption::Url)]
+        vec![
+            (URL_OPT.to_string(), PatchOption::Url),
+            (PRESET_COUNT_OPT.to_string(), PatchOption::Int),
+        ]
     }
 
     fn patch_options() -> Vec<(String, PatchOption)> {
@@ -54,7 +68,7 @@ impl PatchFixture for RugDoctor {
     }
 }
 
-impl CreatePatchConfig for RugDoctor {
+impl CreatePatchConfig for Wled {
     fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
         Ok(PatchConfig {
             channel_count: 0,
@@ -63,11 +77,11 @@ impl CreatePatchConfig for RugDoctor {
     }
 }
 
-impl NonAnimatedFixture for RugDoctor {
+impl NonAnimatedFixture for Wled {
     fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}
 }
 
-impl RugDoctor {
+impl Wled {
     fn set_level(&self, state: &mut State) {
         let level = unipolar_to_range(0, 255, self.level.control.val());
         if level == 0 {
