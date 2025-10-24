@@ -134,7 +134,8 @@ impl Patch {
                 "patch block {} has neither DMX address nor options",
                 i + 1
             );
-            let patch_cfg = (patcher.patch)(&block.options)
+            let patch_cfg = group
+                .patch_cfg(&block.options)
                 .with_context(|| group.qualified_name().to_string())?;
 
             match start_addr {
@@ -293,7 +294,6 @@ pub struct PatchConfig {
 #[derive(Clone)]
 pub struct Patcher {
     pub name: FixtureType,
-    pub patch: fn(&Options) -> Result<PatchConfig>,
     pub patch_options: fn() -> Vec<(String, PatchOption)>,
     pub create_group: fn(FixtureGroupKey, &Options) -> Result<FixtureGroup>,
     pub group_options: fn() -> Vec<(String, PatchOption)>,
@@ -304,11 +304,15 @@ impl Display for Patcher {
         write!(f, "{}", self.name)?;
 
         let patch_opts = (self.patch_options)();
+        let group_opts = (self.group_options)();
         // If a fixture doesn't take options, we should be able to get a channel count.
         // TODO: we should make it possible to generate patch configs for all
         // enumerable options
-        if patch_opts.is_empty() {
-            if let Ok(fix) = (self.patch)(&Default::default()) {
+        if patch_opts.is_empty() && group_opts.is_empty() {
+            let group =
+                (self.create_group)(FixtureGroupKey("test".to_string()), &Default::default())
+                    .unwrap();
+            if let Ok(fix) = group.patch_cfg(&Default::default()) {
                 if fix.channel_count > 0 {
                     write!(
                         f,
@@ -319,8 +323,6 @@ impl Display for Patcher {
                 }
             }
         }
-
-        let group_opts = (self.group_options)();
 
         if patch_opts.is_empty() && group_opts.is_empty() {
             return Ok(());
@@ -348,25 +350,8 @@ impl Display for Patcher {
 pub trait PatchFixture: Sized + 'static {
     const NAME: FixtureType;
 
-    /// Return a PatchConfig for this fixture.
-    fn patch(options: &Options) -> Result<PatchConfig> {
-        let mut options = options.clone();
-        let cfg = Self::patch_config(&mut options)?;
-        // Ensure the fixture processed all of the options.
-        if !options.is_empty() {
-            return Err(anyhow!(
-                "unhandled patch options: {}",
-                options.keys().join(", ")
-            ));
-        }
-        Ok(cfg)
-    }
-
     /// Return the menu of patch options for this fixture type.
     fn patch_options() -> Vec<(String, PatchOption)>;
-
-    /// Create a patch configuration for this fixture from the provided options.
-    fn patch_config(options: &mut Options) -> Result<PatchConfig>;
 
     /// Create a new instance of the fixture from the provided options.
     ///
@@ -376,6 +361,30 @@ pub trait PatchFixture: Sized + 'static {
 
     /// Return the menu of group options for this fixture type.
     fn group_options() -> Vec<(String, PatchOption)>;
+}
+
+/// Once we have an instance of a fixture, create patches.
+///
+/// By making this a method on the fixture type, it allows configuration for the
+/// fixture patches based on both the provided patch options as well as the
+/// ficture state, such that it can be influenced by group-level options as well.
+pub trait CreatePatchConfig {
+    /// Create a patch configuration for this fixture from the provided options.
+    fn patch_config(&self, options: &mut Options) -> Result<PatchConfig>;
+
+    /// Return a PatchConfig for this fixture.
+    fn patch(&self, options: &Options) -> Result<PatchConfig> {
+        let mut options = options.clone();
+        let cfg = self.patch_config(&mut options)?;
+        // Ensure the fixture processed all of the options.
+        if !options.is_empty() {
+            return Err(anyhow!(
+                "unhandled patch options: {}",
+                options.keys().join(", ")
+            ));
+        }
+        Ok(cfg)
+    }
 }
 
 /// Create a fixture group for a non-animated fixture.
@@ -464,6 +473,13 @@ mod test {
 
     fn parse(patch_yaml: &str) -> Result<Vec<FixtureGroupConfig>> {
         Ok(serde_yaml::from_str(patch_yaml)?)
+    }
+
+    #[test]
+    fn test_patcher_display() {
+        for p in Patch::menu() {
+            println!("{p}");
+        }
     }
 
     #[test]

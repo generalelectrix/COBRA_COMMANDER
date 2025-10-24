@@ -46,7 +46,20 @@ impl PatchFixture for Color {
         Ok(Self::for_subcontrol(None, space))
     }
 
-    fn patch_config(options: &mut Options) -> Result<PatchConfig> {
+    fn group_options() -> Vec<(String, PatchOption)> {
+        vec![(
+            "control_color_space".to_string(),
+            ColorSpace::patch_option(),
+        )]
+    }
+
+    fn patch_options() -> Vec<(String, PatchOption)> {
+        vec![("kind".to_string(), Model::patch_option())]
+    }
+}
+
+impl CreatePatchConfig for Color {
+    fn patch_config(&self, options: &mut Options) -> Result<PatchConfig> {
         let model = options
             .remove("kind")
             .map(|kind| {
@@ -59,17 +72,6 @@ impl PatchFixture for Color {
             channel_count: model.channel_count(),
             render_mode: Some(model.render_mode()),
         })
-    }
-
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![(
-            "control_color_space".to_string(),
-            ColorSpace::patch_option(),
-        )]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![("kind".to_string(), Model::patch_option())]
     }
 }
 
