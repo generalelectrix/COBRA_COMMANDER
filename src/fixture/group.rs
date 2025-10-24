@@ -179,6 +179,9 @@ impl FixtureGroup {
         dmx_buffers: &mut [DmxBuffer],
         cli_preview: &mut Option<&mut dyn Write>,
     ) {
+        if let Some(w) = cli_preview {
+            let _ = write!(w, "{}", self.qualified_name());
+        }
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
             let Some(dmx_addr) = cfg.dmx_addr else {
@@ -201,6 +204,9 @@ impl FixtureGroup {
             };
             self.fixture
                 .render(phase_offset, i, &group_controls, dmx_buf, cli_preview);
+            if let Some(w) = cli_preview {
+                let _ = writeln!(w);
+            }
             debug!("{}@{}: {:?}", self.qualified_name(), dmx_addr + 1, dmx_buf);
         }
     }
