@@ -1,5 +1,5 @@
 use std::{
-    io::{stdout, Stdout},
+    io::{stdout, Stdout, Write},
     time::{Duration, Instant},
 };
 
@@ -76,6 +76,15 @@ impl Show {
     pub fn run(&mut self, dmx_ports: &mut [Box<dyn DmxPort>]) {
         let mut last_update = Instant::now();
         let mut dmx_buffers = vec![[0u8; 512]; dmx_ports.len()];
+
+        // Add enough newlines for CLI preview if active.
+        if let Some(so) = &self.cli_preview {
+            let mut w = so.lock();
+            for _ in 0..self.patch.len() {
+                let _ = writeln!(w);
+            }
+        }
+
         loop {
             // Process a control event if one is pending.
             if let Err(err) = self.control(CONTROL_TIMEOUT) {
@@ -252,6 +261,14 @@ impl Show {
         // trait object dance to work without having StdoutLock as a local.
         if let Some(so) = &self.cli_preview {
             let mut out = so.lock();
+            for _ in 0..self.patch.len() {
+                let _ = write!(
+                    out,
+                    "{}{}",
+                    termion::clear::CurrentLine,
+                    termion::cursor::Up(1)
+                );
+            }
             for group in self.patch.iter() {
                 group.render(&self.master_controls, dmx_buffers, &mut Some(&mut out));
             }
