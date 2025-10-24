@@ -16,6 +16,8 @@ pub struct FlashBang {
     #[channel_control]
     #[animate]
     intensity: ChannelKnobUnipolar<Unipolar<()>>,
+    chase: IndexedSelect<()>,
+    reverse: Bool<()>,
     #[skip_emit]
     #[skip_control]
     flasher: Box<dyn UnsizedFlasher>,
@@ -49,6 +51,8 @@ impl PatchFixture for FlashBang {
             intensity: Unipolar::new("Intensity", ())
                 .at(UnipolarFloat::new(0.1))
                 .with_channel_knob(0),
+            chase: IndexedSelect::new("Chase", flasher.len(), false, ()),
+            reverse: Bool::new_off("Reverse", ()),
             flasher,
         })
     }
@@ -57,6 +61,52 @@ impl PatchFixture for FlashBang {
         vec![]
     }
 }
+
+impl CreatePatchConfig for FlashBang {
+    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
+        let channel_count = self.flasher.cells().len();
+        assert!([5, 10].contains(&channel_count));
+        Ok(PatchConfig {
+            channel_count,
+            render_mode: None,
+        })
+    }
+}
+
+impl Update for FlashBang {
+    fn update(&mut self, master_controls: &MasterControls, _dt: std::time::Duration) {
+        self.flasher.update(
+            master_controls.strobe_state.strobe_on,
+            master_controls.strobe_state.ticked,
+            self.chase.selected(),
+            self.reverse.val(),
+        );
+    }
+}
+
+impl AnimatedFixture for FlashBang {
+    type Target = AnimationTarget;
+
+    fn render_with_animations(
+        &self,
+        _group_controls: &FixtureGroupControls,
+        animation_vals: &TargetedAnimationValues<Self::Target>,
+        dmx_buf: &mut [u8],
+    ) {
+        let intensity = unipolar_to_range(
+            0,
+            255,
+            self.intensity
+                .control
+                .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity)),
+        );
+        for (state, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
+            *chan = if state.is_some() { intensity } else { 0 };
+        }
+    }
+}
+
+register_patcher!(FlashBang);
 
 /// Abstract over 5-cell vs 10-cell flashers for different render modes.
 trait UnsizedFlasher {

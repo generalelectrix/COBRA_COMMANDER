@@ -1,9 +1,6 @@
 //! Some stateful controls for arrays of things that can strobe.
 //!
 //! Provides flash patterns, including sequences and true randomness.
-
-use std::time::Duration;
-
 use log::error;
 use rand::prelude::*;
 
