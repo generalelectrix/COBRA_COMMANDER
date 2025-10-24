@@ -438,6 +438,9 @@ pub enum PatchOption {
     /// A network address.
     SocketAddr,
 
+    /// A URL.
+    Url,
+
     /// A boolean option.
     Bool,
 }
@@ -447,6 +450,7 @@ impl Display for PatchOption {
         match self {
             Self::Select(opts) => f.write_str(&opts.join(", ")),
             Self::SocketAddr => f.write_str("<socket address>"),
+            Self::Url => f.write_str("<url>"),
             Self::Bool => f.write_str("true, false"),
         }
     }

@@ -1,12 +1,12 @@
 //! Control profile for the Rug Doctor WLED interface.
 use crate::{
     fixture::prelude::*,
-    wled::{EmitWledControlMessage, WledControlMessage},
+    wled::{WledControlMessage, WledController},
 };
+use reqwest::Url;
 use wled_json_api_library::structures::state::{Seg, State};
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
-#[channel_count = 0]
+#[derive(Debug, EmitState, Control, Update)]
 pub struct RugDoctor {
     #[channel_control]
     #[on_change = "update_level"]
@@ -19,16 +19,47 @@ pub struct RugDoctor {
     size: ChannelKnobUnipolar<Unipolar<()>>,
     #[on_change = "update_preset"]
     preset: IndexedSelect<()>,
+    #[skip_control]
+    #[skip_emit]
+    controller: WledController,
 }
 
-impl Default for RugDoctor {
-    fn default() -> Self {
-        Self {
+const URL_OPT: &str = "url";
+
+impl PatchFixture for RugDoctor {
+    const NAME: FixtureType = FixtureType("RugDoctor");
+    fn new(options: &mut Options) -> Result<Self> {
+        let Some(url) = options
+            .remove(URL_OPT)
+            .map(|u| u.parse::<Url>())
+            .transpose()?
+        else {
+            bail!("missing required option {URL_OPT}");
+        };
+        Ok(Self {
             level: Unipolar::new("Level", ()).with_channel_level(),
             speed: Unipolar::new("Speed", ()).with_channel_knob(0),
             size: Unipolar::new("Size", ()).with_channel_knob(1),
             preset: IndexedSelect::new("Preset", 6, false, ()),
-        }
+            controller: WledController::run(url),
+        })
+    }
+
+    fn group_options() -> Vec<(String, PatchOption)> {
+        vec![(URL_OPT.to_string(), PatchOption::Url)]
+    }
+
+    fn patch_options() -> Vec<(String, PatchOption)> {
+        vec![]
+    }
+}
+
+impl CreatePatchConfig for RugDoctor {
+    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: 0,
+            render_mode: None,
+        })
     }
 }
 
@@ -55,31 +86,31 @@ impl RugDoctor {
         get_seg(state).ix = Some(unipolar_to_range(0, 255, self.size.control.val()))
     }
 
-    fn update_level(&self, emitter: &FixtureStateEmitter) {
+    fn update_level(&self, _emitter: &FixtureStateEmitter) {
         let mut state = State::default();
         self.set_level(&mut state);
         self.set_speed(&mut state);
         self.set_size(&mut state);
-        emitter.emit_wled(WledControlMessage::SetState(state));
+        self.controller.send(WledControlMessage::SetState(state));
     }
 
-    fn update_speed(&self, emitter: &FixtureStateEmitter) {
+    fn update_speed(&self, _emitter: &FixtureStateEmitter) {
         let mut state = State::default();
         self.set_level(&mut state);
         self.set_speed(&mut state);
         self.set_size(&mut state);
-        emitter.emit_wled(WledControlMessage::SetState(state));
+        self.controller.send(WledControlMessage::SetState(state));
     }
 
-    fn update_effect_intensity(&self, emitter: &FixtureStateEmitter) {
+    fn update_effect_intensity(&self, _emitter: &FixtureStateEmitter) {
         let mut state = State::default();
         self.set_level(&mut state);
         self.set_speed(&mut state);
         self.set_size(&mut state);
-        emitter.emit_wled(WledControlMessage::SetState(state));
+        self.controller.send(WledControlMessage::SetState(state));
     }
 
-    fn update_preset(&self, emitter: &FixtureStateEmitter) {
+    fn update_preset(&self, _emitter: &FixtureStateEmitter) {
         let mut state = State {
             ps: Some(self.preset.selected() as i32),
             ..Default::default()
@@ -87,7 +118,7 @@ impl RugDoctor {
         // TODO: this may not actually do anything
         self.set_speed(&mut state);
         self.set_size(&mut state);
-        emitter.emit_wled(WledControlMessage::SetState(state));
+        self.controller.send(WledControlMessage::SetState(state));
     }
 }
 

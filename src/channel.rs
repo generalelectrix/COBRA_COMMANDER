@@ -13,7 +13,6 @@ use crate::{
     control::EmitControlMessage,
     fixture::{FixtureGroup, Patch},
     osc::{EmitOscMessage, GroupControlMap, OscControlMessage, ScopedControlEmitter},
-    wled::EmitWledControlMessage,
 };
 
 /// The index of a channel.
@@ -298,12 +297,6 @@ impl<'a> ChannelStateEmitter<'a> {
 impl<'a> EmitOscMessage for ChannelStateEmitter<'a> {
     fn emit_osc(&self, msg: rosc::OscMessage) {
         self.emitter.emit_osc(msg);
-    }
-}
-
-impl<'a> EmitWledControlMessage for ChannelStateEmitter<'a> {
-    fn emit_wled(&self, msg: crate::wled::WledControlMessage) {
-        self.emitter.emit_wled(msg);
     }
 }
 
