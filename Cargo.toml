@@ -42,6 +42,7 @@ egui_plot = "0.33.0"
 eframe = "0.32.3"
 enum_dispatch = "0.3.13"
 url = { version = "*", features = ["serde"] }
+termion = "4.0.5"
 
 # [patch.'https://github.com/generalelectrix/tunnels']
 # tunnels = { path = "../tunnels/tunnels" }

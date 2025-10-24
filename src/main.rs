@@ -86,6 +86,10 @@ struct RunArgs {
     /// The port on which to listen for OSC messages.
     #[arg(long, default_value_t = 8000)]
     osc_receive_port: u16,
+
+    /// If true, render fixture preview into the CLI.
+    #[arg(long)]
+    cli_preview: bool,
 }
 
 #[derive(Args)]
@@ -189,7 +193,13 @@ fn run_show(args: RunArgs) -> Result<()> {
         launch_animation_visualizer()?;
     }
 
-    let mut show = Show::new(patch, controller, clocks, animation_service)?;
+    let mut show = Show::new(
+        patch,
+        controller,
+        clocks,
+        animation_service,
+        args.cli_preview,
+    )?;
 
     println!("Running show.");
 

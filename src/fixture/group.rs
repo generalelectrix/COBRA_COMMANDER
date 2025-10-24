@@ -4,6 +4,7 @@ use anyhow::{ensure, Context};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
 use std::fmt::{Debug, Display};
+use std::io::Write;
 use std::time::Duration;
 
 use log::debug;
@@ -165,7 +166,12 @@ impl FixtureGroup {
 
     /// Render into the provided DMX universe.
     /// The master controls are provided to potentially alter the render.
-    pub fn render(&self, master_controls: &MasterControls, dmx_buffers: &mut [DmxBuffer]) {
+    pub fn render(
+        &self,
+        master_controls: &MasterControls,
+        dmx_buffers: &mut [DmxBuffer],
+        cli_preview: &mut Option<&mut dyn Write>,
+    ) {
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
             let Some(dmx_index) = cfg.dmx_index else {
@@ -190,6 +196,7 @@ impl FixtureGroup {
                     strobe_enabled: self.strobe_enabled,
                 },
                 dmx_buf,
+                cli_preview,
             );
             debug!("{}@{}: {:?}", self.qualified_name(), dmx_index + 1, dmx_buf);
         }

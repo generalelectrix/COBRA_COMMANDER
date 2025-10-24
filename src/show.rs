@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    io::{stdout, Stdout},
+    time::{Duration, Instant},
+};
 
 use crate::{
     animation::AnimationUIState,
@@ -29,6 +32,7 @@ pub struct Show {
     animation_ui_state: AnimationUIState,
     clocks: Clocks,
     animation_service: Option<AnimationPublisher>,
+    cli_preview: Option<Stdout>,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -44,6 +48,7 @@ impl Show {
         controller: Controller,
         clocks: Clocks,
         animation_service: Option<AnimationPublisher>,
+        cli_preview: bool,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
@@ -61,6 +66,7 @@ impl Show {
             animation_ui_state,
             clocks,
             animation_service,
+            cli_preview: cli_preview.then(stdout),
         };
         show.refresh_ui()?;
         Ok(show)
@@ -241,8 +247,18 @@ impl Show {
     fn render(&self, dmx_buffers: &mut [DmxBuffer]) {
         // NOTE: we don't bother to empty the buffer because we will always
         // overwrite all previously-rendered state.
-        for group in self.patch.iter() {
-            group.render(&self.master_controls, dmx_buffers);
+
+        // TODO: don't love the repetition but can't figure out how to get the
+        // trait object dance to work without having StdoutLock as a local.
+        if let Some(so) = &self.cli_preview {
+            let mut out = so.lock();
+            for group in self.patch.iter() {
+                group.render(&self.master_controls, dmx_buffers, &mut Some(&mut out));
+            }
+        } else {
+            for group in self.patch.iter() {
+                group.render(&self.master_controls, dmx_buffers, &mut None);
+            }
         }
     }
 
