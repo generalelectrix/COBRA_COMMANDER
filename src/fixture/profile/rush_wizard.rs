@@ -9,8 +9,6 @@ pub struct RushWizard {
     #[channel_control]
     #[animate]
     dimmer: ChannelLevelUnipolar<UnipolarChannel>,
-    // TODO: figure out what's up with this fixture/how we should strobe it
-    strobe: StrobeChannel,
     color: LabeledSelect,
     twinkle: Bool<()>,
     #[animate]
@@ -30,8 +28,9 @@ pub struct RushWizard {
 impl Default for RushWizard {
     fn default() -> Self {
         Self {
-            dimmer: Unipolar::full_channel("Dimmer", 1).with_channel_level(),
-            strobe: Strobe::channel("Strobe", 0, 16, 131, 8),
+            dimmer: Unipolar::full_channel("Dimmer", 1)
+                .strobed_long()
+                .with_channel_level(),
             color: LabeledSelect::new(
                 "Color",
                 2,
@@ -48,7 +47,7 @@ impl Default for RushWizard {
                 ],
             ),
             twinkle: Bool::new_off("Twinkle", ()),
-            twinkle_speed: Unipolar::channel("TwinkleSpeed", 2, 221, 243),
+            twinkle_speed: Unipolar::channel("TwinkleSpeed", 2, 219, 243),
             // 16 gobos, including the open position
             gobo: IndexedSelect::multiple("Gobo", 3, false, 16, 2, 160),
             drum_swivel: Bipolar::channel("DrumSwivel", 5, 0, 120)
@@ -84,8 +83,8 @@ impl AnimatedFixture for RushWizard {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.strobe
-            .render(group_controls, std::iter::empty(), dmx_buf);
+        // shutter channel - keep open and use dimmer channel
+        dmx_buf[0] = 8;
         self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
