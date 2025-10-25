@@ -107,10 +107,6 @@ impl Flasher {
         } else {
             render_state_iter(self.state.cells().iter(), intensity, dmx_buf);
         }
-        for chan in dmx_buf {
-            crate::color::print_color([*chan, *chan, *chan]);
-        }
-        println!();
     }
 
     pub fn update(

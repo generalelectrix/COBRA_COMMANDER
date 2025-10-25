@@ -108,9 +108,7 @@ impl AnimatedFixture for FlashBang {
         );
         for (flash, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
             *chan = if flash.is_some() { intensity } else { 0 };
-            crate::color::print_color([*chan, *chan, *chan]);
         }
-        println!();
     }
 }
 
