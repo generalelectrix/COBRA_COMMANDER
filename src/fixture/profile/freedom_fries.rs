@@ -26,7 +26,7 @@ impl Default for FreedomFries {
             dimmer: Unipolar::full_channel("Dimmer", 0).with_channel_level(),
             color: Color::for_subcontrol(None, ColorSpace::Hsv),
             speed: Unipolar::full_channel("Speed", 7).with_channel_knob(0),
-            strobe: Strobe::channel("Strobe", 5, 11, 255, 0),
+            strobe: StrobeFollower::channel(5, 11, 255, 0),
 
             program: ProgramControl::default(),
         }
