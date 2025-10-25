@@ -76,8 +76,7 @@ impl CreatePatchConfig for FlashBang {
 impl Update for FlashBang {
     fn update(&mut self, master_controls: &MasterControls, _dt: std::time::Duration) {
         self.flasher.update(
-            master_controls.strobe_state.strobe_on,
-            master_controls.strobe_state.ticked,
+            master_controls.strobe_state.flash_now,
             self.chase.selected(),
             self.reverse.val(),
         );
@@ -93,19 +92,22 @@ impl AnimatedFixture for FlashBang {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
+        // If strobing is disabled, blackout.
+        if !group_controls.strobe_enabled {
+            dmx_buf.fill(0);
+            return;
+        }
+        // Scale the intensity by the master strobe intensity.
         let intensity = unipolar_to_range(
             0,
             255,
             self.intensity
                 .control
-                .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity)),
+                .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity))
+                * group_controls.strobe().master_intensity,
         );
-        for (state, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
-            *chan = if group_controls.strobe_enabled && state.is_some() {
-                intensity
-            } else {
-                0
-            };
+        for (flash, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
+            *chan = if flash.is_some() { intensity } else { 0 };
         }
     }
 }
@@ -116,7 +118,7 @@ register_patcher!(FlashBang);
 trait UnsizedFlasher {
     fn len(&self) -> usize;
     fn cells(&self) -> &[Option<Flash>];
-    fn update(&mut self, run: bool, trigger_flash: bool, selected_chase: ChaseIndex, reverse: bool);
+    fn update(&mut self, trigger_flash: bool, selected_chase: ChaseIndex, reverse: bool);
 }
 
 fn single_flasher() -> Flasher<5> {
@@ -166,13 +168,7 @@ impl<const N: usize> UnsizedFlasher for Flasher<N> {
         &self.state.cells()[..]
     }
 
-    fn update(
-        &mut self,
-        run: bool,
-        trigger_flash: bool,
-        selected_chase: ChaseIndex,
-        reverse: bool,
-    ) {
+    fn update(&mut self, trigger_flash: bool, selected_chase: ChaseIndex, reverse: bool) {
         self.state.update(1);
 
         let reset = selected_chase != self.selected_chase;
@@ -181,7 +177,7 @@ impl<const N: usize> UnsizedFlasher for Flasher<N> {
             self.reset();
         }
 
-        if run && trigger_flash {
+        if trigger_flash {
             self.flash_next(reverse);
         }
     }
