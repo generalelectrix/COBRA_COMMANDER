@@ -6,6 +6,26 @@ use syn::{
     Ident, Lit, Meta, Token,
 };
 
+/// Derive the AsPatchOption trait.
+/// Enums must implement EnumIter and Display.
+#[proc_macro_derive(AsPatchOption)]
+pub fn derive_as_patch_option(input: TokenStream) -> TokenStream {
+    let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
+
+    let Data::Enum(_) = data else {
+        panic!("Can only derive AsPatchOption for enums.");
+    };
+
+    quote! {
+        impl crate::fixture::patch::AsPatchOption for #ident {
+            fn as_patch_option() -> crate::fixture::patch::PatchOption {
+                crate::fixture::patch::enum_patch_option::<Self>()
+            }
+        }
+    }
+    .into()
+}
+
 /// Register a fixture with the global patch registry.
 #[proc_macro]
 pub fn register_patcher(input: TokenStream) -> TokenStream {

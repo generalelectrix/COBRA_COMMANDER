@@ -9,7 +9,7 @@ mod control;
 #[allow(clippy::module_inception)]
 mod fixture;
 mod group;
-mod patch;
+pub mod patch;
 mod profile;
 
 pub use fixture::{Control, EmitState, RenderMode};

@@ -64,7 +64,7 @@ impl PatchFixture for Leko {
     }
 
     fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![("kind".to_string(), Model::patch_option())]
+        vec![("kind".to_string(), Model::as_patch_option())]
     }
 }
 

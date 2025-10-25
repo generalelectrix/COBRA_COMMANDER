@@ -4,7 +4,9 @@ use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Write};
+use std::net::SocketAddr;
 use strum::IntoEnumIterator;
+use url::Url;
 
 use anyhow::bail;
 use log::info;
@@ -15,6 +17,7 @@ use super::fixture::{
 use super::group::FixtureGroup;
 use crate::config::{FixtureGroupConfig, FixtureGroupKey, Options};
 use crate::dmx::UniverseIdx;
+use crate::fixture::fixture::EnumRenderModel;
 use crate::fixture::group::GroupFixtureConfig;
 use linkme::distributed_slice;
 
@@ -421,6 +424,46 @@ pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static 
 
 impl<T> CreateAnimatedGroup for T where T: PatchFixture + AnimatedFixture + Sized + 'static {}
 
+pub trait AsPatchOption {
+    fn as_patch_option() -> PatchOption;
+}
+
+impl AsPatchOption for usize {
+    fn as_patch_option() -> PatchOption {
+        PatchOption::Int
+    }
+}
+
+impl AsPatchOption for SocketAddr {
+    fn as_patch_option() -> PatchOption {
+        PatchOption::SocketAddr
+    }
+}
+
+impl AsPatchOption for Url {
+    fn as_patch_option() -> PatchOption {
+        PatchOption::Url
+    }
+}
+
+impl AsPatchOption for bool {
+    fn as_patch_option() -> PatchOption {
+        PatchOption::Bool
+    }
+}
+
+/// Create a patch option for an iterable enum.
+pub fn enum_patch_option<T: IntoEnumIterator + Display>() -> PatchOption {
+    PatchOption::Select(T::iter().map(|x| x.to_string()).collect())
+}
+
+/// Blanket-derive for enum render models.
+impl<T: EnumRenderModel + IntoEnumIterator + Display> AsPatchOption for T {
+    fn as_patch_option() -> PatchOption {
+        enum_patch_option::<Self>()
+    }
+}
+
 /// The kinds of patch options that fixtures can specify.
 pub enum PatchOption {
     /// An integer.
@@ -444,20 +487,6 @@ impl Display for PatchOption {
             Self::Url => f.write_str("<url>"),
             Self::Bool => f.write_str("true, false"),
         }
-    }
-}
-
-/// Things that can be converted into patch options.
-pub trait AsPatchOption {
-    fn patch_option() -> PatchOption;
-}
-
-impl<T> AsPatchOption for T
-where
-    T: IntoEnumIterator + Display,
-{
-    fn patch_option() -> PatchOption {
-        PatchOption::Select(Self::iter().map(|x| x.to_string()).collect())
     }
 }
 

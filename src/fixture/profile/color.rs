@@ -48,12 +48,12 @@ impl PatchFixture for Color {
     fn group_options() -> Vec<(String, PatchOption)> {
         vec![(
             "control_color_space".to_string(),
-            ColorSpace::patch_option(),
+            ColorSpace::as_patch_option(),
         )]
     }
 
     fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![("kind".to_string(), Model::patch_option())]
+        vec![("kind".to_string(), Model::as_patch_option())]
     }
 }
 
