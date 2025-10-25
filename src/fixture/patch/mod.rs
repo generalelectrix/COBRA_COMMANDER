@@ -1,14 +1,11 @@
 //! Types and traits related to patching fixtures.
-use anyhow::{anyhow, ensure, Context, Error, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Write};
-use std::net::SocketAddr;
 use strum::IntoEnumIterator;
-use url::Url;
 
 use anyhow::bail;
 use log::info;
