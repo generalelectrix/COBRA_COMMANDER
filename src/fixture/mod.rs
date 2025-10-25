@@ -71,7 +71,6 @@ pub mod prelude {
     pub use crate::control::EmitControlMessage;
     pub use crate::fixture::animation_target::{Subtarget, TargetedAnimationValues};
     pub use crate::fixture::control::*;
-    pub use crate::fixture::generic::*;
     pub use crate::master::MasterControls;
     pub use crate::osc::prelude::*;
     pub use anyhow::{bail, Result};

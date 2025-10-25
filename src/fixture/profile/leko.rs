@@ -56,7 +56,8 @@ impl Default for Leko {
 impl PatchFixture for Leko {
     const NAME: FixtureType = FixtureType("Leko");
 
-    fn new(_options: &mut Options) -> Result<Self> {
+    fn new(options: Options) -> Result<Self> {
+        options.ensure_empty()?;
         Ok(Default::default())
     }
 
@@ -69,16 +70,18 @@ impl PatchFixture for Leko {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PatchOptions {
+    kind: Model,
+}
+
 impl CreatePatchConfig for Leko {
-    fn patch_config(&self, options: &mut Options) -> anyhow::Result<PatchConfig> {
-        let Some(kind) = options.remove("kind") else {
-            bail!("missing required option: kind");
-        };
-        let model =
-            Model::from_str(&kind).with_context(|| format!("invalid kind option: {kind}"))?;
+    fn patch(&self, options: Options) -> anyhow::Result<PatchConfig> {
+        let options: PatchOptions = options.parse()?;
         Ok(PatchConfig {
-            channel_count: model.channel_count(),
-            render_mode: Some(model.render_mode()),
+            channel_count: options.kind.channel_count(),
+            render_mode: Some(options.kind.render_mode()),
         })
     }
 }
@@ -168,7 +171,17 @@ impl AnimatedFixture for Leko {
 
 /// Which model of gobo rotator is installed in this leko, or is this the dimmer.
 #[derive(
-    Default, Debug, Clone, Copy, Eq, PartialEq, EnumString, VariantArray, Display, EnumIter,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Eq,
+    PartialEq,
+    EnumString,
+    Deserialize,
+    VariantArray,
+    Display,
+    EnumIter,
 )]
 enum Model {
     /// Dimmer channel.

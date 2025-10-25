@@ -58,22 +58,18 @@ pub struct Lumitone {
     per_palette_hue_adjust: Vec<BipolarFloat>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GroupOptions {
+    socket: Option<SocketAddr>,
+}
+
 impl PatchFixture for Lumitone {
     const NAME: FixtureType = FixtureType("Lumitone");
 
-    fn new(options: &mut Options) -> Result<Self> {
+    fn new(options: Options) -> Result<Self> {
         // Instantiate the control sender.
-        let Some(addr) = options.remove(SOCKET_OPT) else {
-            bail!("missing required option: socket");
-        };
-        let addr = if addr == "debug" {
-            None
-        } else {
-            Some(
-                addr.parse::<SocketAddr>()
-                    .context("failed to parse socket")?,
-            )
-        };
+        let options: GroupOptions = options.parse()?;
         let (send, recv) = channel();
 
         let l = Self {
@@ -93,7 +89,7 @@ impl PatchFixture for Lumitone {
 
         std::thread::spawn(move || {
             let sender = LumitoneSender {
-                addr,
+                addr: options.socket,
                 recv,
                 pending_state: None,
                 pending_palette: None,
@@ -117,7 +113,8 @@ impl PatchFixture for Lumitone {
 }
 
 impl CreatePatchConfig for Lumitone {
-    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
+    fn patch(&self, options: Options) -> Result<PatchConfig> {
+        options.ensure_empty()?;
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,

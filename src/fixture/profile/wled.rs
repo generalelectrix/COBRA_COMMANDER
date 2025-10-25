@@ -28,29 +28,23 @@ pub struct Wled {
 const URL_OPT: &str = "url";
 const PRESET_COUNT_OPT: &str = "preset_count";
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GroupOptions {
+    url: Url,
+    preset_count: usize,
+}
+
 impl PatchFixture for Wled {
     const NAME: FixtureType = FixtureType("Wled");
-    fn new(options: &mut Options) -> Result<Self> {
-        let Some(url) = options
-            .remove(URL_OPT)
-            .map(|u| u.parse::<Url>())
-            .transpose()?
-        else {
-            bail!("missing required option {URL_OPT}");
-        };
-        let Some(preset_count) = options
-            .remove(PRESET_COUNT_OPT)
-            .map(|u| u.parse::<usize>())
-            .transpose()?
-        else {
-            bail!("missing required option {PRESET_COUNT_OPT}");
-        };
+    fn new(options: Options) -> Result<Self> {
+        let options: GroupOptions = options.parse()?;
         Ok(Self {
             level: Unipolar::new("Level", ()).with_channel_level(),
             speed: Unipolar::new("Speed", ()).with_channel_knob(0),
             size: Unipolar::new("Size", ()).with_channel_knob(1),
-            preset: IndexedSelect::new("Preset", preset_count, false, ()),
-            controller: WledController::run(url),
+            preset: IndexedSelect::new("Preset", options.preset_count, false, ()),
+            controller: WledController::run(options.url),
         })
     }
 
@@ -67,7 +61,8 @@ impl PatchFixture for Wled {
 }
 
 impl CreatePatchConfig for Wled {
-    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
+    fn patch(&self, options: Options) -> Result<PatchConfig> {
+        options.ensure_empty()?;
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,
