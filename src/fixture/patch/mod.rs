@@ -5,7 +5,6 @@ use ordermap::{OrderMap, OrderSet};
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Write};
-use strum::IntoEnumIterator;
 
 use anyhow::bail;
 use log::info;
@@ -16,7 +15,6 @@ use super::fixture::{
 use super::group::FixtureGroup;
 use crate::config::{FixtureGroupConfig, FixtureGroupKey, Options};
 use crate::dmx::UniverseIdx;
-use crate::fixture::fixture::EnumRenderModel;
 use crate::fixture::group::GroupFixtureConfig;
 use linkme::distributed_slice;
 
