@@ -13,9 +13,7 @@ use super::animation_target::{
 };
 use super::FixtureGroupControls;
 use crate::channel::ChannelControlMessage;
-use crate::config::Options;
 use crate::fixture::animation_target::AnimationTarget;
-use crate::fixture::patch::PatchConfig;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 

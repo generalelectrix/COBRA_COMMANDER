@@ -67,7 +67,7 @@ pub mod prelude {
     };
     pub use super::FixtureGroupControls;
     pub use crate::channel::ChannelStateEmitter;
-    pub use crate::config::Options;
+    
     pub use crate::control::EmitControlMessage;
     pub use crate::fixture::animation_target::{Subtarget, TargetedAnimationValues};
     pub use crate::fixture::control::*;

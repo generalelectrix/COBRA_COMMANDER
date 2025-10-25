@@ -3,7 +3,7 @@ use anyhow::Result;
 use log::error;
 use strum_macros::{Display, EnumIter, VariantArray};
 
-use crate::{color::*, config::Options, fixture::prelude::*};
+use crate::{color::*, fixture::prelude::*};
 
 #[derive(Debug, Control, EmitState, Update)]
 #[strobe]
