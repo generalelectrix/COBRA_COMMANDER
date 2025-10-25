@@ -20,7 +20,54 @@ use linkme::distributed_slice;
 
 /// Mapping between a universe/address pair and the type of fixture already
 /// addressed over that pair, as well as the starting address.
-type UsedAddrs = HashMap<(UniverseIdx, usize), (FixtureType, usize)>;
+#[derive(Default, Clone)]
+struct UsedAddrs(HashMap<(UniverseIdx, usize), (FixtureType, usize)>);
+
+impl UsedAddrs {
+    /// Attempt to allocate requested addresses for the provided fixture type.
+    ///
+    /// The addresses will only be allocated if there are no conflicts.
+    pub fn allocate(
+        &mut self,
+        fixture_type: FixtureType,
+        universe: UniverseIdx,
+        start_dmx_index: usize,
+        channel_count: usize,
+    ) -> Result<()> {
+        ensure!(
+            start_dmx_index < 512,
+            "dmx address {} out of range",
+            start_dmx_index + 1
+        );
+        let next_dmx_addr = start_dmx_index + channel_count;
+        ensure!(
+            next_dmx_addr <= 512,
+            "impossible to patch a fixture with {channel_count} channels at start address {}",
+            start_dmx_index + 1
+        );
+        for this_index in start_dmx_index..start_dmx_index + channel_count {
+            if let Some((existing_fixture, patched_at)) = self.0.get(&(universe, this_index)) {
+                bail!(
+                    "{fixture_type} at {} overlaps at DMX address {} in universe {} with {} at {}",
+                    start_dmx_index + 1,
+                    this_index + 1,
+                    universe,
+                    existing_fixture,
+                    patched_at + 1,
+                );
+            }
+        }
+        // No conflicts; allocate addresses.
+        for this_index in start_dmx_index..start_dmx_index + channel_count {
+            let existing = self
+                .0
+                .insert((universe, this_index), (fixture_type, start_dmx_index));
+            debug_assert!(existing.is_none());
+        }
+
+        Ok(())
+    }
+}
 
 /// Factory for fixture instances.
 ///
@@ -147,7 +194,7 @@ impl Patch {
                         cfg.group.as_deref().unwrap_or("none")
                     );
                     group.patch(GroupFixtureConfig {
-                        dmx_addr: None,
+                        dmx_index: None,
                         universe: block.universe,
                         channel_count: patch_cfg.channel_count,
                         mirror: block.mirror,
@@ -155,16 +202,28 @@ impl Patch {
                     });
                 }
                 Some(mut dmx_addr) => {
+                    ensure!(
+                        patch_cfg.channel_count > 0,
+                        "DMX start address {dmx_addr} provided for a fixture that is not DMX-controlled"
+                    );
+                    dmx_addr.validate()?;
                     for _ in 0..count {
                         let fixture_cfg = GroupFixtureConfig {
-                            dmx_addr: Some(dmx_addr.dmx_index()),
+                            dmx_index: Some(dmx_addr.dmx_index()),
                             universe: block.universe,
                             channel_count: patch_cfg.channel_count,
                             mirror: block.mirror,
                             render_mode: patch_cfg.render_mode,
                         };
 
-                        self.used_addrs = self.check_collision(patcher.name, &fixture_cfg)?;
+                        if let Some(dmx_index) = fixture_cfg.dmx_index {
+                            self.used_addrs.allocate(
+                                patcher.name,
+                                fixture_cfg.universe,
+                                dmx_index,
+                                fixture_cfg.channel_count,
+                            )?;
+                        };
 
                         info!(
                             "Controlling {} at {} (group: {}).",
@@ -217,39 +276,6 @@ impl Patch {
         }
         universes.len()
     }
-
-    /// Check that the patch candidate doesn't conflict with another patched fixture.
-    /// Return an updated collection of used addresses if it does not conflict.
-    fn check_collision(
-        &self,
-        fixture_type: FixtureType,
-        cfg: &GroupFixtureConfig,
-    ) -> Result<UsedAddrs> {
-        let mut used_addrs = self.used_addrs.clone();
-        let Some(dmx_index) = cfg.dmx_addr else {
-            return Ok(used_addrs);
-        };
-        for index in dmx_index..dmx_index + cfg.channel_count {
-            match used_addrs.get(&(cfg.universe, index)) {
-                Some((existing_fixture, patched_at)) => {
-                    bail!(
-                        "{} at {} overlaps at DMX address {} in universe {} with {} at {}.",
-                        fixture_type,
-                        dmx_index + 1,
-                        index + 1,
-                        cfg.universe,
-                        existing_fixture,
-                        patched_at + 1,
-                    );
-                }
-                None => {
-                    used_addrs.insert((cfg.universe, index), (fixture_type, dmx_index));
-                }
-            }
-        }
-        Ok(used_addrs)
-    }
-
     /// Get the fixture/channel patched with this key.
     pub fn get(&self, key: &str) -> Result<&FixtureGroup> {
         self.fixtures
@@ -489,7 +515,7 @@ mod test {
         assert_eq!(
             color_configs[0],
             GroupFixtureConfig {
-                dmx_addr: Some(0),
+                dmx_index: Some(0),
                 universe: 0,
                 channel_count: 3,
                 mirror: false,
@@ -499,7 +525,7 @@ mod test {
         assert_eq!(
             color_configs[2],
             GroupFixtureConfig {
-                dmx_addr: Some(7),
+                dmx_index: Some(7),
                 universe: 0,
                 channel_count: 4,
                 mirror: false,
@@ -511,7 +537,7 @@ mod test {
         assert_eq!(
             dimmer_configs[0],
             GroupFixtureConfig {
-                dmx_addr: Some(0),
+                dmx_index: Some(0),
                 universe: 1,
                 channel_count: 1,
                 mirror: true,
@@ -521,7 +547,7 @@ mod test {
         assert_eq!(
             dimmer_configs[1],
             GroupFixtureConfig {
-                dmx_addr: Some(11),
+                dmx_index: Some(11),
                 universe: 0,
                 channel_count: 1,
                 mirror: false,
@@ -571,6 +597,17 @@ mod test {
   patches:
     - addr: 2",
             "Dimmer at 2 overlaps at DMX address 2 in universe 0 with Color at 1",
+        );
+    }
+
+    #[test]
+    fn test_end_of_universe() {
+        assert_fail_patch(
+            "
+- fixture: Color
+  patches:
+    - addr: 511",
+            "impossible to patch a fixture with 3 channels at start address 511",
         );
     }
 
@@ -655,5 +692,41 @@ mod test {
   patches:",
             "no patches specified",
         );
+    }
+
+    #[test]
+    fn test_bad_addrs() {
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  patches:
+    - addr: 0",
+            "invalid DMX address 0",
+        );
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  patches:
+    - addr: 513",
+            "invalid DMX address 513",
+        );
+    }
+
+    /// Test that we can patch an instance of WLED.
+    #[test]
+    fn test_wled() {
+        Patch::patch_all(
+            parse(
+                "
+- fixture: Wled
+  url: http://foo.bar.baz
+  preset_count: 1
+  patches:
+    - 
+",
+            )
+            .unwrap(),
+        )
+        .unwrap();
     }
 }
