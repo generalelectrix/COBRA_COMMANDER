@@ -18,7 +18,6 @@ pub struct Wizlet {
     #[channel_control]
     #[animate]
     reflector_rotation: ChannelKnobBipolar<BipolarSplitChannelMirror>,
-    strobe: StrobeChannel,
 }
 
 impl Default for Wizlet {
@@ -61,8 +60,9 @@ impl Default for Wizlet {
             .with_detent()
             .with_mirroring(true)
             .with_channel_knob(2),
-            strobe: Strobe::channel("Strobe", 4, 64, 95, 32),
-            dimmer: Unipolar::full_channel("Dimmer", 5).with_channel_level(),
+            dimmer: Unipolar::full_channel("Dimmer", 5)
+                .strobed_short()
+                .with_channel_level(),
         }
     }
 }
@@ -93,8 +93,7 @@ impl AnimatedFixture for Wizlet {
             animation_vals.filter(&AnimationTarget::ReflectorRotation),
             dmx_buf,
         );
-        self.strobe
-            .render(group_controls, std::iter::empty(), dmx_buf);
+        dmx_buf[4] = 0; // internal strobing
         self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
