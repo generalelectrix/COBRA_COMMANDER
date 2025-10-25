@@ -10,8 +10,8 @@ mod channel;
 mod indexed_select;
 mod labeled_select;
 mod phase;
-mod strobe;
 pub mod strobe_array;
+mod strobe_follower;
 mod unipolar;
 
 pub use bipolar::*;
@@ -20,7 +20,7 @@ pub use channel::*;
 pub use indexed_select::*;
 pub use labeled_select::*;
 pub use phase::*;
-pub use strobe::*;
+pub use strobe_follower::*;
 pub use unipolar::*;
 
 use super::FixtureGroupControls;
