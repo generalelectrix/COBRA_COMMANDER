@@ -11,10 +11,7 @@ use number::UnipolarFloat;
 
 use crate::util::unipolar_to_range;
 
-use super::{
-    Bool, BoolChannel, ChannelControl, ChannelLevelHandler, ChannelLevelUnipolar, OscControl,
-    RenderToDmx, RenderToDmxWithAnimations, Unipolar, UnipolarChannel,
-};
+use super::{Bool, BoolChannel, OscControl, RenderToDmx, RenderToDmxWithAnimations, Unipolar};
 
 /// Generic strobe control, using unipolar rate.
 /// Usually also listens to the master strobe control parameter.
@@ -133,8 +130,6 @@ where
     phantom: PhantomData<T>,
 }
 
-pub type DimmerStrobe = ShutterStrobe<UnipolarChannel, RenderStrobeToRange, UnipolarFloat>;
-
 pub type FullShutterStrobe = ShutterStrobe<BoolChannel, RenderStrobeToRange, bool>;
 
 impl<S, R, T> ShutterStrobe<S, R, T>
@@ -150,17 +145,6 @@ where
         }
     }
 }
-
-impl<S, R> ShutterStrobe<S, R, UnipolarFloat>
-where
-    S: OscControl<UnipolarFloat> + RenderToDmxWithAnimations,
-    R: RenderToDmx<Option<UnipolarFloat>>,
-{
-    pub fn with_channel_level(self) -> ChannelLevelUnipolar<Self> {
-        ChannelControl::wrap(self, "Level".to_string(), false, ChannelLevelHandler)
-    }
-}
-
 impl<S: OscControl<T> + RenderToDmxWithAnimations, R: RenderToDmx<Option<UnipolarFloat>>, T>
     OscControl<T> for ShutterStrobe<S, R, T>
 {

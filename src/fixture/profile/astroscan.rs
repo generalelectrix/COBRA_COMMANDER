@@ -3,11 +3,12 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 9]
+#[strobe]
 pub struct Astroscan {
     lamp_on: BoolChannel,
     #[channel_control]
     #[animate]
-    shutter: ChannelLevelUnipolar<DimmerStrobe>,
+    shutter: ChannelLevelUnipolar<UnipolarChannel>,
     #[animate]
     iris: UnipolarChannel,
     color: LabeledSelect,
@@ -28,11 +29,9 @@ impl Default for Astroscan {
     fn default() -> Self {
         Self {
             lamp_on: Bool::full_channel("LampOn", 2),
-            shutter: ShutterStrobe::new(
-                Unipolar::channel("Dimmer", 3, 0, 139),
-                Strobe::channel("Strobe", 3, 140, 243, 0),
-            )
-            .with_channel_level(),
+            shutter: Unipolar::channel("Dimmer", 3, 0, 139)
+                .strobed_long()
+                .with_channel_level(),
             iris: Unipolar::full_channel("Iris", 0),
             color: LabeledSelect::new(
                 "Color",
