@@ -1,7 +1,7 @@
 //! Profile for the Big Bar, the American DJ Freq Strobe 16.
 //!
-//! TODO: migrate strobe mechanism to the global strobe clock.
-use std::{iter::zip, time::Duration};
+//! TODO: merge this and the profile for Flash Bang.
+use std::iter::zip;
 
 use log::error;
 
@@ -11,15 +11,12 @@ use crate::fixture::prelude::*;
 const CELL_COUNT: usize = 16;
 
 #[derive(EmitState, Control, PatchFixture)]
-#[channel_count = 18]
+#[channel_count = 16]
 #[strobe]
 pub struct FreqStrobe {
     #[channel_control]
     #[animate]
-    dimmer: ChannelLevelUnipolar<UnipolarChannel>,
-    follow_master: Bool<()>,
-    #[channel_control]
-    rate: ChannelKnobUnipolar<Unipolar<()>>,
+    intensity: ChannelKnobUnipolar<Unipolar<()>>,
     pattern: IndexedSelect<()>,
     multiplier: IndexedSelect<()>,
     reverse: Bool<()>,
@@ -32,10 +29,9 @@ impl Default for FreqStrobe {
     fn default() -> Self {
         let flasher = Flasher::default();
         Self {
-            dimmer: Unipolar::channel("Dimmer", 16, 1, 255).with_channel_level(),
-            // strobe: Strobe::channel("Strobe", 17, 9, 131, 0),
-            follow_master: Bool::new_on("FollowMaster", ()),
-            rate: Unipolar::new("Rate", ()).with_channel_knob(0),
+            intensity: Unipolar::new("Intensity", ())
+                .at_full()
+                .with_channel_knob(0),
             pattern: IndexedSelect::new("Chase", flasher.len(), false, ()),
             multiplier: IndexedSelect::new("Multiplier", 3, false, ()),
             reverse: Bool::new_off("Reverse", ()),
@@ -45,16 +41,9 @@ impl Default for FreqStrobe {
 }
 
 impl Update for FreqStrobe {
-    fn update(&mut self, master_controls: &MasterControls, dt: std::time::Duration) {
-        let update = if self.follow_master.val() {
-            UpdateBehavior::Master(master_controls.strobe_state.flash_now)
-        } else {
-            UpdateBehavior::Internal(self.rate.control.val())
-        };
+    fn update(&mut self, master_controls: &MasterControls, _dt: std::time::Duration) {
         self.flasher.update(
-            dt,
-            master_controls.strobe_state.strobe_on,
-            update,
+            master_controls.strobe_state.flash_now,
             self.pattern.selected(),
             self.multiplier.selected(),
             self.reverse.val(),
@@ -71,12 +60,21 @@ impl AnimatedFixture for FreqStrobe {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
-        self.flasher.render(group_controls, dmx_buf);
-        self.dimmer.render(
-            group_controls,
-            animation_vals.filter(&AnimationTarget::Dimmer),
-            dmx_buf,
+        // If strobing is disabled, blackout.
+        if !group_controls.strobe_enabled {
+            dmx_buf.fill(0);
+            return;
+        }
+        // Scale the intensity by the master strobe intensity.
+        let intensity = unipolar_to_range(
+            0,
+            255,
+            self.intensity
+                .control
+                .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity))
+                * group_controls.strobe().master_intensity,
         );
+        self.flasher.render(group_controls, intensity, dmx_buf);
     }
 }
 
@@ -86,20 +84,16 @@ struct Flasher {
     selected_chase: ChaseIndex,
     selected_multiplier: usize,
     chases: Chases,
-    last_flash_age: Duration,
 }
 
-fn render_state_iter<'a>(iter: impl Iterator<Item = &'a Option<Flash>>, dmx_buf: &mut [u8]) {
+fn render_state_iter<'a>(
+    iter: impl Iterator<Item = &'a Option<Flash>>,
+    intensity: u8,
+    dmx_buf: &mut [u8],
+) {
     for (state, chan) in iter.zip(dmx_buf.iter_mut()) {
-        *chan = if state.is_some() { 255 } else { 0 }
+        *chan = if state.is_some() { intensity } else { 0 };
     }
-}
-
-enum UpdateBehavior {
-    /// Update flasher state using a continuous rate parameter.
-    Internal(UnipolarFloat),
-    /// Master control active - trigger a flash if true.
-    Master(bool),
 }
 
 impl Flasher {
@@ -107,25 +101,26 @@ impl Flasher {
         self.chases.len()
     }
 
-    pub fn render(&self, group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
+    pub fn render(&self, group_controls: &FixtureGroupControls, intensity: u8, dmx_buf: &mut [u8]) {
         if group_controls.mirror {
-            render_state_iter(self.state.cells().iter().rev(), dmx_buf);
+            render_state_iter(self.state.cells().iter().rev(), intensity, dmx_buf);
         } else {
-            render_state_iter(self.state.cells().iter(), dmx_buf);
+            render_state_iter(self.state.cells().iter(), intensity, dmx_buf);
         }
+        for chan in dmx_buf {
+            crate::color::print_color([*chan, *chan, *chan]);
+        }
+        println!();
     }
 
     pub fn update(
         &mut self,
-        dt: Duration,
-        run: bool,
-        behavior: UpdateBehavior,
+        trigger_flash: bool,
         selected_chase: ChaseIndex,
         selected_multiplier: usize,
         reverse: bool,
     ) {
         self.state.update(1);
-        self.last_flash_age += dt;
 
         let reset = selected_chase != self.selected_chase
             || selected_multiplier != self.selected_multiplier;
@@ -135,34 +130,15 @@ impl Flasher {
             self.chases.reset(selected_chase, selected_multiplier);
         }
 
-        let trigger_flash = match behavior {
-            UpdateBehavior::Internal(rate) => self.last_flash_age >= interval_from_rate(rate),
-
-            UpdateBehavior::Master(flash) => flash,
-        };
-
-        if run && trigger_flash {
+        if trigger_flash {
             self.chases.next(
                 self.selected_chase,
                 self.selected_multiplier,
                 reverse,
                 &mut self.state,
             );
-            self.last_flash_age = Duration::ZERO;
         }
     }
-}
-
-/// Convert a rate scale control into a duration, coercing all values into
-/// integer numbers of frames to avoid aliasing.
-fn interval_from_rate(rate: UnipolarFloat) -> Duration {
-    // lowest rate: 1 flash/sec => 1 sec interval
-    // highest rate: 40 flash/sec => 25 ms interval
-    // use exact frame intervals
-    // FIXME: this should depend on the show framerate explicitly.
-    let raw_interval = (100. / (rate.val() + 0.09)) as u64 - 66;
-    let coerced_interval = ((raw_interval / 25) * 25).max(25);
-    Duration::from_millis(coerced_interval)
 }
 
 struct Chases {

@@ -1,4 +1,4 @@
-- fixture: FlashBang
-  paired: "true"
+- fixture: FreqStrobe
+  # paired: "true"
   patches:
     - addr: 1
