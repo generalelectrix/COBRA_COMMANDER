@@ -32,6 +32,7 @@ pub struct GroupOptions {
 impl PatchFixture for FlashBang {
     const NAME: FixtureType = FixtureType("FlashBang");
     type GroupOptions = GroupOptions;
+    type PatchOptions = NoOptions;
 
     fn new(options: Self::GroupOptions) -> Result<Self> {
         let flasher = if options.paired {
@@ -48,10 +49,6 @@ impl PatchFixture for FlashBang {
             reverse: Bool::new_off("Reverse", ()),
             flasher,
         })
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![]
     }
 }
 

@@ -40,19 +40,16 @@ pub struct GroupOptions {
 impl PatchFixture for Color {
     const NAME: FixtureType = FixtureType("Color");
     type GroupOptions = GroupOptions;
+    type PatchOptions = PatchOptions;
 
     fn new(options: Self::GroupOptions) -> Result<Self> {
         Ok(Self::for_subcontrol(None, options.control_color_space))
     }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![("kind".to_string(), Model::as_patch_option())]
-    }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
-struct PatchOptions {
+pub struct PatchOptions {
     #[serde(default)]
     kind: Model,
 }

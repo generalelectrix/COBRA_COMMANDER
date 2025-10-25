@@ -54,23 +54,16 @@ impl Default for Leko {
 impl PatchFixture for Leko {
     const NAME: FixtureType = FixtureType("Leko");
     type GroupOptions = NoOptions;
+    type PatchOptions = PatchOptions;
 
     fn new(_options: Self::GroupOptions) -> Result<Self> {
         Ok(Default::default())
-    }
-
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![("kind".to_string(), Model::as_patch_option())]
     }
 }
 
 #[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
-struct PatchOptions {
+pub struct PatchOptions {
     kind: Model,
 }
 

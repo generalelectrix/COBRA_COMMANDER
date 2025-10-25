@@ -62,8 +62,8 @@ pub mod prelude {
     pub use super::fixture::EnumRenderModel;
     pub use super::fixture::{AnimatedFixture, FixtureType, NonAnimatedFixture, Update};
     pub use super::patch::{
-        AsPatchOption, CreateAnimatedGroup, CreateNonAnimatedGroup, CreatePatchConfig, PatchConfig,
-        PatchFixture, PatchOption,
+        AsPatchOption, CreateAnimatedGroup, CreateNonAnimatedGroup, CreatePatchConfig, NoOptions,
+        PatchConfig, PatchFixture,
     };
     pub use super::FixtureGroupControls;
     pub use crate::channel::ChannelStateEmitter;

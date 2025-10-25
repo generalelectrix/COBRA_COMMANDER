@@ -375,8 +375,9 @@ pub trait PatchFixture: Sized + 'static {
     const NAME: FixtureType;
 
     type GroupOptions;
+    type PatchOptions;
 
-    /// Return the menu of patch options for this fixture type.
+    /// Return the menu of group-level options for this fixture type.
     fn group_options() -> Vec<(String, PatchOption)>
     where
         <Self as PatchFixture>::GroupOptions: OptionsMenu,
@@ -392,12 +393,17 @@ pub trait PatchFixture: Sized + 'static {
     where
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
-        let parsed: Self::GroupOptions = options.parse()?;
+        let parsed: Self::GroupOptions = options.parse().context("group options")?;
         Self::new(parsed)
     }
 
     /// Return the menu of patch options for this fixture type.
-    fn patch_options() -> Vec<(String, PatchOption)>;
+    fn patch_options() -> Vec<(String, PatchOption)>
+    where
+        <Self as PatchFixture>::PatchOptions: OptionsMenu,
+    {
+        Self::PatchOptions::menu()
+    }
 }
 
 /// Once we have an instance of a fixture, create patches.
@@ -605,7 +611,7 @@ mod test {
   foobar: unused
   patches:
     - addr: 1",
-            "these group options were not expected: foobar",
+            "group options: these options were not expected: foobar",
         );
 
         assert_fail_patch(
@@ -614,7 +620,7 @@ mod test {
   patches:
     - addr: 1
       foobar: unused",
-            "these patch options were not expected: foobar",
+            "patch options: these options were not expected: foobar",
         );
     }
 

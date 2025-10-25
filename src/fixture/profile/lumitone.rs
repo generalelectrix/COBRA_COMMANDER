@@ -16,8 +16,6 @@ use crate::{
     },
 };
 
-const SOCKET_OPT: &str = "socket";
-
 #[derive(Debug, EmitState, Control, Update)]
 pub struct Lumitone {
     #[channel_control]
@@ -66,6 +64,7 @@ pub struct GroupOptions {
 impl PatchFixture for Lumitone {
     const NAME: FixtureType = FixtureType("Lumitone");
     type GroupOptions = GroupOptions;
+    type PatchOptions = NoOptions;
 
     fn new(options: Self::GroupOptions) -> Result<Self> {
         // Instantiate the control sender.
@@ -100,14 +99,6 @@ impl PatchFixture for Lumitone {
         });
 
         Ok(l)
-    }
-
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![(SOCKET_OPT.to_string(), PatchOption::SocketAddr)]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![]
     }
 }
 

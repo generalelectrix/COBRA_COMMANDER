@@ -25,9 +25,6 @@ pub struct Wled {
     controller: WledController,
 }
 
-const URL_OPT: &str = "url";
-const PRESET_COUNT_OPT: &str = "preset_count";
-
 #[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
 pub struct GroupOptions {
@@ -38,6 +35,7 @@ pub struct GroupOptions {
 impl PatchFixture for Wled {
     const NAME: FixtureType = FixtureType("Wled");
     type GroupOptions = GroupOptions;
+    type PatchOptions = NoOptions;
 
     fn new(options: Self::GroupOptions) -> Result<Self> {
         Ok(Self {
@@ -47,17 +45,6 @@ impl PatchFixture for Wled {
             preset: IndexedSelect::new("Preset", options.preset_count, false, ()),
             controller: WledController::run(options.url),
         })
-    }
-
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![
-            (URL_OPT.to_string(), PatchOption::Url),
-            (PRESET_COUNT_OPT.to_string(), PatchOption::Int),
-        ]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![]
     }
 }
 
