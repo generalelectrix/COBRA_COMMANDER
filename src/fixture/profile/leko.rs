@@ -13,7 +13,7 @@ use log::error;
 use ordered_float::OrderedFloat;
 use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 
-use crate::fixture::prelude::*;
+use crate::fixture::{patch::NoOptions, prelude::*};
 
 #[derive(Debug, EmitState, Control, Update)]
 #[strobe]
@@ -53,9 +53,9 @@ impl Default for Leko {
 
 impl PatchFixture for Leko {
     const NAME: FixtureType = FixtureType("Leko");
+    type GroupOptions = NoOptions;
 
-    fn new(options: Options) -> Result<Self> {
-        options.ensure_empty("group")?;
+    fn new(_options: Self::GroupOptions) -> Result<Self> {
         Ok(Default::default())
     }
 
@@ -68,7 +68,7 @@ impl PatchFixture for Leko {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
 struct PatchOptions {
     kind: Model,

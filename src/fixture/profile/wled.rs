@@ -28,17 +28,18 @@ pub struct Wled {
 const URL_OPT: &str = "url";
 const PRESET_COUNT_OPT: &str = "preset_count";
 
-#[derive(Deserialize)]
+#[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
-struct GroupOptions {
+pub struct GroupOptions {
     url: Url,
     preset_count: usize,
 }
 
 impl PatchFixture for Wled {
     const NAME: FixtureType = FixtureType("Wled");
-    fn new(options: Options) -> Result<Self> {
-        let options: GroupOptions = options.parse()?;
+    type GroupOptions = GroupOptions;
+
+    fn new(options: Self::GroupOptions) -> Result<Self> {
         Ok(Self {
             level: Unipolar::new("Level", ()).with_channel_level(),
             speed: Unipolar::new("Speed", ()).with_channel_knob(0),
@@ -62,7 +63,7 @@ impl PatchFixture for Wled {
 
 impl CreatePatchConfig for Wled {
     fn patch(&self, options: Options) -> Result<PatchConfig> {
-        options.ensure_empty("patch")?;
+        options.ensure_empty()?;
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,

@@ -30,26 +30,19 @@ pub struct Color {
     space: ColorSpace,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
-struct GroupOptions {
+pub struct GroupOptions {
     #[serde(default)]
     control_color_space: ColorSpace,
 }
 
 impl PatchFixture for Color {
     const NAME: FixtureType = FixtureType("Color");
+    type GroupOptions = GroupOptions;
 
-    fn new(options: Options) -> Result<Self> {
-        let options: GroupOptions = options.parse()?;
+    fn new(options: Self::GroupOptions) -> Result<Self> {
         Ok(Self::for_subcontrol(None, options.control_color_space))
-    }
-
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![(
-            "control_color_space".to_string(),
-            ColorSpace::as_patch_option(),
-        )]
     }
 
     fn patch_options() -> Vec<(String, PatchOption)> {

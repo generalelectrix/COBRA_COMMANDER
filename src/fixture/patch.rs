@@ -1,7 +1,9 @@
 //! Types and traits related to patching fixtures.
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, ensure, Context, Error, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Write};
 use std::net::SocketAddr;
@@ -373,14 +375,30 @@ impl Display for Patcher {
 pub trait PatchFixture: Sized + 'static {
     const NAME: FixtureType;
 
+    type GroupOptions;
+
+    /// Return the menu of patch options for this fixture type.
+    fn group_options() -> Vec<(String, PatchOption)>
+    where
+        <Self as PatchFixture>::GroupOptions: OptionsMenu,
+    {
+        Self::GroupOptions::menu()
+    }
+
+    /// Create a new instance of the fixture from parsed options.
+    fn new(options: Self::GroupOptions) -> Result<Self>;
+
+    /// Parse options and create a new group.
+    fn create(options: Options) -> Result<Self>
+    where
+        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
+    {
+        let parsed: Self::GroupOptions = options.parse()?;
+        Self::new(parsed)
+    }
+
     /// Return the menu of patch options for this fixture type.
     fn patch_options() -> Vec<(String, PatchOption)>;
-
-    /// Create a new instance of the fixture from the provided options.
-    fn new(options: Options) -> Result<Self>;
-
-    /// Return the menu of group options for this fixture type.
-    fn group_options() -> Vec<(String, PatchOption)>;
 }
 
 /// Once we have an instance of a fixture, create patches.
@@ -396,11 +414,14 @@ pub trait CreatePatchConfig {
 /// Create a fixture group for a non-animated fixture.
 pub trait CreateNonAnimatedGroup: PatchFixture + NonAnimatedFixture + Sized + 'static {
     /// Create an empty fixture group for this type of fixture.
-    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup> {
+    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup>
+    where
+        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
+    {
         Ok(FixtureGroup::empty(
             Self::NAME,
             key,
-            Box::new(Self::new(options)?),
+            Box::new(Self::create(options)?),
         ))
     }
 }
@@ -410,12 +431,15 @@ impl<T> CreateNonAnimatedGroup for T where T: PatchFixture + NonAnimatedFixture 
 /// Create a fixture group for an animated fixture.
 pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static {
     /// Create an empty fixture group for this type of fixture.
-    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup> {
+    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup>
+    where
+        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
+    {
         Ok(FixtureGroup::empty(
             Self::NAME,
             key,
             Box::new(FixtureWithAnimations {
-                fixture: Self::new(options)?,
+                fixture: Self::create(options)?,
                 animations: Default::default(),
             }),
         ))
@@ -423,6 +447,33 @@ pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static 
 }
 
 impl<T> CreateAnimatedGroup for T where T: PatchFixture + AnimatedFixture + Sized + 'static {}
+
+/// A type that fixtures can use to declare that they do not accept patch options.
+#[derive(Deserialize)]
+#[serde(try_from = "ParseNoOptions")]
+pub struct NoOptions {}
+
+/// Deserialize as this helper type so we can provide a nice error message.
+#[derive(Deserialize)]
+struct ParseNoOptions(Options);
+
+impl TryFrom<ParseNoOptions> for NoOptions {
+    type Error = Error;
+    fn try_from(value: ParseNoOptions) -> std::result::Result<Self, Self::Error> {
+        value.0.ensure_empty()?;
+        Ok(Self {})
+    }
+}
+
+pub trait OptionsMenu {
+    fn menu() -> Vec<(String, PatchOption)>;
+}
+
+impl OptionsMenu for NoOptions {
+    fn menu() -> Vec<(String, PatchOption)> {
+        vec![]
+    }
+}
 
 pub trait AsPatchOption {
     fn as_patch_option() -> PatchOption;
@@ -449,6 +500,13 @@ impl AsPatchOption for Url {
 impl AsPatchOption for bool {
     fn as_patch_option() -> PatchOption {
         PatchOption::Bool
+    }
+}
+
+// TODO: make optionality explicit
+impl<T: AsPatchOption> AsPatchOption for Option<T> {
+    fn as_patch_option() -> PatchOption {
+        T::as_patch_option()
     }
 }
 

@@ -26,6 +26,45 @@ pub fn derive_as_patch_option(input: TokenStream) -> TokenStream {
     .into()
 }
 
+/// Derive the OptionsMenu trait.
+#[proc_macro_derive(OptionsMenu)]
+pub fn derive_options_menu(input: TokenStream) -> TokenStream {
+    let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
+
+    let Data::Struct(struct_data) = data else {
+        panic!("Can only derive OptionsMenu for structs.");
+    };
+    let Fields::Named(fields) = struct_data.fields else {
+        panic!("Can only derive OptionsMenu for named structs.");
+    };
+
+    let mut lines = quote! {};
+    for field in fields.named.iter() {
+        let ty = &field.ty;
+        let Some(ident) = &field.ident else {
+            continue;
+        };
+        let key = ident.to_string();
+
+        lines = quote! {
+            #lines
+            (#key.to_string(), <#ty>::as_patch_option()),
+        }
+    }
+
+    quote! {
+        impl crate::fixture::patch::OptionsMenu for #ident {
+            fn menu() -> Vec<(String, crate::fixture::patch::PatchOption)> {
+                use crate::fixture::patch::AsPatchOption;
+                vec![
+                    #lines
+                ]
+            }
+        }
+    }
+    .into()
+}
+
 /// Register a fixture with the global patch registry.
 #[proc_macro]
 pub fn register_patcher(input: TokenStream) -> TokenStream {
@@ -67,21 +106,19 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
         impl crate::fixture::patch::PatchFixture for #ident {
             const NAME: FixtureType = FixtureType(#name);
 
-            fn new(options: crate::config::Options) -> anyhow::Result<Self> {
-                options.ensure_empty("group")?;
+            type GroupOptions = crate::fixture::patch::NoOptions;
+
+            fn new(_options: Self::GroupOptions) -> anyhow::Result<Self> {
                 Ok(Self::default())
             }
             fn patch_options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
-                vec![]
-            }
-            fn group_options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
                 vec![]
             }
         }
 
         impl crate::fixture::patch::CreatePatchConfig for #ident {
             fn patch(&self, options: crate::config::Options) -> anyhow::Result<crate::fixture::patch::PatchConfig> {
-                options.ensure_empty("patch")?;
+                options.ensure_empty()?;
                 Ok(crate::fixture::patch::PatchConfig {
                     channel_count: #channel_count,
                     render_mode: None,

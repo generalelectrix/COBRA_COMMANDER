@@ -57,18 +57,18 @@ pub struct Lumitone {
     per_palette_hue_adjust: Vec<BipolarFloat>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
-struct GroupOptions {
+pub struct GroupOptions {
     socket: Option<SocketAddr>,
 }
 
 impl PatchFixture for Lumitone {
     const NAME: FixtureType = FixtureType("Lumitone");
+    type GroupOptions = GroupOptions;
 
-    fn new(options: Options) -> Result<Self> {
+    fn new(options: Self::GroupOptions) -> Result<Self> {
         // Instantiate the control sender.
-        let options: GroupOptions = options.parse()?;
         let (send, recv) = channel();
 
         let l = Self {
@@ -113,7 +113,7 @@ impl PatchFixture for Lumitone {
 
 impl CreatePatchConfig for Lumitone {
     fn patch(&self, options: Options) -> Result<PatchConfig> {
-        options.ensure_empty("patch")?;
+        options.ensure_empty()?;
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,

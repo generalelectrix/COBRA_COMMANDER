@@ -22,23 +22,18 @@ pub struct FlashBang {
     flasher: Box<dyn UnsizedFlasher>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
-struct GroupOptions {
+pub struct GroupOptions {
     #[serde(default)]
     paired: bool,
 }
 
 impl PatchFixture for FlashBang {
     const NAME: FixtureType = FixtureType("FlashBang");
+    type GroupOptions = GroupOptions;
 
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![("paired".to_string(), PatchOption::Bool)]
-    }
-
-    fn new(options: Options) -> Result<Self> {
-        let options: GroupOptions = options.parse()?;
-
+    fn new(options: Self::GroupOptions) -> Result<Self> {
         let flasher = if options.paired {
             Box::new(paired_flasher()) as Box<dyn UnsizedFlasher>
         } else {
@@ -62,7 +57,7 @@ impl PatchFixture for FlashBang {
 
 impl CreatePatchConfig for FlashBang {
     fn patch(&self, options: Options) -> Result<PatchConfig> {
-        options.ensure_empty("patch")?;
+        options.ensure_empty()?;
         let channel_count = self.flasher.cells().len();
         assert!([5, 10].contains(&channel_count));
         Ok(PatchConfig {
