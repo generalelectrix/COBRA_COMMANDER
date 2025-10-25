@@ -58,7 +58,7 @@ impl FixtureGroup {
     }
 
     /// Create a patch config for the inner fixture using the provided options.
-    pub fn patch_cfg(&self, options: &Options) -> Result<PatchConfig> {
+    pub fn patch_cfg(&self, options: Options) -> Result<PatchConfig> {
         self.fixture.patch(options)
     }
 

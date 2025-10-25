@@ -30,20 +30,18 @@ pub struct Color {
     space: ColorSpace,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GroupOptions {
+    control_color_space: ColorSpace,
+}
+
 impl PatchFixture for Color {
     const NAME: FixtureType = FixtureType("Color");
 
-    fn new(options: &mut Options) -> Result<Self> {
-        let space = options
-            .remove("control_color_space")
-            .map(|space| {
-                space
-                    .parse::<ColorSpace>()
-                    .with_context(|| format!("unknown color control space \"{space}\""))
-            })
-            .transpose()?
-            .unwrap_or_default();
-        Ok(Self::for_subcontrol(None, space))
+    fn new(options: Options) -> Result<Self> {
+        let options: GroupOptions = options.parse()?;
+        Ok(Self::for_subcontrol(None, options.control_color_space))
     }
 
     fn group_options() -> Vec<(String, PatchOption)> {
@@ -58,19 +56,18 @@ impl PatchFixture for Color {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PatchOptions {
+    kind: Model,
+}
+
 impl CreatePatchConfig for Color {
-    fn patch_config(&self, options: &mut Options) -> Result<PatchConfig> {
-        let model = options
-            .remove("kind")
-            .map(|kind| {
-                kind.parse::<Model>()
-                    .with_context(|| format!("unknown color output model \"{kind}\""))
-            })
-            .transpose()?
-            .unwrap_or_default();
+    fn patch(&self, options: Options) -> Result<PatchConfig> {
+        let options: PatchOptions = options.parse()?;
         Ok(PatchConfig {
-            channel_count: model.channel_count(),
-            render_mode: Some(model.render_mode()),
+            channel_count: options.kind.channel_count(),
+            render_mode: Some(options.kind.render_mode()),
         })
     }
 }
@@ -230,11 +227,11 @@ impl AnimatedFixture for Color {
 }
 
 #[derive(
-    Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, VariantArray, Display, EnumIter,
+    Debug, Clone, Copy, Default, Eq, PartialEq, Deserialize, VariantArray, Display, EnumIter,
 )]
 pub enum Model {
-    #[default]
     /// RGB in 3 DMX channels.
+    #[default]
     Rgb,
     /// Dimmer in first channel + RGB.
     DimmerRgb,

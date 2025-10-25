@@ -77,4 +77,5 @@ pub mod prelude {
     pub use anyhow::{bail, Result};
     pub use fixture_macros::{register_patcher, Control, EmitState, PatchFixture, Update};
     pub use number::{BipolarFloat, Phase, UnipolarFloat};
+    pub use serde::Deserialize;
 }

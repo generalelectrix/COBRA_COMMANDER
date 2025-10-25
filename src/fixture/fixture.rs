@@ -13,8 +13,9 @@ use super::animation_target::{
 };
 use super::FixtureGroupControls;
 use crate::channel::ChannelControlMessage;
+use crate::config::Options;
 use crate::fixture::animation_target::AnimationTarget;
-use crate::fixture::patch::CreatePatchConfig;
+use crate::fixture::patch::{CreatePatchConfig, PatchConfig};
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 
@@ -196,11 +197,8 @@ impl<F: AnimatedFixture> EmitState for FixtureWithAnimations<F> {
 }
 
 impl<F: AnimatedFixture> CreatePatchConfig for FixtureWithAnimations<F> {
-    fn patch_config(
-        &self,
-        options: &mut super::prelude::Options,
-    ) -> Result<super::prelude::PatchConfig> {
-        self.fixture.patch_config(options)
+    fn patch(&self, options: Options) -> Result<PatchConfig> {
+        self.fixture.patch(options)
     }
 }
 

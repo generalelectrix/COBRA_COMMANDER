@@ -1,5 +1,8 @@
 use crate::dmx::DmxAddr;
-use serde::Deserialize;
+use anyhow::{bail, ensure, Result};
+use itertools::Itertools;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, collections::HashMap, fmt::Display, ops::Deref};
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -53,7 +56,7 @@ pub struct PatchBlock {
     #[serde(default)]
     pub mirror: bool,
 
-    /// Additional key-value string options for configuring individual fixtures.
+    /// Additional options for configuring individual fixtures.
     #[serde(flatten)]
     pub options: Options,
 }
@@ -75,7 +78,44 @@ const fn _true() -> bool {
     true
 }
 
-pub type Options = HashMap<String, String>;
+/// Options that will be passed to a fixture to parse into a strong type.
+/// Using Mapping allows us to accept any valid yaml as the keys and values,
+/// so fixtures are pretty free to structure their options structs.
+#[derive(Clone, Default, Debug, Deserialize)]
+pub struct Options {
+    #[serde(flatten)]
+    value: Mapping,
+}
+
+impl Options {
+    /// Parse these options as a strong type.
+    pub fn parse<T: DeserializeOwned>(self) -> Result<T> {
+        Ok(serde_yaml::from_value(Value::Mapping(self.value))?)
+    }
+
+    /// Return an error if the options are not empty.
+    pub fn ensure_empty(&self) -> Result<()> {
+        ensure!(
+            self.value.is_empty(),
+            "these options were not expected: {}",
+            self.value.keys().map(string_value).join(", ")
+        );
+        Ok(())
+    }
+}
+
+/// Format a Value as a string, providing simple placeholders for complex types.
+fn string_value(v: &Value) -> String {
+    match v {
+        Value::Null => String::new(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(number) => number.to_string(),
+        Value::String(s) => s.clone(),
+        Value::Sequence(s) => format!("<sequence of length {}>", s.len()),
+        Value::Mapping(m) => format!("<mapping of length {}>", m.len()),
+        Value::Tagged(_) => "<tagged value>".to_string(),
+    }
+}
 
 /// Uniquely identify a specific fixture group.
 #[derive(Clone, PartialEq, Eq, Hash, Deserialize, Debug)]

@@ -121,21 +121,15 @@ impl Patch {
             "duplicate group key '{group_key}'"
         );
 
-        let mut group = (patcher.create_group)(group_key.clone(), &cfg.options)?;
+        let mut group = (patcher.create_group)(group_key.clone(), cfg.options.clone())?;
 
         ensure!(!cfg.patches.is_empty(), "no patches specified");
 
         for (i, block) in cfg.patches.iter().enumerate() {
             let (start_addr, count) = block.start_count();
-            // A patch block needs to either specify a DMX address or contain some options,
-            // otherwise there's nothing there that actually provides a configuration.
-            ensure!(
-                start_addr.is_some() || !block.options.is_empty(),
-                "patch block {} has neither DMX address nor options",
-                i + 1
-            );
+
             let patch_cfg = group
-                .patch_cfg(&block.options)
+                .patch_cfg(block.options.clone())
                 .with_context(|| group.qualified_name().to_string())?;
 
             match start_addr {
@@ -295,7 +289,7 @@ pub struct PatchConfig {
 pub struct Patcher {
     pub name: FixtureType,
     pub patch_options: fn() -> Vec<(String, PatchOption)>,
-    pub create_group: fn(FixtureGroupKey, &Options) -> Result<FixtureGroup>,
+    pub create_group: fn(FixtureGroupKey, Options) -> Result<FixtureGroup>,
     pub group_options: fn() -> Vec<(String, PatchOption)>,
 }
 
@@ -310,9 +304,9 @@ impl Display for Patcher {
         // enumerable options
         if patch_opts.is_empty() && group_opts.is_empty() {
             let group =
-                (self.create_group)(FixtureGroupKey("test".to_string()), &Default::default())
+                (self.create_group)(FixtureGroupKey("test".to_string()), Default::default())
                     .unwrap();
-            if let Ok(fix) = group.patch_cfg(&Default::default()) {
+            if let Ok(fix) = group.patch_cfg(Default::default()) {
                 if fix.channel_count > 0 {
                     write!(
                         f,
@@ -354,10 +348,7 @@ pub trait PatchFixture: Sized + 'static {
     fn patch_options() -> Vec<(String, PatchOption)>;
 
     /// Create a new instance of the fixture from the provided options.
-    ///
-    /// Fixtures should remove all recognized items from Options.
-    /// Any unhandled options remaining will result in a patch error.
-    fn new(options: &mut Options) -> Result<Self>;
+    fn new(options: Options) -> Result<Self>;
 
     /// Return the menu of group options for this fixture type.
     fn group_options() -> Vec<(String, PatchOption)>;
@@ -370,36 +361,18 @@ pub trait PatchFixture: Sized + 'static {
 /// ficture state, such that it can be influenced by group-level options as well.
 pub trait CreatePatchConfig {
     /// Create a patch configuration for this fixture from the provided options.
-    fn patch_config(&self, options: &mut Options) -> Result<PatchConfig>;
-
-    /// Return a PatchConfig for this fixture.
-    fn patch(&self, options: &Options) -> Result<PatchConfig> {
-        let mut options = options.clone();
-        let cfg = self.patch_config(&mut options)?;
-        // Ensure the fixture processed all of the options.
-        if !options.is_empty() {
-            return Err(anyhow!(
-                "unhandled patch options: {}",
-                options.keys().join(", ")
-            ));
-        }
-        Ok(cfg)
-    }
+    fn patch(&self, options: Options) -> Result<PatchConfig>;
 }
 
 /// Create a fixture group for a non-animated fixture.
 pub trait CreateNonAnimatedGroup: PatchFixture + NonAnimatedFixture + Sized + 'static {
     /// Create an empty fixture group for this type of fixture.
-    fn create_group(key: FixtureGroupKey, options: &Options) -> Result<FixtureGroup> {
-        let mut options = options.clone();
-        let fixture = Self::new(&mut options)?;
-        if !options.is_empty() {
-            return Err(anyhow!(
-                "unhandled group options: {}",
-                options.keys().join(", ")
-            ));
-        }
-        Ok(FixtureGroup::empty(Self::NAME, key, Box::new(fixture)))
+    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup> {
+        Ok(FixtureGroup::empty(
+            Self::NAME,
+            key,
+            Box::new(Self::new(options)?),
+        ))
     }
 }
 
@@ -408,20 +381,12 @@ impl<T> CreateNonAnimatedGroup for T where T: PatchFixture + NonAnimatedFixture 
 /// Create a fixture group for an animated fixture.
 pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static {
     /// Create an empty fixture group for this type of fixture.
-    fn create_group(key: FixtureGroupKey, options: &Options) -> Result<FixtureGroup> {
-        let mut options = options.clone();
-        let fixture = Self::new(&mut options)?;
-        if !options.is_empty() {
-            return Err(anyhow!(
-                "unhandled group options: {}",
-                options.keys().join(", ")
-            ));
-        }
+    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup> {
         Ok(FixtureGroup::empty(
             Self::NAME,
             key,
             Box::new(FixtureWithAnimations {
-                fixture,
+                fixture: Self::new(options)?,
                 animations: Default::default(),
             }),
         ))
