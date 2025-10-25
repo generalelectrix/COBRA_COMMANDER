@@ -4,7 +4,6 @@
 //! the brightness of each LED ring is directly controlled. There is also a
 //! special 10-channel mode provided for using a pair of these fixtures where
 //! the patterns can be extended over both arrays for additional effects.
-use anyhow::Context;
 use log::error;
 
 use crate::fixture::control::strobe_array::*;
@@ -23,25 +22,20 @@ pub struct FlashBang {
     flasher: Box<dyn UnsizedFlasher>,
 }
 
+#[derive(Deserialize, OptionsMenu)]
+#[serde(deny_unknown_fields)]
+pub struct GroupOptions {
+    #[serde(default)]
+    paired: bool,
+}
+
 impl PatchFixture for FlashBang {
     const NAME: FixtureType = FixtureType("FlashBang");
+    type GroupOptions = GroupOptions;
+    type PatchOptions = NoOptions;
 
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![("paired".to_string(), PatchOption::Bool)]
-    }
-
-    fn new(options: &mut Options) -> Result<Self> {
-        let paired = options
-            .remove("paired")
-            .map(|d| {
-                d.parse::<bool>().with_context(|| {
-                    format!("invalid \"paired\" option \"{d}\"; must be true or false")
-                })
-            })
-            .transpose()?
-            .unwrap_or_default();
-
-        let flasher = if paired {
+    fn new(options: Self::GroupOptions) -> Result<Self> {
+        let flasher = if options.paired {
             Box::new(paired_flasher()) as Box<dyn UnsizedFlasher>
         } else {
             Box::new(single_flasher())
@@ -57,17 +51,9 @@ impl PatchFixture for FlashBang {
         })
     }
 
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![]
-    }
-}
-
-impl CreatePatchConfig for FlashBang {
-    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
-        let channel_count = self.flasher.cells().len();
-        assert!([5, 10].contains(&channel_count));
+    fn new_patch(options: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
         Ok(PatchConfig {
-            channel_count,
+            channel_count: if options.paired { 10 } else { 5 },
             render_mode: None,
         })
     }

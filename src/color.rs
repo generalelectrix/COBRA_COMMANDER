@@ -3,13 +3,17 @@
 use std::f64::consts::PI;
 
 use colored::Colorize;
+use fixture_macros::AsPatchOption;
 use hsluv::hsluv_to_rgb;
 use log::warn;
 use number::{Phase, UnipolarFloat};
-use strum_macros::{Display, EnumIter, EnumString};
+use serde::Deserialize;
+use strum_macros::{Display, EnumIter};
 
 /// Supported control color spaces.
-#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, Display, EnumIter)]
+#[derive(
+    Debug, Clone, Copy, Default, Eq, PartialEq, Deserialize, Display, EnumIter, AsPatchOption,
+)]
 pub enum ColorSpace {
     /// HSV color space with green shifted to hue = 0.
     #[default]

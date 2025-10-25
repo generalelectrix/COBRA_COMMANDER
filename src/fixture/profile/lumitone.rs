@@ -6,7 +6,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
 use log::error;
 
 use crate::{
@@ -16,8 +15,6 @@ use crate::{
         prelude::*,
     },
 };
-
-const SOCKET_OPT: &str = "socket";
 
 #[derive(Debug, EmitState, Control, Update)]
 pub struct Lumitone {
@@ -58,22 +55,19 @@ pub struct Lumitone {
     per_palette_hue_adjust: Vec<BipolarFloat>,
 }
 
+#[derive(Deserialize, OptionsMenu)]
+#[serde(deny_unknown_fields)]
+pub struct GroupOptions {
+    socket: Option<SocketAddr>,
+}
+
 impl PatchFixture for Lumitone {
     const NAME: FixtureType = FixtureType("Lumitone");
+    type GroupOptions = GroupOptions;
+    type PatchOptions = NoOptions;
 
-    fn new(options: &mut Options) -> Result<Self> {
+    fn new(options: Self::GroupOptions) -> Result<Self> {
         // Instantiate the control sender.
-        let Some(addr) = options.remove(SOCKET_OPT) else {
-            bail!("missing required option: socket");
-        };
-        let addr = if addr == "debug" {
-            None
-        } else {
-            Some(
-                addr.parse::<SocketAddr>()
-                    .context("failed to parse socket")?,
-            )
-        };
         let (send, recv) = channel();
 
         let l = Self {
@@ -93,7 +87,7 @@ impl PatchFixture for Lumitone {
 
         std::thread::spawn(move || {
             let sender = LumitoneSender {
-                addr,
+                addr: options.socket,
                 recv,
                 pending_state: None,
                 pending_palette: None,
@@ -107,17 +101,7 @@ impl PatchFixture for Lumitone {
         Ok(l)
     }
 
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![(SOCKET_OPT.to_string(), PatchOption::SocketAddr)]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![]
-    }
-}
-
-impl CreatePatchConfig for Lumitone {
-    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
+    fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,

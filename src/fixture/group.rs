@@ -1,6 +1,6 @@
 //! Define groups of fixtures, sharing a common fixture
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{ensure, Context};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
 use std::fmt::{Debug, Display};
@@ -15,9 +15,7 @@ use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
 use crate::color::Hsluv;
 use crate::config::FixtureGroupKey;
-use crate::config::Options;
 use crate::dmx::DmxBuffer;
-use crate::fixture::patch::PatchConfig;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
@@ -55,11 +53,6 @@ impl FixtureGroup {
             fixture,
             strobe_enabled: false,
         }
-    }
-
-    /// Create a patch config for the inner fixture using the provided options.
-    pub fn patch_cfg(&self, options: &Options) -> Result<PatchConfig> {
-        self.fixture.patch(options)
     }
 
     /// Patch an additional fixture in this group.
@@ -175,11 +168,11 @@ impl FixtureGroup {
     pub fn render(&self, master_controls: &MasterControls, dmx_buffers: &mut [DmxBuffer]) {
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
-            let Some(dmx_addr) = cfg.dmx_addr else {
+            let Some(dmx_index) = cfg.dmx_index else {
                 continue;
             };
             let phase_offset = phase_offset_per_fixture * i as f64;
-            let dmx_buf = &mut dmx_buffers[cfg.universe][dmx_addr..dmx_addr + cfg.channel_count];
+            let dmx_buf = &mut dmx_buffers[cfg.universe][dmx_index..dmx_index + cfg.channel_count];
             self.fixture.render(
                 phase_offset,
                 i,
@@ -198,7 +191,7 @@ impl FixtureGroup {
                 },
                 dmx_buf,
             );
-            debug!("{}@{}: {:?}", self.qualified_name(), dmx_addr + 1, dmx_buf);
+            debug!("{}@{}: {:?}", self.qualified_name(), dmx_index + 1, dmx_buf);
         }
     }
 }
@@ -209,7 +202,7 @@ pub struct GroupFixtureConfig {
     /// This is a buffer index - as in, indexed from 0, not 1.
     ///
     /// If None, the fixture is assumed to not render to DMX.
-    pub dmx_addr: Option<usize>,
+    pub dmx_index: Option<usize>,
     /// The universe that this fixture is patched in.
     pub universe: usize,
     /// The number of DMX channels used by this fixture.

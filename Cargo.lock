@@ -916,6 +916,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tunnels",
  "tunnels_lib",
+ "url",
  "wled-json-api-library",
  "zero_configure",
  "zmq",
@@ -5564,6 +5565,7 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

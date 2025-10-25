@@ -25,49 +25,29 @@ pub struct Wled {
     controller: WledController,
 }
 
-const URL_OPT: &str = "url";
-const PRESET_COUNT_OPT: &str = "preset_count";
+#[derive(Deserialize, OptionsMenu)]
+#[serde(deny_unknown_fields)]
+pub struct GroupOptions {
+    url: Url,
+    preset_count: usize,
+}
 
 impl PatchFixture for Wled {
     const NAME: FixtureType = FixtureType("Wled");
-    fn new(options: &mut Options) -> Result<Self> {
-        let Some(url) = options
-            .remove(URL_OPT)
-            .map(|u| u.parse::<Url>())
-            .transpose()?
-        else {
-            bail!("missing required option {URL_OPT}");
-        };
-        let Some(preset_count) = options
-            .remove(PRESET_COUNT_OPT)
-            .map(|u| u.parse::<usize>())
-            .transpose()?
-        else {
-            bail!("missing required option {PRESET_COUNT_OPT}");
-        };
+    type GroupOptions = GroupOptions;
+    type PatchOptions = NoOptions;
+
+    fn new(options: Self::GroupOptions) -> Result<Self> {
         Ok(Self {
             level: Unipolar::new("Level", ()).with_channel_level(),
             speed: Unipolar::new("Speed", ()).with_channel_knob(0),
             size: Unipolar::new("Size", ()).with_channel_knob(1),
-            preset: IndexedSelect::new("Preset", preset_count, false, ()),
-            controller: WledController::run(url),
+            preset: IndexedSelect::new("Preset", options.preset_count, false, ()),
+            controller: WledController::run(options.url),
         })
     }
 
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![
-            (URL_OPT.to_string(), PatchOption::Url),
-            (PRESET_COUNT_OPT.to_string(), PatchOption::Int),
-        ]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![]
-    }
-}
-
-impl CreatePatchConfig for Wled {
-    fn patch_config(&self, _options: &mut Options) -> Result<PatchConfig> {
+    fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,

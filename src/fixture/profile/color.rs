@@ -1,9 +1,9 @@
 //! Flexible control profile for a single-color fixture.
-use anyhow::{Context, Result};
+use anyhow::Result;
 use log::error;
-use strum_macros::{Display, EnumIter, EnumString, VariantArray};
+use strum_macros::{Display, EnumIter, VariantArray};
 
-use crate::{color::*, config::Options, fixture::prelude::*};
+use crate::{color::*, fixture::prelude::*};
 
 #[derive(Debug, Control, EmitState, Update)]
 #[strobe]
@@ -30,49 +30,34 @@ pub struct Color {
     space: ColorSpace,
 }
 
+#[derive(Deserialize, OptionsMenu)]
+#[serde(deny_unknown_fields)]
+pub struct GroupOptions {
+    #[serde(default)]
+    control_color_space: ColorSpace,
+}
+
 impl PatchFixture for Color {
     const NAME: FixtureType = FixtureType("Color");
+    type GroupOptions = GroupOptions;
+    type PatchOptions = PatchOptions;
 
-    fn new(options: &mut Options) -> Result<Self> {
-        let space = options
-            .remove("control_color_space")
-            .map(|space| {
-                space
-                    .parse::<ColorSpace>()
-                    .with_context(|| format!("unknown color control space \"{space}\""))
-            })
-            .transpose()?
-            .unwrap_or_default();
-        Ok(Self::for_subcontrol(None, space))
+    fn new(options: Self::GroupOptions) -> Result<Self> {
+        Ok(Self::for_subcontrol(None, options.control_color_space))
     }
-
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![(
-            "control_color_space".to_string(),
-            ColorSpace::patch_option(),
-        )]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![("kind".to_string(), Model::patch_option())]
+    fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: options.kind.channel_count(),
+            render_mode: Some(options.kind.render_mode()),
+        })
     }
 }
 
-impl CreatePatchConfig for Color {
-    fn patch_config(&self, options: &mut Options) -> Result<PatchConfig> {
-        let model = options
-            .remove("kind")
-            .map(|kind| {
-                kind.parse::<Model>()
-                    .with_context(|| format!("unknown color output model \"{kind}\""))
-            })
-            .transpose()?
-            .unwrap_or_default();
-        Ok(PatchConfig {
-            channel_count: model.channel_count(),
-            render_mode: Some(model.render_mode()),
-        })
-    }
+#[derive(Deserialize, OptionsMenu)]
+#[serde(deny_unknown_fields)]
+pub struct PatchOptions {
+    #[serde(default)]
+    kind: Model,
 }
 
 register_patcher!(Color);
@@ -230,11 +215,11 @@ impl AnimatedFixture for Color {
 }
 
 #[derive(
-    Debug, Clone, Copy, Default, Eq, PartialEq, EnumString, VariantArray, Display, EnumIter,
+    Debug, Clone, Copy, Default, Eq, PartialEq, Deserialize, VariantArray, Display, EnumIter,
 )]
 pub enum Model {
-    #[default]
     /// RGB in 3 DMX channels.
+    #[default]
     Rgb,
     /// Dimmer in first channel + RGB.
     DimmerRgb,

@@ -2,9 +2,9 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
+use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Write};
-use strum::IntoEnumIterator;
 
 use anyhow::bail;
 use log::info;
@@ -18,9 +18,60 @@ use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
 use linkme::distributed_slice;
 
+mod option;
+
+pub use option::{enum_patch_option, AsPatchOption, NoOptions, OptionsMenu, PatchOption};
+
 /// Mapping between a universe/address pair and the type of fixture already
 /// addressed over that pair, as well as the starting address.
-type UsedAddrs = HashMap<(UniverseIdx, usize), (FixtureType, usize)>;
+#[derive(Default, Clone)]
+struct UsedAddrs(HashMap<(UniverseIdx, usize), (FixtureType, usize)>);
+
+impl UsedAddrs {
+    /// Attempt to allocate requested addresses for the provided fixture type.
+    ///
+    /// The addresses will only be allocated if there are no conflicts.
+    pub fn allocate(
+        &mut self,
+        fixture_type: FixtureType,
+        universe: UniverseIdx,
+        start_dmx_index: usize,
+        channel_count: usize,
+    ) -> Result<()> {
+        ensure!(
+            start_dmx_index < 512,
+            "dmx address {} out of range",
+            start_dmx_index + 1
+        );
+        let next_dmx_addr = start_dmx_index + channel_count;
+        ensure!(
+            next_dmx_addr <= 512,
+            "impossible to patch a fixture with {channel_count} channels at start address {}",
+            start_dmx_index + 1
+        );
+        for this_index in start_dmx_index..start_dmx_index + channel_count {
+            if let Some((existing_fixture, patched_at)) = self.0.get(&(universe, this_index)) {
+                bail!(
+                    "{fixture_type} at {} overlaps at DMX address {} in universe {} with {} at {}",
+                    start_dmx_index + 1,
+                    this_index + 1,
+                    universe,
+                    existing_fixture,
+                    patched_at + 1,
+                );
+            }
+        }
+        // No conflicts; allocate addresses.
+        for this_index in start_dmx_index..start_dmx_index + channel_count {
+            let existing = self
+                .0
+                .insert((universe, this_index), (fixture_type, start_dmx_index));
+            debug_assert!(existing.is_none());
+        }
+
+        Ok(())
+    }
+}
 
 /// Factory for fixture instances.
 ///
@@ -121,22 +172,14 @@ impl Patch {
             "duplicate group key '{group_key}'"
         );
 
-        let mut group = (patcher.create_group)(group_key.clone(), &cfg.options)?;
+        let mut group = (patcher.create_group)(group_key.clone(), cfg.options.clone())?;
 
         ensure!(!cfg.patches.is_empty(), "no patches specified");
 
-        for (i, block) in cfg.patches.iter().enumerate() {
+        for block in cfg.patches.iter() {
             let (start_addr, count) = block.start_count();
-            // A patch block needs to either specify a DMX address or contain some options,
-            // otherwise there's nothing there that actually provides a configuration.
-            ensure!(
-                start_addr.is_some() || !block.options.is_empty(),
-                "patch block {} has neither DMX address nor options",
-                i + 1
-            );
-            let patch_cfg = group
-                .patch_cfg(&block.options)
-                .with_context(|| group.qualified_name().to_string())?;
+
+            let patch_cfg = (patcher.create_patch)(cfg.options.clone(), block.options.clone())?;
 
             match start_addr {
                 None => {
@@ -153,7 +196,7 @@ impl Patch {
                         cfg.group.as_deref().unwrap_or("none")
                     );
                     group.patch(GroupFixtureConfig {
-                        dmx_addr: None,
+                        dmx_index: None,
                         universe: block.universe,
                         channel_count: patch_cfg.channel_count,
                         mirror: block.mirror,
@@ -161,16 +204,28 @@ impl Patch {
                     });
                 }
                 Some(mut dmx_addr) => {
+                    ensure!(
+                        patch_cfg.channel_count > 0,
+                        "DMX start address {dmx_addr} provided for a fixture that is not DMX-controlled"
+                    );
+                    dmx_addr.validate()?;
                     for _ in 0..count {
                         let fixture_cfg = GroupFixtureConfig {
-                            dmx_addr: Some(dmx_addr.dmx_index()),
+                            dmx_index: Some(dmx_addr.dmx_index()),
                             universe: block.universe,
                             channel_count: patch_cfg.channel_count,
                             mirror: block.mirror,
                             render_mode: patch_cfg.render_mode,
                         };
 
-                        self.used_addrs = self.check_collision(patcher.name, &fixture_cfg)?;
+                        if let Some(dmx_index) = fixture_cfg.dmx_index {
+                            self.used_addrs.allocate(
+                                patcher.name,
+                                fixture_cfg.universe,
+                                dmx_index,
+                                fixture_cfg.channel_count,
+                            )?;
+                        };
 
                         info!(
                             "Controlling {} at {} (group: {}).",
@@ -223,39 +278,6 @@ impl Patch {
         }
         universes.len()
     }
-
-    /// Check that the patch candidate doesn't conflict with another patched fixture.
-    /// Return an updated collection of used addresses if it does not conflict.
-    fn check_collision(
-        &self,
-        fixture_type: FixtureType,
-        cfg: &GroupFixtureConfig,
-    ) -> Result<UsedAddrs> {
-        let mut used_addrs = self.used_addrs.clone();
-        let Some(dmx_index) = cfg.dmx_addr else {
-            return Ok(used_addrs);
-        };
-        for index in dmx_index..dmx_index + cfg.channel_count {
-            match used_addrs.get(&(cfg.universe, index)) {
-                Some((existing_fixture, patched_at)) => {
-                    bail!(
-                        "{} at {} overlaps at DMX address {} in universe {} with {} at {}.",
-                        fixture_type,
-                        dmx_index + 1,
-                        index + 1,
-                        cfg.universe,
-                        existing_fixture,
-                        patched_at + 1,
-                    );
-                }
-                None => {
-                    used_addrs.insert((cfg.universe, index), (fixture_type, dmx_index));
-                }
-            }
-        }
-        Ok(used_addrs)
-    }
-
     /// Get the fixture/channel patched with this key.
     pub fn get(&self, key: &str) -> Result<&FixtureGroup> {
         self.fixtures
@@ -294,9 +316,10 @@ pub struct PatchConfig {
 #[derive(Clone)]
 pub struct Patcher {
     pub name: FixtureType,
-    pub patch_options: fn() -> Vec<(String, PatchOption)>,
-    pub create_group: fn(FixtureGroupKey, &Options) -> Result<FixtureGroup>,
+    pub create_group: fn(FixtureGroupKey, Options) -> Result<FixtureGroup>,
     pub group_options: fn() -> Vec<(String, PatchOption)>,
+    pub create_patch: fn(group_options: Options, patch_options: Options) -> Result<PatchConfig>,
+    pub patch_options: fn() -> Vec<(String, PatchOption)>,
 }
 
 impl Display for Patcher {
@@ -309,10 +332,7 @@ impl Display for Patcher {
         // TODO: we should make it possible to generate patch configs for all
         // enumerable options
         if patch_opts.is_empty() && group_opts.is_empty() {
-            let group =
-                (self.create_group)(FixtureGroupKey("test".to_string()), &Default::default())
-                    .unwrap();
-            if let Ok(fix) = group.patch_cfg(&Default::default()) {
+            if let Ok(fix) = (self.create_patch)(Default::default(), Default::default()) {
                 if fix.channel_count > 0 {
                     write!(
                         f,
@@ -350,56 +370,67 @@ impl Display for Patcher {
 pub trait PatchFixture: Sized + 'static {
     const NAME: FixtureType;
 
+    type GroupOptions;
+    type PatchOptions;
+
+    /// Return the menu of group-level options for this fixture type.
+    fn group_options() -> Vec<(String, PatchOption)>
+    where
+        <Self as PatchFixture>::GroupOptions: OptionsMenu,
+    {
+        Self::GroupOptions::menu()
+    }
+
+    /// Create a new instance of the fixture from parsed options.
+    fn new(options: Self::GroupOptions) -> Result<Self>;
+
+    /// Parse options and create a new group.
+    fn create(options: Options) -> Result<Self>
+    where
+        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
+    {
+        let options: Self::GroupOptions = options.parse().context("group options")?;
+        Self::new(options)
+    }
+
+    /// Parse options and create a patch config.
+    fn create_patch(group_options: Options, patch_options: Options) -> Result<PatchConfig>
+    where
+        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
+        <Self as PatchFixture>::PatchOptions: DeserializeOwned,
+    {
+        let group_options: Self::GroupOptions = group_options.parse().context("group options")?;
+        let patch_options: Self::PatchOptions = patch_options.parse().context("patch options")?;
+        Self::new_patch(group_options, patch_options)
+    }
+
+    /// Given group- and patch-level options, produce a patch config.
+    fn new_patch(
+        group_options: Self::GroupOptions,
+        patch_options: Self::PatchOptions,
+    ) -> Result<PatchConfig>;
+
     /// Return the menu of patch options for this fixture type.
-    fn patch_options() -> Vec<(String, PatchOption)>;
-
-    /// Create a new instance of the fixture from the provided options.
-    ///
-    /// Fixtures should remove all recognized items from Options.
-    /// Any unhandled options remaining will result in a patch error.
-    fn new(options: &mut Options) -> Result<Self>;
-
-    /// Return the menu of group options for this fixture type.
-    fn group_options() -> Vec<(String, PatchOption)>;
-}
-
-/// Once we have an instance of a fixture, create patches.
-///
-/// By making this a method on the fixture type, it allows configuration for the
-/// fixture patches based on both the provided patch options as well as the
-/// ficture state, such that it can be influenced by group-level options as well.
-pub trait CreatePatchConfig {
-    /// Create a patch configuration for this fixture from the provided options.
-    fn patch_config(&self, options: &mut Options) -> Result<PatchConfig>;
-
-    /// Return a PatchConfig for this fixture.
-    fn patch(&self, options: &Options) -> Result<PatchConfig> {
-        let mut options = options.clone();
-        let cfg = self.patch_config(&mut options)?;
-        // Ensure the fixture processed all of the options.
-        if !options.is_empty() {
-            return Err(anyhow!(
-                "unhandled patch options: {}",
-                options.keys().join(", ")
-            ));
-        }
-        Ok(cfg)
+    fn patch_options() -> Vec<(String, PatchOption)>
+    where
+        <Self as PatchFixture>::PatchOptions: OptionsMenu,
+    {
+        Self::PatchOptions::menu()
     }
 }
 
 /// Create a fixture group for a non-animated fixture.
 pub trait CreateNonAnimatedGroup: PatchFixture + NonAnimatedFixture + Sized + 'static {
     /// Create an empty fixture group for this type of fixture.
-    fn create_group(key: FixtureGroupKey, options: &Options) -> Result<FixtureGroup> {
-        let mut options = options.clone();
-        let fixture = Self::new(&mut options)?;
-        if !options.is_empty() {
-            return Err(anyhow!(
-                "unhandled group options: {}",
-                options.keys().join(", ")
-            ));
-        }
-        Ok(FixtureGroup::empty(Self::NAME, key, Box::new(fixture)))
+    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup>
+    where
+        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
+    {
+        Ok(FixtureGroup::empty(
+            Self::NAME,
+            key,
+            Box::new(Self::create(options)?),
+        ))
     }
 }
 
@@ -408,20 +439,15 @@ impl<T> CreateNonAnimatedGroup for T where T: PatchFixture + NonAnimatedFixture 
 /// Create a fixture group for an animated fixture.
 pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static {
     /// Create an empty fixture group for this type of fixture.
-    fn create_group(key: FixtureGroupKey, options: &Options) -> Result<FixtureGroup> {
-        let mut options = options.clone();
-        let fixture = Self::new(&mut options)?;
-        if !options.is_empty() {
-            return Err(anyhow!(
-                "unhandled group options: {}",
-                options.keys().join(", ")
-            ));
-        }
+    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup>
+    where
+        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
+    {
         Ok(FixtureGroup::empty(
             Self::NAME,
             key,
             Box::new(FixtureWithAnimations {
-                fixture,
+                fixture: Self::create(options)?,
                 animations: Default::default(),
             }),
         ))
@@ -429,46 +455,6 @@ pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static 
 }
 
 impl<T> CreateAnimatedGroup for T where T: PatchFixture + AnimatedFixture + Sized + 'static {}
-
-/// The kinds of patch options that fixtures can specify.
-pub enum PatchOption {
-    /// An integer.
-    Int,
-    /// Select a specific option from a menu.
-    Select(Vec<String>),
-    /// A network address.
-    SocketAddr,
-    /// A URL.
-    Url,
-    /// A boolean option.
-    Bool,
-}
-
-impl Display for PatchOption {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Int => f.write_str("<integer>"),
-            Self::Select(opts) => f.write_str(&opts.join(", ")),
-            Self::SocketAddr => f.write_str("<socket address>"),
-            Self::Url => f.write_str("<url>"),
-            Self::Bool => f.write_str("true, false"),
-        }
-    }
-}
-
-/// Things that can be converted into patch options.
-pub trait AsPatchOption {
-    fn patch_option() -> PatchOption;
-}
-
-impl<T> AsPatchOption for T
-where
-    T: IntoEnumIterator + Display,
-{
-    fn patch_option() -> PatchOption {
-        PatchOption::Select(Self::iter().map(|x| x.to_string()).collect())
-    }
-}
 
 #[cfg(test)]
 mod test {
@@ -524,7 +510,7 @@ mod test {
         assert_eq!(
             color_configs[0],
             GroupFixtureConfig {
-                dmx_addr: Some(0),
+                dmx_index: Some(0),
                 universe: 0,
                 channel_count: 3,
                 mirror: false,
@@ -534,7 +520,7 @@ mod test {
         assert_eq!(
             color_configs[2],
             GroupFixtureConfig {
-                dmx_addr: Some(7),
+                dmx_index: Some(7),
                 universe: 0,
                 channel_count: 4,
                 mirror: false,
@@ -546,7 +532,7 @@ mod test {
         assert_eq!(
             dimmer_configs[0],
             GroupFixtureConfig {
-                dmx_addr: Some(0),
+                dmx_index: Some(0),
                 universe: 1,
                 channel_count: 1,
                 mirror: true,
@@ -556,7 +542,7 @@ mod test {
         assert_eq!(
             dimmer_configs[1],
             GroupFixtureConfig {
-                dmx_addr: Some(11),
+                dmx_index: Some(11),
                 universe: 0,
                 channel_count: 1,
                 mirror: false,
@@ -610,6 +596,17 @@ mod test {
     }
 
     #[test]
+    fn test_end_of_universe() {
+        assert_fail_patch(
+            "
+- fixture: Color
+  patches:
+    - addr: 511",
+            "impossible to patch a fixture with 3 channels at start address 511",
+        );
+    }
+
+    #[test]
     fn test_unused_options() {
         assert_fail_patch(
             "
@@ -617,7 +614,7 @@ mod test {
   foobar: unused
   patches:
     - addr: 1",
-            "unhandled group options: foobar",
+            "group options: these options were not expected: foobar",
         );
 
         assert_fail_patch(
@@ -626,7 +623,7 @@ mod test {
   patches:
     - addr: 1
       foobar: unused",
-            "unhandled patch options: foobar",
+            "patch options: these options were not expected: foobar",
         );
     }
 
@@ -683,14 +680,48 @@ mod test {
     }
 
     #[test]
-    fn test_no_invalid_patch_block() {
-        // Gotta have a DMX addr or some options to make any sense.
+    fn test_no_patches() {
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  patches:",
+            "no patches specified",
+        );
+    }
+
+    #[test]
+    fn test_bad_addrs() {
         assert_fail_patch(
             "
 - fixture: Dimmer
   patches:
-    - mirror: true",
-            "patch block 1 has neither DMX address nor options",
+    - addr: 0",
+            "invalid DMX address 0",
         );
+        assert_fail_patch(
+            "
+- fixture: Dimmer
+  patches:
+    - addr: 513",
+            "invalid DMX address 513",
+        );
+    }
+
+    /// Test that we can patch an instance of WLED.
+    #[test]
+    fn test_wled() {
+        Patch::patch_all(
+            parse(
+                "
+- fixture: Wled
+  url: http://foo.bar.baz
+  preset_count: 1
+  patches:
+    - 
+",
+            )
+            .unwrap(),
+        )
+        .unwrap();
     }
 }

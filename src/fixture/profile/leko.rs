@@ -8,14 +8,12 @@
 //! slightly offset from the animation phase of the rotators.  This *probably*
 //! doesn't matter in practice, and it will especially not matter if we're using
 //! random noise generation to drive them.
-use std::str::FromStr;
 
-use anyhow::Context;
 use log::error;
 use ordered_float::OrderedFloat;
 use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 
-use crate::fixture::prelude::*;
+use crate::fixture::{patch::NoOptions, prelude::*};
 
 #[derive(Debug, EmitState, Control, Update)]
 #[strobe]
@@ -55,32 +53,28 @@ impl Default for Leko {
 
 impl PatchFixture for Leko {
     const NAME: FixtureType = FixtureType("Leko");
+    type GroupOptions = NoOptions;
+    type PatchOptions = PatchOptions;
 
-    fn new(_options: &mut Options) -> Result<Self> {
+    fn new(_options: Self::GroupOptions) -> Result<Self> {
         Ok(Default::default())
     }
 
-    fn group_options() -> Vec<(String, PatchOption)> {
-        vec![]
-    }
-
-    fn patch_options() -> Vec<(String, PatchOption)> {
-        vec![("kind".to_string(), Model::patch_option())]
+    fn new_patch(
+        _: Self::GroupOptions,
+        options: Self::PatchOptions,
+    ) -> anyhow::Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: options.kind.channel_count(),
+            render_mode: Some(options.kind.render_mode()),
+        })
     }
 }
 
-impl CreatePatchConfig for Leko {
-    fn patch_config(&self, options: &mut Options) -> anyhow::Result<PatchConfig> {
-        let Some(kind) = options.remove("kind") else {
-            bail!("missing required option: kind");
-        };
-        let model =
-            Model::from_str(&kind).with_context(|| format!("invalid kind option: {kind}"))?;
-        Ok(PatchConfig {
-            channel_count: model.channel_count(),
-            render_mode: Some(model.render_mode()),
-        })
-    }
+#[derive(Deserialize, OptionsMenu)]
+#[serde(deny_unknown_fields)]
+pub struct PatchOptions {
+    kind: Model,
 }
 
 register_patcher!(Leko);
@@ -168,7 +162,17 @@ impl AnimatedFixture for Leko {
 
 /// Which model of gobo rotator is installed in this leko, or is this the dimmer.
 #[derive(
-    Default, Debug, Clone, Copy, Eq, PartialEq, EnumString, VariantArray, Display, EnumIter,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    Eq,
+    PartialEq,
+    EnumString,
+    Deserialize,
+    VariantArray,
+    Display,
+    EnumIter,
 )]
 enum Model {
     /// Dimmer channel.
