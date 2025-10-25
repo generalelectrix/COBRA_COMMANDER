@@ -22,6 +22,7 @@ use tunnels::{
 use crate::{
     midi::EmitMidiMasterMessage,
     osc::{prelude::*, ScopedControlEmitter},
+    show::UPDATE_INTERVAL,
 };
 
 /// Should a fixture use the short or long flash duration?
@@ -76,6 +77,12 @@ impl StrobeState {
 
 pub struct StrobeClock {
     clock: Clock,
+    /// This is a rate that is exactly computed from control inputs, such that
+    /// we can round-trip this back out to the controls and always get the same
+    /// value back out. The actual clock rate set internally is always coerced
+    /// to be equal to an integer number of frames, to help get closer to stable
+    /// flash timing.
+    rate_raw: f64,
     tap_sync: TapSync,
     tick_indicator: TransientIndicator,
     /// The current flash state; if Some, the flash is on.
@@ -97,11 +104,10 @@ impl Default for StrobeClock {
     fn default() -> Self {
         let mut osc_controls = GroupControlMap::default();
         map_controls(&mut osc_controls);
-        // Set initial rate to our minimum.
-        let mut clock = Clock::default();
-        clock.rate_coarse = MIN_STROBE_RATE;
-        Self {
-            clock,
+
+        let mut sc = Self {
+            clock: Default::default(),
+            rate_raw: 0.,
             tap_sync: Default::default(),
             tick_indicator: Default::default(),
             flash: None,
@@ -110,11 +116,29 @@ impl Default for StrobeClock {
             flash_duration_long: 3,
             intensity: UnipolarFloat::ONE,
             osc_controls,
-        }
+        };
+        // Set initial rate to our minimum.
+        sc.set_rate(MIN_STROBE_RATE, true);
+        sc
     }
 }
 
 impl StrobeClock {
+    /// Set both raw and coerced rates.
+    ///
+    /// If coerce is true, discretize the actual rate passed to the clock into
+    /// an integer number of frames.
+    fn set_rate(&mut self, raw_rate: f64, coerce: bool) {
+        self.rate_raw = raw_rate;
+        if coerce {
+            let interval_frame_count = ((1.0 / raw_rate) / UPDATE_INTERVAL.as_secs_f64()).round();
+            let coerced_rate = 1. / (interval_frame_count * UPDATE_INTERVAL.as_secs_f64());
+            self.clock.rate_coarse = coerced_rate;
+        } else {
+            self.clock.rate_coarse = raw_rate;
+        }
+    }
+
     /// Return the current strobing state.
     fn state(&self) -> StrobeState {
         let (short, long) = if let Some(flash_age) = self.flash {
@@ -128,7 +152,7 @@ impl StrobeClock {
             ticked: self.clock.ticked(),
             intensity_short: short.then_some(self.intensity).unwrap_or_default(),
             intensity_long: long.then_some(self.intensity).unwrap_or_default(),
-            rate: unipolar_from_rate(self.clock.rate_coarse),
+            rate: unipolar_from_rate(self.rate_raw),
         }
     }
 
@@ -173,7 +197,7 @@ impl StrobeClock {
         use StateChange::*;
         emit_state_change(&Ticked(self.tick_indicator.state()), emitter);
         emit_state_change(&StrobeOn(self.strobe_on), emitter);
-        emit_state_change(&Rate(unipolar_from_rate(self.clock.rate_coarse)), emitter);
+        emit_state_change(&Rate(unipolar_from_rate(self.rate_raw)), emitter);
         emit_state_change(&Intensity(self.intensity), emitter);
     }
 
@@ -184,8 +208,13 @@ impl StrobeClock {
             Set(msg) => self.handle_state_change(msg, emitter),
             Tap => {
                 if let Some(new_rate) = self.tap_sync.tap() {
-                    self.clock.rate_coarse = new_rate;
-                    emit_state_change(&Rate(unipolar_from_rate(self.clock.rate_coarse)), emitter);
+                    // Do not coerce tap sync rates to be integer frame numbers;
+                    // prefer a bit of jitter but remaining synced with taps
+                    // rather than perfect strobing intervals. These are more
+                    // likely to be slower anyway, and thus frame jitter will
+                    // be less perceptible anyway.
+                    self.set_rate(new_rate, false);
+                    emit_state_change(&Rate(unipolar_from_rate(new_rate)), emitter);
                 }
             }
             ToggleStrobeOn => {
@@ -219,7 +248,7 @@ impl StrobeClock {
                     self.clock.reset_next_update();
                 }
             }
-            Rate(v) => self.clock.rate_coarse = rate_from_unipolar(v),
+            Rate(v) => self.set_rate(rate_from_unipolar(v), true),
             Intensity(v) => self.intensity = v,
             Ticked(_) => (),
         }
@@ -241,25 +270,30 @@ fn emit_state_change(sc: &StateChange, emitter: &ScopedControlEmitter) {
 /// Convert a unipolar control value into a strobe rate.
 /// Unlike most clocks, we don't actually want to be able to set a hard 0 for
 /// strobe rate, since this would just be confusing.
+///
+/// Make this a quartic control to more evenly spread out the slow strobe rates.
 fn rate_from_unipolar(v: UnipolarFloat) -> f64 {
-    MIN_STROBE_RATE + (v.val() * (MAX_STROBE_RATE - MIN_STROBE_RATE))
+    MIN_STROBE_RATE + (v.val().powi(4) * (MAX_STROBE_RATE - MIN_STROBE_RATE))
 }
 
 /// Convert a strobe rate into a unipolar control parameter.
 /// Clamp the incoming value to the expected range to handle values outside of
 /// our expected range.
+///
+/// Take the 4th root to make this a quartic knob.
 fn unipolar_from_rate(r: f64) -> UnipolarFloat {
     UnipolarFloat::new(
-        (r.max(MIN_STROBE_RATE) - MIN_STROBE_RATE) / (MAX_STROBE_RATE - MIN_STROBE_RATE),
+        ((r.max(MIN_STROBE_RATE) - MIN_STROBE_RATE) / (MAX_STROBE_RATE - MIN_STROBE_RATE))
+            .powf(1. / 4.),
     )
 }
 
 /// Rate at 0 = strobing once per 2 seconds.
 const MIN_STROBE_RATE: f64 = 0.5;
 
-/// Max rate: 10 fps (this is pretty fast and unlikely we can do better than
-/// this with cheap fixtures and DMX timing).
-const MAX_STROBE_RATE: f64 = 10.;
+/// Max rate: 40 fps (this is much faster than is useful for strobing single
+/// fixtures, but it is as fast as we could possibly strobe cellular fixtures).
+const MAX_STROBE_RATE: f64 = 40.;
 
 #[derive(Debug, Clone)]
 pub enum ControlMessage {
