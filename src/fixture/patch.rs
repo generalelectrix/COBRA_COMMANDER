@@ -432,12 +432,14 @@ impl<T> CreateAnimatedGroup for T where T: PatchFixture + AnimatedFixture + Size
 
 /// The kinds of patch options that fixtures can specify.
 pub enum PatchOption {
+    /// An integer.
+    Int,
     /// Select a specific option from a menu.
     Select(Vec<String>),
-
     /// A network address.
     SocketAddr,
-
+    /// A URL.
+    Url,
     /// A boolean option.
     Bool,
 }
@@ -445,8 +447,10 @@ pub enum PatchOption {
 impl Display for PatchOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Int => f.write_str("<integer>"),
             Self::Select(opts) => f.write_str(&opts.join(", ")),
             Self::SocketAddr => f.write_str("<socket address>"),
+            Self::Url => f.write_str("<url>"),
             Self::Bool => f.write_str("true, false"),
         }
     }

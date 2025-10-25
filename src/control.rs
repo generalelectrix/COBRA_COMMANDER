@@ -6,7 +6,6 @@ use std::{
 };
 
 use anyhow::{bail, Result};
-use reqwest::Url;
 use rosc::OscMessage;
 use tunnels::midi::{CreateControlEvent, DeviceSpec};
 
@@ -19,7 +18,6 @@ use crate::{
         EmitOscMessage, EmitScopedOscMessage, OscClientId, OscControlMessage, OscControlResponse,
         OscController, ScopedControlEmitter, TalkbackMode,
     },
-    wled::{EmitWledControlMessage, WledController, WledResponse},
 };
 
 /// Emit scoped control messages.
@@ -31,20 +29,12 @@ impl<T> EmitScopedControlMessage for T where T: EmitScopedOscMessage + EmitMidiA
 /// Emit control messages.
 /// Will be extended in the future to potentially cover more cases.
 pub trait EmitControlMessage:
-    EmitOscMessage
-    + EmitMidiChannelMessage
-    + EmitMidiMasterMessage
-    + EmitMidiAnimationMessage
-    + EmitWledControlMessage
+    EmitOscMessage + EmitMidiChannelMessage + EmitMidiMasterMessage + EmitMidiAnimationMessage
 {
 }
 
 impl<T> EmitControlMessage for T where
-    T: EmitOscMessage
-        + EmitMidiChannelMessage
-        + EmitMidiMasterMessage
-        + EmitMidiAnimationMessage
-        + EmitWledControlMessage
+    T: EmitOscMessage + EmitMidiChannelMessage + EmitMidiMasterMessage + EmitMidiAnimationMessage
 {
 }
 
@@ -52,7 +42,6 @@ impl<T> EmitControlMessage for T where
 pub struct Controller {
     osc: OscController,
     midi: MidiController,
-    wled: Option<WledController>,
     recv: Receiver<ControlMessage>,
 }
 
@@ -61,14 +50,11 @@ impl Controller {
         receive_port: u16,
         osc_controllers: Vec<OscClientId>,
         midi_devices: Vec<DeviceSpec<Device>>,
-        wled_addr: Option<Url>,
     ) -> Result<Self> {
         let (send, recv) = channel();
-        let wled = wled_addr.map(|addr| WledController::run(addr, send.clone()));
         Ok(Self {
             osc: OscController::new(receive_port, osc_controllers, send.clone())?,
             midi: MidiController::new(midi_devices, send)?,
-            wled,
             recv,
         })
     }
@@ -172,21 +158,11 @@ impl<'a> EmitMidiMasterMessage for ControlMessageWithMetadataSender<'a> {
     }
 }
 
-impl<'a> EmitWledControlMessage for ControlMessageWithMetadataSender<'a> {
-    fn emit_wled(&self, msg: crate::wled::WledControlMessage) {
-        if let Some(wled) = self.controller.wled.as_ref() {
-            wled.emit_wled(msg);
-        }
-    }
-}
-
 pub enum ControlMessage {
     RegisterClient(OscClientId),
     DeregisterClient(OscClientId),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
-    #[allow(unused)]
-    Wled(WledResponse),
 }
 
 impl CreateControlEvent<Device> for ControlMessage {

@@ -1,5 +1,5 @@
 //! Use a thread to perform asynchronous communication with a WLED instance.
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::{
     sync::{
         mpsc::{channel, Sender},
@@ -11,9 +11,9 @@ use std::{
 use reqwest::Url;
 use wled_json_api_library::{structures::state::State, wled::Wled};
 
-use crate::control::ControlMessage;
-
+#[derive(Debug)]
 pub struct WledController {
+    url: Url,
     send: Sender<WledControlMessage>,
 }
 
@@ -22,7 +22,7 @@ impl WledController {
     ///
     /// Polls once every 5 seconds for initial configuration until the client
     /// responds.
-    pub fn run(url: Url, _send: Sender<ControlMessage>) -> Self {
+    pub fn run(url: Url) -> Self {
         let (send_state, recv_state) = channel();
 
         let state = Arc::new(Mutex::new(None));
@@ -39,8 +39,9 @@ impl WledController {
             info!("WLED handler thread shutting down.");
         });
 
+        let init_url = url.clone();
         std::thread::spawn(move || {
-            let mut wled = initialize(&url, Duration::from_secs(5));
+            let mut wled = initialize(&init_url, Duration::from_secs(5));
             let sleep = Duration::from_millis(100);
             loop {
                 std::thread::sleep(sleep);
@@ -57,7 +58,7 @@ impl WledController {
                 match msg {
                     WledControlMessage::SetState(state) => {
                         wled.state = Some(state);
-                        info!("Sending state.");
+                        debug!("Sending WLED state to {}.", init_url);
                         if let Err(err) = wled.flush_state() {
                             error!("failed to send WLED state update: {err}");
                             continue;
@@ -71,13 +72,26 @@ impl WledController {
                 }
             }
         });
-        Self { send: send_state }
+        Self {
+            send: send_state,
+            url,
+        }
+    }
+
+    /// Send a WLED control message.
+    pub fn send(&self, msg: WledControlMessage) {
+        if self.send.send(msg).is_err() {
+            error!(
+                "WLED control channel hung up, unable to send message to {}.",
+                self.url
+            );
+        }
     }
 }
 
 /// Poll the WLED API until we get a good config back.
 fn initialize(url: &Url, poll_interval: Duration) -> Wled {
-    info!("Initializing WLED...");
+    info!("Initializing WLED for {url}...");
     loop {
         match Wled::try_from_url(url) {
             Ok(wled) => {
@@ -96,18 +110,4 @@ pub enum WledControlMessage {
     SetState(State),
     #[allow(unused)]
     GetEffectMetadata,
-}
-
-pub enum WledResponse {}
-
-pub trait EmitWledControlMessage {
-    fn emit_wled(&self, msg: WledControlMessage);
-}
-
-impl EmitWledControlMessage for WledController {
-    fn emit_wled(&self, msg: WledControlMessage) {
-        if self.send.send(msg).is_err() {
-            error!("Error emitting WLED control message: message processor channel has hung up.");
-        }
-    }
 }

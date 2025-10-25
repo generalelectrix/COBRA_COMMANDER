@@ -8,7 +8,6 @@ use local_ip_address::local_ip;
 use log::LevelFilter;
 use midi::Device;
 use osc::prompt_osc_config;
-use reqwest::Url;
 use rust_dmx::select_port;
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
@@ -87,10 +86,6 @@ struct RunArgs {
     /// The port on which to listen for OSC messages.
     #[arg(long, default_value_t = 8000)]
     osc_receive_port: u16,
-
-    /// URL to use to communicate with a WLED instance.
-    #[arg(long)]
-    wled_addr: Option<Url>,
 }
 
 #[derive(Args)]
@@ -178,12 +173,7 @@ fn run_show(args: RunArgs) -> Result<()> {
         })
     }
 
-    let controller = Controller::new(
-        args.osc_receive_port,
-        osc_controllers,
-        midi_devices,
-        args.wled_addr,
-    )?;
+    let controller = Controller::new(args.osc_receive_port, osc_controllers, midi_devices)?;
 
     let universe_count = patch.universe_count();
     println!("This show requires {universe_count} universe(s).");

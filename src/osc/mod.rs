@@ -5,7 +5,6 @@ use crate::control::EmitControlMessage;
 use crate::midi::{EmitMidiAnimationMessage, EmitMidiMasterMessage};
 use crate::osc::listener::OscListener;
 use crate::osc::sender::{OscSender, OscSenderCommand};
-use crate::wled::EmitWledControlMessage;
 use anyhow::Result;
 use anyhow::{bail, Context};
 use log::error;
@@ -145,12 +144,6 @@ impl<'a> EmitScopedOscMessage for FixtureStateEmitter<'a> {
             addr,
             args: vec![msg.arg],
         });
-    }
-}
-
-impl<'a> EmitWledControlMessage for FixtureStateEmitter<'a> {
-    fn emit_wled(&self, msg: crate::wled::WledControlMessage) {
-        self.channel_emitter.emit_wled(msg);
     }
 }
 
