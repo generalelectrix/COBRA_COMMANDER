@@ -179,9 +179,7 @@ impl Patch {
         for block in cfg.patches.iter() {
             let (start_addr, count) = block.start_count();
 
-            let patch_cfg = group
-                .patch_cfg(block.options.clone())
-                .with_context(|| group.qualified_name().to_string())?;
+            let patch_cfg = (patcher.create_patch)(cfg.options.clone(), block.options.clone())?;
 
             match start_addr {
                 None => {
@@ -318,9 +316,10 @@ pub struct PatchConfig {
 #[derive(Clone)]
 pub struct Patcher {
     pub name: FixtureType,
-    pub patch_options: fn() -> Vec<(String, PatchOption)>,
     pub create_group: fn(FixtureGroupKey, Options) -> Result<FixtureGroup>,
     pub group_options: fn() -> Vec<(String, PatchOption)>,
+    pub create_patch: fn(group_options: Options, patch_options: Options) -> Result<PatchConfig>,
+    pub patch_options: fn() -> Vec<(String, PatchOption)>,
 }
 
 impl Display for Patcher {
@@ -333,10 +332,7 @@ impl Display for Patcher {
         // TODO: we should make it possible to generate patch configs for all
         // enumerable options
         if patch_opts.is_empty() && group_opts.is_empty() {
-            let group =
-                (self.create_group)(FixtureGroupKey("test".to_string()), Default::default())
-                    .unwrap();
-            if let Ok(fix) = group.patch_cfg(Default::default()) {
+            if let Ok(fix) = (self.create_patch)(Default::default(), Default::default()) {
                 if fix.channel_count > 0 {
                     write!(
                         f,
@@ -393,9 +389,26 @@ pub trait PatchFixture: Sized + 'static {
     where
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
-        let parsed: Self::GroupOptions = options.parse().context("group options")?;
-        Self::new(parsed)
+        let options: Self::GroupOptions = options.parse().context("group options")?;
+        Self::new(options)
     }
+
+    /// Parse options and create a patch config.
+    fn create_patch(group_options: Options, patch_options: Options) -> Result<PatchConfig>
+    where
+        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
+        <Self as PatchFixture>::PatchOptions: DeserializeOwned,
+    {
+        let group_options: Self::GroupOptions = group_options.parse().context("group options")?;
+        let patch_options: Self::PatchOptions = patch_options.parse().context("patch options")?;
+        Self::new_patch(group_options, patch_options)
+    }
+
+    /// Given group- and patch-level options, produce a patch config.
+    fn new_patch(
+        group_options: Self::GroupOptions,
+        patch_options: Self::PatchOptions,
+    ) -> Result<PatchConfig>;
 
     /// Return the menu of patch options for this fixture type.
     fn patch_options() -> Vec<(String, PatchOption)>
@@ -404,16 +417,6 @@ pub trait PatchFixture: Sized + 'static {
     {
         Self::PatchOptions::menu()
     }
-}
-
-/// Once we have an instance of a fixture, create patches.
-///
-/// By making this a method on the fixture type, it allows configuration for the
-/// fixture patches based on both the provided patch options as well as the
-/// ficture state, such that it can be influenced by group-level options as well.
-pub trait CreatePatchConfig {
-    /// Create a patch configuration for this fixture from the provided options.
-    fn patch(&self, options: Options) -> Result<PatchConfig>;
 }
 
 /// Create a fixture group for a non-animated fixture.

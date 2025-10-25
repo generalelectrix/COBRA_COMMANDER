@@ -59,22 +59,22 @@ impl PatchFixture for Leko {
     fn new(_options: Self::GroupOptions) -> Result<Self> {
         Ok(Default::default())
     }
+
+    fn new_patch(
+        _: Self::GroupOptions,
+        options: Self::PatchOptions,
+    ) -> anyhow::Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: options.kind.channel_count(),
+            render_mode: Some(options.kind.render_mode()),
+        })
+    }
 }
 
 #[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
 pub struct PatchOptions {
     kind: Model,
-}
-
-impl CreatePatchConfig for Leko {
-    fn patch(&self, options: Options) -> anyhow::Result<PatchConfig> {
-        let options: PatchOptions = options.parse()?;
-        Ok(PatchConfig {
-            channel_count: options.kind.channel_count(),
-            render_mode: Some(options.kind.render_mode()),
-        })
-    }
 }
 
 register_patcher!(Leko);

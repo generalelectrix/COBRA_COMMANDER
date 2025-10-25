@@ -80,9 +80,10 @@ fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
         #[distributed_slice(PATCHERS)]
         static PATCHER: crate::fixture::patch::Patcher = crate::fixture::patch::Patcher {
             name: #ident::NAME,
-            patch_options: #ident::patch_options,
             create_group: #ident::create_group,
             group_options: #ident::group_options,
+            create_patch: #ident::create_patch,
+            patch_options: #ident::patch_options,
         };
     }
 }
@@ -112,12 +113,11 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
             fn new(_options: Self::GroupOptions) -> anyhow::Result<Self> {
                 Ok(Self::default())
             }
-        }
 
-        impl crate::fixture::patch::CreatePatchConfig for #ident {
-            fn patch(&self, options: crate::config::Options) -> anyhow::Result<crate::fixture::patch::PatchConfig> {
-                use anyhow::Context;
-                options.ensure_empty().context("patch options")?;
+            fn new_patch(
+                _group_options: Self::GroupOptions,
+                _patch_options: Self::PatchOptions,
+            ) -> anyhow::Result<crate::fixture::patch::PatchConfig> {
                 Ok(crate::fixture::patch::PatchConfig {
                     channel_count: #channel_count,
                     render_mode: None,

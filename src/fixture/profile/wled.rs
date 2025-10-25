@@ -46,11 +46,8 @@ impl PatchFixture for Wled {
             controller: WledController::run(options.url),
         })
     }
-}
 
-impl CreatePatchConfig for Wled {
-    fn patch(&self, options: Options) -> Result<PatchConfig> {
-        options.ensure_empty()?;
+    fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,

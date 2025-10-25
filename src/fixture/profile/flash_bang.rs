@@ -50,15 +50,10 @@ impl PatchFixture for FlashBang {
             flasher,
         })
     }
-}
 
-impl CreatePatchConfig for FlashBang {
-    fn patch(&self, options: Options) -> Result<PatchConfig> {
-        options.ensure_empty()?;
-        let channel_count = self.flasher.cells().len();
-        assert!([5, 10].contains(&channel_count));
+    fn new_patch(options: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
         Ok(PatchConfig {
-            channel_count,
+            channel_count: if options.paired { 10 } else { 5 },
             render_mode: None,
         })
     }

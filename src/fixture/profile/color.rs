@@ -45,6 +45,12 @@ impl PatchFixture for Color {
     fn new(options: Self::GroupOptions) -> Result<Self> {
         Ok(Self::for_subcontrol(None, options.control_color_space))
     }
+    fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> Result<PatchConfig> {
+        Ok(PatchConfig {
+            channel_count: options.kind.channel_count(),
+            render_mode: Some(options.kind.render_mode()),
+        })
+    }
 }
 
 #[derive(Deserialize, OptionsMenu)]
@@ -52,16 +58,6 @@ impl PatchFixture for Color {
 pub struct PatchOptions {
     #[serde(default)]
     kind: Model,
-}
-
-impl CreatePatchConfig for Color {
-    fn patch(&self, options: Options) -> Result<PatchConfig> {
-        let options: PatchOptions = options.parse()?;
-        Ok(PatchConfig {
-            channel_count: options.kind.channel_count(),
-            render_mode: Some(options.kind.render_mode()),
-        })
-    }
 }
 
 register_patcher!(Color);
