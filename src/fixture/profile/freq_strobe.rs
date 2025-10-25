@@ -47,7 +47,7 @@ impl Default for FreqStrobe {
 impl Update for FreqStrobe {
     fn update(&mut self, master_controls: &MasterControls, dt: std::time::Duration) {
         let update = if self.follow_master.val() {
-            UpdateBehavior::Master(master_controls.strobe_state.ticked)
+            UpdateBehavior::Master(master_controls.strobe_state.flash_now)
         } else {
             UpdateBehavior::Internal(self.rate.control.val())
         };

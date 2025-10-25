@@ -77,7 +77,7 @@ impl Update for FlashBang {
     fn update(&mut self, master_controls: &MasterControls, _dt: std::time::Duration) {
         self.flasher.update(
             master_controls.strobe_state.strobe_on,
-            master_controls.strobe_state.ticked,
+            master_controls.strobe_state.flash_now,
             self.chase.selected(),
             self.reverse.val(),
         );
@@ -93,12 +93,14 @@ impl AnimatedFixture for FlashBang {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     ) {
+        // Scale the intensity by the master strobe intensity.
         let intensity = unipolar_to_range(
             0,
             255,
             self.intensity
                 .control
-                .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity)),
+                .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity))
+                * group_controls.strobe().master_intensity,
         );
         for (state, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
             *chan = if group_controls.strobe_enabled && state.is_some() {
@@ -106,7 +108,9 @@ impl AnimatedFixture for FlashBang {
             } else {
                 0
             };
+            crate::color::print_color([*chan, *chan, *chan]);
         }
+        println!();
     }
 }
 
