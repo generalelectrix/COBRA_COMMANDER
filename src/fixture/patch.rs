@@ -582,7 +582,7 @@ mod test {
   foobar: unused
   patches:
     - addr: 1",
-            "unhandled group options: foobar",
+            "these group options were not expected: foobar",
         );
 
         assert_fail_patch(
@@ -591,7 +591,7 @@ mod test {
   patches:
     - addr: 1
       foobar: unused",
-            "unhandled patch options: foobar",
+            "these patch options were not expected: foobar",
         );
     }
 
@@ -648,14 +648,12 @@ mod test {
     }
 
     #[test]
-    fn test_no_invalid_patch_block() {
-        // Gotta have a DMX addr or some options to make any sense.
+    fn test_no_patches() {
         assert_fail_patch(
             "
 - fixture: Dimmer
-  patches:
-    - mirror: true",
-            "patch block 1 has neither DMX address nor options",
+  patches:",
+            "no patches specified",
         );
     }
 }

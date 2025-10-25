@@ -48,7 +48,7 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
             const NAME: FixtureType = FixtureType(#name);
 
             fn new(options: crate::config::Options) -> anyhow::Result<Self> {
-                options.ensure_empty()?;
+                options.ensure_empty("group")?;
                 Ok(Self::default())
             }
             fn patch_options() -> Vec<(String, crate::fixture::patch::PatchOption)> {
@@ -61,7 +61,7 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
 
         impl crate::fixture::patch::CreatePatchConfig for #ident {
             fn patch(&self, options: crate::config::Options) -> anyhow::Result<crate::fixture::patch::PatchConfig> {
-                options.ensure_empty()?;
+                options.ensure_empty("patch")?;
                 Ok(crate::fixture::patch::PatchConfig {
                     channel_count: #channel_count,
                     render_mode: None,

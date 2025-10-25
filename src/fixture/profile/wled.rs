@@ -62,7 +62,7 @@ impl PatchFixture for Wled {
 
 impl CreatePatchConfig for Wled {
     fn patch(&self, options: Options) -> Result<PatchConfig> {
-        options.ensure_empty()?;
+        options.ensure_empty("patch")?;
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,

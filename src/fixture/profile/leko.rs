@@ -57,7 +57,7 @@ impl PatchFixture for Leko {
     const NAME: FixtureType = FixtureType("Leko");
 
     fn new(options: Options) -> Result<Self> {
-        options.ensure_empty()?;
+        options.ensure_empty("group")?;
         Ok(Default::default())
     }
 

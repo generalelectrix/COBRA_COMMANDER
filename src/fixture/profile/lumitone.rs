@@ -114,7 +114,7 @@ impl PatchFixture for Lumitone {
 
 impl CreatePatchConfig for Lumitone {
     fn patch(&self, options: Options) -> Result<PatchConfig> {
-        options.ensure_empty()?;
+        options.ensure_empty("patch")?;
         Ok(PatchConfig {
             channel_count: 0,
             render_mode: None,

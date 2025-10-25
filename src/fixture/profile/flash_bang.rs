@@ -26,6 +26,7 @@ pub struct FlashBang {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GroupOptions {
+    #[serde(default)]
     paired: bool,
 }
 
@@ -62,7 +63,7 @@ impl PatchFixture for FlashBang {
 
 impl CreatePatchConfig for FlashBang {
     fn patch(&self, options: Options) -> Result<PatchConfig> {
-        options.ensure_empty()?;
+        options.ensure_empty("patch")?;
         let channel_count = self.flasher.cells().len();
         assert!([5, 10].contains(&channel_count));
         Ok(PatchConfig {

@@ -33,6 +33,7 @@ pub struct Color {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GroupOptions {
+    #[serde(default)]
     control_color_space: ColorSpace,
 }
 
@@ -59,6 +60,7 @@ impl PatchFixture for Color {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PatchOptions {
+    #[serde(default)]
     kind: Model,
 }
 

@@ -94,10 +94,10 @@ impl Options {
     }
 
     /// Return an error if the options are not empty.
-    pub fn ensure_empty(&self) -> Result<()> {
+    pub fn ensure_empty(&self, kind: &str) -> Result<()> {
         ensure!(
             self.value.is_empty(),
-            "these options were not expected: {}",
+            "these {kind} options were not expected: {}",
             self.value.keys().map(string_value).join(", ")
         );
         Ok(())
