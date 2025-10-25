@@ -4,7 +4,6 @@
 //! the brightness of each LED ring is directly controlled. There is also a
 //! special 10-channel mode provided for using a pair of these fixtures where
 //! the patterns can be extended over both arrays for additional effects.
-use anyhow::Context;
 use log::error;
 
 use crate::fixture::control::strobe_array::*;

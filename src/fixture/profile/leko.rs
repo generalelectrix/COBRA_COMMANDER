@@ -8,9 +8,7 @@
 //! slightly offset from the animation phase of the rotators.  This *probably*
 //! doesn't matter in practice, and it will especially not matter if we're using
 //! random noise generation to drive them.
-use std::str::FromStr;
 
-use anyhow::Context;
 use log::error;
 use ordered_float::OrderedFloat;
 use strum_macros::{Display, EnumIter, EnumString, VariantArray};

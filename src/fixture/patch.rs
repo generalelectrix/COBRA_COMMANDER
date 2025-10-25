@@ -125,7 +125,7 @@ impl Patch {
 
         ensure!(!cfg.patches.is_empty(), "no patches specified");
 
-        for (i, block) in cfg.patches.iter().enumerate() {
+        for block in cfg.patches.iter() {
             let (start_addr, count) = block.start_count();
 
             let patch_cfg = group

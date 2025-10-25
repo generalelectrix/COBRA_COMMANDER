@@ -1,7 +1,7 @@
 //! Flexible control profile for a single-color fixture.
-use anyhow::{Context, Result};
+use anyhow::Result;
 use log::error;
-use strum_macros::{Display, EnumIter, EnumString, VariantArray};
+use strum_macros::{Display, EnumIter, VariantArray};
 
 use crate::{color::*, config::Options, fixture::prelude::*};
 

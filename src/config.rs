@@ -1,9 +1,9 @@
 use crate::dmx::DmxAddr;
-use anyhow::{bail, ensure, Result};
+use anyhow::{ensure, Result};
 use itertools::Itertools;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize};
 use serde_yaml::{Mapping, Value};
-use std::{borrow::Borrow, collections::HashMap, fmt::Display, ops::Deref};
+use std::{borrow::Borrow, fmt::Display, ops::Deref};
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(untagged)]
