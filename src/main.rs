@@ -27,6 +27,7 @@ use crate::animation_visualizer::{
 use crate::config::FixtureGroupConfig;
 use crate::control::Controller;
 use crate::midi::ColorOrgan;
+use crate::preview::Previewer;
 use crate::show::Show;
 
 mod animation;
@@ -199,7 +200,9 @@ fn run_show(args: RunArgs) -> Result<()> {
         controller,
         clocks,
         animation_service,
-        args.cli_preview,
+        args.cli_preview
+            .then(|| Previewer::terminal())
+            .unwrap_or_default(),
     )?;
 
     println!("Running show.");

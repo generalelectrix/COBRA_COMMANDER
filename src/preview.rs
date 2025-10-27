@@ -5,7 +5,7 @@
 use std::{
     cell::{Cell, RefCell},
     fmt::Display,
-    io::Write,
+    io::{stdout, Stdout, StdoutLock, Write},
 };
 
 use number::UnipolarFloat;
@@ -13,27 +13,63 @@ use owo_colors::OwoColorize;
 
 use crate::{color::ColorRgb, fixture::FixtureGroup, util::unipolar_to_range};
 
+/// Manage state for preview via terminal/ANSI escape codes.
+pub struct TerminalPreview {
+    lines_written: Cell<usize>,
+    stdout: Stdout,
+}
+
+impl Default for TerminalPreview {
+    fn default() -> Self {
+        Self {
+            lines_written: Default::default(),
+            stdout: stdout(),
+        }
+    }
+}
+
+impl TerminalPreview {
+    fn fixture<'a>(&'a self, leader: &'a dyn Display) -> TerminalFixturePreview<'a> {
+        TerminalFixturePreview {
+            preview: &self,
+            written: Default::default(),
+            leader,
+            w: RefCell::new(self.stdout.lock()),
+        }
+    }
+
+    fn add_line(&self) {
+        self.lines_written.set(self.lines_written.get() + 1);
+    }
+
+    fn start_frame(&self) {
+        let mut w = self.stdout.lock();
+        for _ in 0..self.lines_written.take() {
+            let _ = write!(
+                w,
+                "{}{}",
+                termion::scroll::Up(1),
+                termion::clear::CurrentLine
+            );
+        }
+    }
+}
+
 /// Write previews into the terminal using text and command codes.
 ///
 /// Assumes that whatever we're writing into is infallible - ignores all errors.
 struct TerminalFixturePreview<'a> {
+    /// Reference back to the preview that created this.
+    preview: &'a TerminalPreview,
     /// True once we've written something.
     written: Cell<bool>,
     /// Something to write to the terminal on the first write.
     leader: &'a dyn Display,
     /// Writer to write into.
-    w: RefCell<&'a mut dyn Write>,
+    w: RefCell<StdoutLock<'static>>,
 }
 
 impl<'a> TerminalFixturePreview<'a> {
-    pub fn new(w: &'a mut dyn Write, leader: &'a dyn Display) -> Self {
-        Self {
-            written: Default::default(),
-            leader,
-            w: RefCell::new(w),
-        }
-    }
-
     /// Write something.
     fn write(&self, d: impl Display) {
         let mut w = self.w.borrow_mut();
@@ -43,13 +79,6 @@ impl<'a> TerminalFixturePreview<'a> {
         let _ = write!(w, "{}", d);
     }
 
-    /// Return the number of lines written.
-    pub fn line_count(&self) -> usize {
-        self.written.get() as usize
-    }
-}
-
-impl<'a> FixturePreview for TerminalFixturePreview<'a> {
     fn color(&self, [r, g, b]: ColorRgb) {
         self.write("▮".truecolor(r, g, b).on_truecolor(r, g, b));
     }
@@ -57,33 +86,62 @@ impl<'a> FixturePreview for TerminalFixturePreview<'a> {
     fn intensity_u8(&self, i: u8) {
         self.write("▮".truecolor(i, i, i).on_truecolor(i, i, i));
     }
+}
 
-    fn finish(self) {
+impl<'a> Drop for TerminalFixturePreview<'a> {
+    fn drop(&mut self) {
         if self.written.get() {
             let _ = writeln!(self.w.borrow_mut());
         }
     }
 }
 
-pub trait FixturePreview {
-    /// Indicate in a preview that a fixture is a particular color.
-    /// Fixtures may call this multiple times.
-    fn color(&self, c: ColorRgb);
+/// Previewer implementations.
+#[derive(Default)]
+pub enum Previewer {
+    #[default]
+    Off,
+    Terminal(TerminalPreview),
+}
 
-    /// Indicate a fixture intensity in a preview.
-    fn intensity(&self, i: UnipolarFloat) {
-        self.intensity_u8(unipolar_to_range(0, 255, i));
+impl Previewer {
+    pub fn terminal() -> Self {
+        Self::Terminal(TerminalPreview::default())
     }
 
-    /// Indicate a fixture intensity in a preview.
-    fn intensity_u8(&self, i: u8);
+    /// Initialize the previewer at the start of a frame.
+    pub fn start_frame(&self) {
+        match self {
+            Self::Off => (),
+            Self::Terminal(t) => t.start_frame(),
+        }
+    }
 
-    /// Complete preview for this fixture and perform any finalization required.
-    fn finish(self);
+    pub fn for_group<'a>(&'a self, leader: &'a dyn Display) -> FixturePreviewer<'a> {
+        match self {
+            Self::Off => FixturePreviewer::Off,
+            Self::Terminal(t) => FixturePreviewer::Terminal(t.fixture(leader)),
+        }
+    }
 }
 
-pub trait Previewer {
-    fn for_group(&self, g: &FixtureGroup) -> &dyn FixturePreview;
+pub enum FixturePreviewer<'a> {
+    Off,
+    Terminal(TerminalFixturePreview<'a>),
 }
 
-const BRICK: &str = "▮";
+impl<'a> FixturePreviewer<'a> {
+    pub fn color(&self, c: ColorRgb) {
+        match self {
+            Self::Off => (),
+            Self::Terminal(t) => t.color(c),
+        }
+    }
+
+    pub fn intensity_u8(&self, i: u8) {
+        match self {
+            Self::Off => (),
+            Self::Terminal(t) => t.intensity_u8(i),
+        }
+    }
+}

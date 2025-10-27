@@ -1,7 +1,7 @@
 use crate::{
     color::Hsluv,
     master::MasterControls,
-    preview::FixturePreview,
+    preview::FixturePreviewer,
     strobe::{StrobeResponse, StrobeState},
 };
 
@@ -33,7 +33,7 @@ pub struct FixtureGroupControls<'a> {
     /// Is master strobing enabled for this group?
     strobe_enabled: bool,
     /// Fixture previewer.
-    preview: &'a dyn FixturePreview,
+    preview: &'a FixturePreviewer<'a>,
 }
 
 impl<'a> FixtureGroupControls<'a> {
