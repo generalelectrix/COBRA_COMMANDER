@@ -201,7 +201,7 @@ fn run_show(args: RunArgs) -> Result<()> {
         clocks,
         animation_service,
         args.cli_preview
-            .then(|| Previewer::terminal())
+            .then(Previewer::terminal)
             .unwrap_or_default(),
     )?;
 

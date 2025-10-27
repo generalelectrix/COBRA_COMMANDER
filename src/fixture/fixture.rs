@@ -1,11 +1,9 @@
 //! Types related to specifying and controlling individual fixture models.
 use std::fmt::{Debug, Display};
-use std::io::Write;
 use std::ops::Deref;
 use std::time::Duration;
 
 use anyhow::{bail, Result};
-use log::debug;
 use number::Phase;
 use serde::{Deserialize, Serialize};
 use strum::VariantArray;

@@ -8,10 +8,9 @@ use std::{
     io::{stdout, Stdout, StdoutLock, Write},
 };
 
-use number::UnipolarFloat;
 use owo_colors::OwoColorize;
 
-use crate::{color::ColorRgb, fixture::FixtureGroup, util::unipolar_to_range};
+use crate::color::ColorRgb;
 
 /// Manage state for preview via terminal/ANSI escape codes.
 pub struct TerminalPreview {
@@ -31,7 +30,7 @@ impl Default for TerminalPreview {
 impl TerminalPreview {
     fn fixture<'a>(&'a self, leader: &'a dyn Display) -> TerminalFixturePreview<'a> {
         TerminalFixturePreview {
-            preview: &self,
+            preview: self,
             written: Default::default(),
             leader,
             w: RefCell::new(self.stdout.lock()),

@@ -1,5 +1,5 @@
 use std::{
-    io::{stdout, Stdout, Write},
+    io::Write,
     time::{Duration, Instant},
 };
 
