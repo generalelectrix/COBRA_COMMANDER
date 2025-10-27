@@ -75,6 +75,9 @@ impl AnimatedFixture for FreqStrobe {
                 * group_controls.strobe().master_intensity,
         );
         self.flasher.render(group_controls, intensity, dmx_buf);
+        for &i in &*dmx_buf {
+            group_controls.preview.intensity_u8(i);
+        }
     }
 }
 

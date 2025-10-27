@@ -42,6 +42,7 @@ mod fixture;
 mod master;
 mod midi;
 mod osc;
+mod preview;
 mod show;
 mod strobe;
 mod util;

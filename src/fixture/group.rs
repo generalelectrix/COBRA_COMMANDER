@@ -20,6 +20,7 @@ use crate::dmx::DmxBuffer;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
+use crate::preview::Previewer;
 
 pub struct FixtureGroup {
     /// The fixture type of this group.
@@ -166,8 +167,14 @@ impl FixtureGroup {
 
     /// Render into the provided DMX universe.
     /// The master controls are provided to potentially alter the render.
-    pub fn render(&self, master_controls: &MasterControls, dmx_buffers: &mut [DmxBuffer]) {
+    pub fn render<P: Previewer>(
+        &self,
+        master_controls: &MasterControls,
+        dmx_buffers: &mut [DmxBuffer],
+        preview: &P,
+    ) {
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
+        let preview = preview.for_group(&self);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
             let Some(dmx_index) = cfg.dmx_index else {
                 continue;
@@ -189,6 +196,7 @@ impl FixtureGroup {
                         })
                     }),
                     strobe_enabled: self.strobe_enabled,
+                    preview,
                 },
                 dmx_buf,
             );

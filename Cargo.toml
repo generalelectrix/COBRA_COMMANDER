@@ -32,7 +32,6 @@ wled-json-api-library = "0.1.7"
 reqwest = "0.12"
 linkme = "0.3"
 hsluv = "0.3"
-colored = "3"
 clap = { version = "4", features = ["derive"] }
 num-derive = "0.4"
 ordered-float = "5"
@@ -43,6 +42,7 @@ eframe = "0.32.3"
 enum_dispatch = "0.3.13"
 url = { version = "*", features = ["serde"] }
 termion = "4.0.5"
+owo-colors = "4.2.3"
 
 # [patch.'https://github.com/generalelectrix/tunnels']
 # tunnels = { path = "../tunnels/tunnels" }
