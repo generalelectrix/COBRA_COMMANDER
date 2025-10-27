@@ -3,7 +3,7 @@ use anyhow::Result;
 use log::error;
 use strum_macros::{Display, EnumIter, VariantArray};
 
-use crate::{color::*, fixture::prelude::*};
+use crate::{color::*, fixture::prelude::*, preview::FixturePreviewer};
 
 #[derive(Debug, Control, EmitState, Update)]
 #[strobe]
@@ -98,32 +98,40 @@ impl Color {
         HSLUV_LIGHTNESS_OFFSET + (HSLUV_LIGHTNESS_OFFSET.invert()) * lightness_boost.control.val()
     }
 
-    pub fn render_without_animations(&self, model: Model, dmx_buf: &mut [u8]) {
+    pub fn render_without_animations(
+        &self,
+        preview: &FixturePreviewer,
+        model: Model,
+        dmx_buf: &mut [u8],
+    ) {
         match self.space {
-            ColorSpace::Hsv => model.render(
-                dmx_buf,
-                Hsv {
+            ColorSpace::Hsv => {
+                let c = Hsv {
                     hue: self.hue.control.val(),
                     sat: self.sat.control.val(),
                     val: self.val.control.val(),
-                },
-            ),
-            ColorSpace::Hsi => model.render(
-                dmx_buf,
-                Hsi {
+                };
+                model.render(dmx_buf, &c);
+                preview.color_lazy(|| c.rgb());
+            }
+            ColorSpace::Hsi => {
+                let c = Hsi {
                     hue: self.hue.control.val(),
                     sat: self.sat.control.val(),
                     intensity: self.val.control.val(),
-                },
-            ),
-            ColorSpace::Hsluv => model.render(
-                dmx_buf,
-                Hsluv {
+                };
+                model.render(dmx_buf, &c);
+                preview.color_lazy(|| c.rgb());
+            }
+            ColorSpace::Hsluv => {
+                let c = Hsluv {
                     hue: self.hue.control.val(),
                     sat: self.sat.control.val(),
                     lightness: self.hsluv_lightness() * self.val.control.val(),
-                },
-            ),
+                };
+                model.render(dmx_buf, &c);
+                preview.color_lazy(|| c.rgb());
+            }
         }
     }
 
@@ -142,7 +150,7 @@ impl Color {
         if let Some(mut color_override) = group_controls.color.clone() {
             // TODO: do we want to allow strobing to layer on top of a color override?
             color_override.lightness *= self.val.control.val();
-            model.render(dmx_buf, color_override);
+            model.render(dmx_buf, &color_override);
             return;
         }
 
@@ -166,30 +174,33 @@ impl Color {
         }
 
         match self.space {
-            ColorSpace::Hsv => model.render(
-                dmx_buf,
-                Hsv {
+            ColorSpace::Hsv => {
+                let c = Hsv {
                     hue: Phase::new(hue),
                     sat: UnipolarFloat::new(sat),
                     val: UnipolarFloat::new(val),
-                },
-            ),
-            ColorSpace::Hsi => model.render(
-                dmx_buf,
-                Hsi {
+                };
+                model.render(dmx_buf, &c);
+                group_controls.preview.color_lazy(|| c.rgb());
+            }
+            ColorSpace::Hsi => {
+                let c = Hsi {
                     hue: Phase::new(hue),
                     sat: UnipolarFloat::new(sat),
                     intensity: UnipolarFloat::new(val),
-                },
-            ),
-            ColorSpace::Hsluv => model.render(
-                dmx_buf,
-                Hsluv {
+                };
+                model.render(dmx_buf, &c);
+                group_controls.preview.color_lazy(|| c.rgb());
+            }
+            ColorSpace::Hsluv => {
+                let c = Hsluv {
                     hue: Phase::new(hue),
                     sat: UnipolarFloat::new(sat),
                     lightness: self.hsluv_lightness() * UnipolarFloat::new(val),
-                },
-            ),
+                };
+                model.render(dmx_buf, &c);
+                group_controls.preview.color_lazy(|| c.rgb());
+            }
         }
     }
 }
@@ -250,7 +261,7 @@ impl Model {
         }
     }
 
-    pub fn render(&self, buf: &mut [u8], renderer: impl RenderColor) {
+    pub fn render(&self, buf: &mut [u8], renderer: &impl RenderColor) {
         match self {
             Self::Rgb => {
                 let [r, g, b] = renderer.rgb();

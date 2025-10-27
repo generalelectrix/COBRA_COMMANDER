@@ -197,15 +197,15 @@ impl Lumitone {
     fn send_custom_palette(&self, _emitter: &FixtureStateEmitter) {
         let mut p = Palette::default();
         self.color0
-            .render_without_animations(Model::Rgb, &mut p.color0);
+            .render_without_animations(&Default::default(), Model::Rgb, &mut p.color0);
         self.color1
-            .render_without_animations(Model::Rgb, &mut p.color1);
+            .render_without_animations(&Default::default(), Model::Rgb, &mut p.color1);
         self.color2
-            .render_without_animations(Model::Rgb, &mut p.color2);
+            .render_without_animations(&Default::default(), Model::Rgb, &mut p.color2);
         self.color3
-            .render_without_animations(Model::Rgb, &mut p.color3);
+            .render_without_animations(&Default::default(), Model::Rgb, &mut p.color3);
         self.color4
-            .render_without_animations(Model::Rgb, &mut p.color4);
+            .render_without_animations(&Default::default(), Model::Rgb, &mut p.color4);
         if self.send.send(Message::CustomPalette(p)).is_err() {
             error!("Cannot send Lumitone custom palette update; sender disconnected.");
         }

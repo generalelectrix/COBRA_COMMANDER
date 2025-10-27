@@ -20,10 +20,18 @@ pub struct TerminalPreview {
 
 impl Default for TerminalPreview {
     fn default() -> Self {
+        let mut s = stdout();
+        let _ = write!(s, "{}", termion::cursor::Hide);
         Self {
             lines_written: Default::default(),
-            stdout: stdout(),
+            stdout: s,
         }
+    }
+}
+
+impl Drop for TerminalPreview {
+    fn drop(&mut self) {
+        let _ = print!("{}", termion::cursor::Show);
     }
 }
 
@@ -43,14 +51,11 @@ impl TerminalPreview {
 
     fn start_frame(&self) {
         let mut w = self.stdout.lock();
-        for _ in 0..self.lines_written.take() {
-            let _ = write!(
-                w,
-                "{}{}",
-                termion::scroll::Up(1),
-                termion::clear::CurrentLine
-            );
+        let n = self.lines_written.take();
+        for _ in 0..n {
+            let _ = write!(w, "{}", termion::cursor::Up(1));
         }
+        let _ = w.flush();
     }
 }
 
@@ -73,7 +78,7 @@ impl<'a> TerminalFixturePreview<'a> {
     fn write(&self, d: impl Display) {
         let mut w = self.w.borrow_mut();
         if !self.written.replace(true) {
-            let _ = write!(w, "{}", self.leader);
+            let _ = write!(w, "{}: ", self.leader);
         }
         let _ = write!(w, "{}", d);
     }
@@ -125,16 +130,30 @@ impl Previewer {
     }
 }
 
+#[derive(Default)]
 pub enum FixturePreviewer<'a> {
+    #[default]
     Off,
     Terminal(TerminalFixturePreview<'a>),
 }
 
 impl<'a> FixturePreviewer<'a> {
+    #[expect(unused)]
+    /// Preview a color.
     pub fn color(&self, c: ColorRgb) {
         match self {
             Self::Off => (),
             Self::Terminal(t) => t.color(c),
+        }
+    }
+
+    /// Preview a color, computed using a closure.
+    ///
+    /// Only call the closure if the color will actually be used.
+    pub fn color_lazy(&self, f: impl FnOnce() -> ColorRgb) {
+        match self {
+            Self::Off => (),
+            Self::Terminal(t) => t.color(f()),
         }
     }
 

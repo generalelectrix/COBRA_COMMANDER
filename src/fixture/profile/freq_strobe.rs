@@ -63,6 +63,9 @@ impl AnimatedFixture for FreqStrobe {
         // If strobing is disabled, blackout.
         if !group_controls.strobe_enabled {
             dmx_buf.fill(0);
+            for _ in 0..CELL_COUNT {
+                group_controls.preview.intensity_u8(0);
+            }
             return;
         }
         // Scale the intensity by the master strobe intensity.

@@ -1,7 +1,4 @@
-use std::{
-    io::Write,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use crate::{
     animation::AnimationUIState,

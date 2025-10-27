@@ -95,13 +95,25 @@ impl AnimatedFixture for Astera {
         dmx_buf[6] = 0;
         dmx_buf[7] = 0; // send on modify
 
-        self.color1
-            .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[8..11]);
-        self.color2
-            .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[11..14]);
-        self.color3
-            .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[14..17]);
-        self.color4
-            .render_without_animations(super::color::Model::Rgb, &mut dmx_buf[17..20]);
+        self.color1.render_without_animations(
+            group_controls.preview,
+            super::color::Model::Rgb,
+            &mut dmx_buf[8..11],
+        );
+        self.color2.render_without_animations(
+            group_controls.preview,
+            super::color::Model::Rgb,
+            &mut dmx_buf[11..14],
+        );
+        self.color3.render_without_animations(
+            group_controls.preview,
+            super::color::Model::Rgb,
+            &mut dmx_buf[14..17],
+        );
+        self.color4.render_without_animations(
+            group_controls.preview,
+            super::color::Model::Rgb,
+            &mut dmx_buf[17..20],
+        );
     }
 }

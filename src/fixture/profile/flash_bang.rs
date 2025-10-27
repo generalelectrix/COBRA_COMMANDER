@@ -81,6 +81,9 @@ impl AnimatedFixture for FlashBang {
         // If strobing is disabled, blackout.
         if !group_controls.strobe_enabled {
             dmx_buf.fill(0);
+            for _ in 0..self.flasher.cells().len() {
+                group_controls.preview.intensity_u8(0);
+            }
             return;
         }
         // Scale the intensity by the master strobe intensity.
@@ -94,6 +97,7 @@ impl AnimatedFixture for FlashBang {
         );
         for (flash, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
             *chan = if flash.is_some() { intensity } else { 0 };
+            group_controls.preview.intensity_u8(*chan);
         }
     }
 }

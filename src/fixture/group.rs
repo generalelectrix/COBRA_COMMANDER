@@ -4,7 +4,6 @@ use anyhow::{ensure, Context};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
 use std::fmt::{Debug, Display};
-use std::io::Write;
 use std::time::Duration;
 
 use log::debug;
