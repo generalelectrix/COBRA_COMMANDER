@@ -166,15 +166,7 @@ impl FixtureGroup {
 
     /// Render into the provided DMX universe.
     /// The master controls are provided to potentially alter the render.
-    pub fn render(
-        &self,
-        master_controls: &MasterControls,
-        dmx_buffers: &mut [DmxBuffer],
-        cli_preview: &mut Option<&mut dyn Write>,
-    ) {
-        if let Some(w) = cli_preview {
-            let _ = write!(w, "{}", self.qualified_name());
-        }
+    pub fn render(&self, master_controls: &MasterControls, dmx_buffers: &mut [DmxBuffer]) {
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
             let Some(dmx_index) = cfg.dmx_index else {
@@ -199,11 +191,7 @@ impl FixtureGroup {
                     strobe_enabled: self.strobe_enabled,
                 },
                 dmx_buf,
-                cli_preview,
             );
-            if let Some(w) = cli_preview {
-                let _ = writeln!(w);
-            }
             debug!("{}@{}: {:?}", self.qualified_name(), dmx_index + 1, dmx_buf);
         }
     }

@@ -256,26 +256,8 @@ impl Show {
     fn render(&self, dmx_buffers: &mut [DmxBuffer]) {
         // NOTE: we don't bother to empty the buffer because we will always
         // overwrite all previously-rendered state.
-
-        // TODO: don't love the repetition but can't figure out how to get the
-        // trait object dance to work without having StdoutLock as a local.
-        if let Some(so) = &self.cli_preview {
-            let mut out = so.lock();
-            for _ in 0..self.patch.len() {
-                let _ = write!(
-                    out,
-                    "{}{}",
-                    termion::clear::CurrentLine,
-                    termion::cursor::Up(1)
-                );
-            }
-            for group in self.patch.iter() {
-                group.render(&self.master_controls, dmx_buffers, &mut Some(&mut out));
-            }
-        } else {
-            for group in self.patch.iter() {
-                group.render(&self.master_controls, dmx_buffers, &mut None);
-            }
+        for group in self.patch.iter() {
+            group.render(&self.master_controls, dmx_buffers);
         }
     }
 
