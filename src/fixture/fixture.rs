@@ -131,17 +131,6 @@ pub trait AnimatedFixture: Update + EmitState + Control {
         animation_vals: &TargetedAnimationValues<Self::Target>,
         dmx_buf: &mut [u8],
     );
-
-    /// Render this fixture's state to a CLI-based preview.
-    #[expect(unused_variables)]
-    fn render_cli(
-        &self,
-        group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
-        w: &mut dyn std::io::Write,
-    ) -> std::io::Result<()> {
-        Ok(())
-    }
 }
 
 pub trait Fixture: Update + EmitState + Control {

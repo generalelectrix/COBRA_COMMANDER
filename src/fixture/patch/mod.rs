@@ -292,11 +292,6 @@ impl Patch {
             .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
     }
 
-    /// Return the number of patched groups.
-    pub fn len(&self) -> usize {
-        self.fixtures.len()
-    }
-
     /// Iterate over all patched fixtures.
     pub fn iter(&self) -> impl Iterator<Item = &FixtureGroup> {
         self.fixtures.values()

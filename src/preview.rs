@@ -57,7 +57,7 @@ impl TerminalPreview {
 /// Write previews into the terminal using text and command codes.
 ///
 /// Assumes that whatever we're writing into is infallible - ignores all errors.
-struct TerminalFixturePreview<'a> {
+pub struct TerminalFixturePreview<'a> {
     /// Reference back to the preview that created this.
     preview: &'a TerminalPreview,
     /// True once we've written something.
@@ -90,6 +90,7 @@ impl<'a> TerminalFixturePreview<'a> {
 impl<'a> Drop for TerminalFixturePreview<'a> {
     fn drop(&mut self) {
         if self.written.get() {
+            self.preview.add_line();
             let _ = writeln!(self.w.borrow_mut());
         }
     }
