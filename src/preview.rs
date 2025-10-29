@@ -32,6 +32,7 @@ impl Default for TerminalPreview {
 impl Drop for TerminalPreview {
     fn drop(&mut self) {
         let _ = write!(self.stdout, "{}", termion::cursor::Show);
+        let _ = self.stdout.flush();
     }
 }
 
