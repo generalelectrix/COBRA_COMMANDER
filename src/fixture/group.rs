@@ -99,6 +99,11 @@ impl FixtureGroup {
         self.fixture.get_animation(index)
     }
 
+    /// Reset all of the animations in this group.
+    pub fn reset_animations(&mut self) {
+        self.fixture.reset_animations();
+    }
+
     pub fn fixture_configs(&self) -> &[GroupFixtureConfig] {
         &self.fixture_configs
     }

@@ -154,6 +154,9 @@ pub trait Fixture: Update + EmitState + Control {
     /// Get the animation with the provided index, mutably.
     fn get_animation_mut(&mut self, index: usize)
         -> Option<&mut dyn ControllableTargetedAnimation>;
+
+    /// Reset all of the animations associated with this fixture.
+    fn reset_animations(&mut self);
 }
 
 impl<T> Fixture for T
@@ -180,6 +183,8 @@ where
     fn get_animation(&self, _index: usize) -> Option<&dyn ControllableTargetedAnimation> {
         None
     }
+
+    fn reset_animations(&mut self) {}
 }
 
 #[derive(Debug)]
@@ -265,5 +270,11 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
     fn get_animation(&self, index: usize) -> Option<&dyn ControllableTargetedAnimation> {
         let animation = self.animations.get(index)?;
         Some(animation)
+    }
+
+    fn reset_animations(&mut self) {
+        for anim in &mut self.animations {
+            anim.reset();
+        }
     }
 }

@@ -124,12 +124,7 @@ impl AnimationUIState {
                 self.emit_state(channel, group, emitter);
             }
             ControlMessage::ResetGroup => {
-                for i in 0..N_ANIM {
-                    let Some(anim) = group.get_animation_mut(i) else {
-                        continue;
-                    };
-                    anim.reset();
-                }
+                group.reset_animations();
                 self.emit_state(channel, group, emitter);
             }
         }
