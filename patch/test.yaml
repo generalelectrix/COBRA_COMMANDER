@@ -1,4 +1,12 @@
 - fixture: FreqStrobe
-  # paired: "true"
   patches:
     - addr: 1
+- fixture: FlashBang
+  paired: true
+  patches:
+    - addr: 20
+- fixture: Color
+  patches:
+    - addr:
+        start: 40
+        count: 16

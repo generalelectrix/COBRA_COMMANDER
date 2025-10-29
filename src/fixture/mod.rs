@@ -1,6 +1,7 @@
 use crate::{
     color::Hsluv,
     master::MasterControls,
+    preview::FixturePreviewer,
     strobe::{StrobeResponse, StrobeState},
 };
 
@@ -31,6 +32,8 @@ pub struct FixtureGroupControls<'a> {
     color: Option<Hsluv>,
     /// Is master strobing enabled for this group?
     strobe_enabled: bool,
+    /// Fixture previewer.
+    preview: &'a FixturePreviewer<'a>,
 }
 
 impl<'a> FixtureGroupControls<'a> {
@@ -67,7 +70,7 @@ pub mod prelude {
     };
     pub use super::FixtureGroupControls;
     pub use crate::channel::ChannelStateEmitter;
-    
+
     pub use crate::control::EmitControlMessage;
     pub use crate::fixture::animation_target::{Subtarget, TargetedAnimationValues};
     pub use crate::fixture::control::*;

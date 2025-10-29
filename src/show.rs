@@ -12,6 +12,7 @@ use crate::{
     master::MasterControls,
     midi::{MidiControlMessage, MidiHandler},
     osc::{OscControlMessage, ScopedControlEmitter},
+    preview::Previewer,
 };
 
 pub use crate::channel::ChannelId;
@@ -29,6 +30,7 @@ pub struct Show {
     animation_ui_state: AnimationUIState,
     clocks: Clocks,
     animation_service: Option<AnimationPublisher>,
+    preview: Previewer,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -44,6 +46,7 @@ impl Show {
         controller: Controller,
         clocks: Clocks,
         animation_service: Option<AnimationPublisher>,
+        preview: Previewer,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
@@ -61,6 +64,7 @@ impl Show {
             animation_ui_state,
             clocks,
             animation_service,
+            preview,
         };
         show.refresh_ui()?;
         Ok(show)
@@ -70,6 +74,7 @@ impl Show {
     pub fn run(&mut self, dmx_ports: &mut [Box<dyn DmxPort>]) {
         let mut last_update = Instant::now();
         let mut dmx_buffers = vec![[0u8; 512]; dmx_ports.len()];
+
         loop {
             // Process a control event if one is pending.
             if let Err(err) = self.control(CONTROL_TIMEOUT) {
@@ -239,10 +244,11 @@ impl Show {
 
     /// Render the state of the show out to DMX.
     fn render(&self, dmx_buffers: &mut [DmxBuffer]) {
+        self.preview.start_frame();
         // NOTE: we don't bother to empty the buffer because we will always
         // overwrite all previously-rendered state.
         for group in self.patch.iter() {
-            group.render(&self.master_controls, dmx_buffers);
+            group.render(&self.master_controls, dmx_buffers, &self.preview);
         }
     }
 

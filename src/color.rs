@@ -2,7 +2,6 @@
 
 use std::f64::consts::PI;
 
-use colored::Colorize;
 use fixture_macros::AsPatchOption;
 use hsluv::hsluv_to_rgb;
 use log::warn;
@@ -311,12 +310,4 @@ pub fn hsi_to_rgbw(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> 
 
 fn unit_to_u8(v: f64) -> u8 {
     (255. * v).round() as u8
-}
-
-/// Print a brick of color to stdout.
-///
-/// This can be used for debugging color output.
-#[allow(unused)]
-pub fn print_color([r, g, b]: ColorRgb) {
-    print!("{}", "▮".truecolor(r, g, b).on_truecolor(r, g, b));
 }
