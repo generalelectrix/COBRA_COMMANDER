@@ -167,7 +167,7 @@ where
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     ) {
-        self.render(group_controls, dmx_buffer);
+        self.render(group_controls, dmx_buffer)
     }
 
     fn get_animation_mut(
@@ -247,9 +247,11 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
                 ta.target,
             );
         }
-        let ta = TargetedAnimationValues(animation_vals);
-        self.fixture
-            .render_with_animations(group_controls, &ta, dmx_buffer);
+        self.fixture.render_with_animations(
+            group_controls,
+            &TargetedAnimationValues(animation_vals),
+            dmx_buffer,
+        );
     }
 
     fn get_animation_mut(
