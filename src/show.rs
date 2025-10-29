@@ -190,6 +190,15 @@ impl Show {
                             self.refresh_ui()?;
                         }
                     }
+                    // TODO: it would be nicer for this to be scoped under Animation,
+                    // but that interface is currently tailored to controlling the current group.
+                    "ResetAllAnimations" => {
+                        for group in self.patch.iter_mut() {
+                            group.reset_animations();
+                        }
+                        // TODO: this is overkill but easiest solution
+                        self.refresh_ui()?;
+                    }
                     unknown => {
                         bail!("unknown Meta control {}", unknown)
                     }
@@ -218,7 +227,7 @@ impl Show {
             }
             crate::osc::audio::GROUP => self.clocks.control_audio_osc(msg, &mut self.controller),
             crate::osc::clock::GROUP => self.clocks.control_clock_osc(msg, &mut self.controller),
-            // Assume any other control group is referring to a ficture group.
+            // Assume any other control group is referring to a fixture group.
             fixture_group => self.patch.get_mut(fixture_group)?.control(
                 msg,
                 ChannelStateEmitter::new(self.channels.channel_for_fixture(fixture_group), &sender),
