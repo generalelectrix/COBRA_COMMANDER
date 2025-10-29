@@ -123,6 +123,15 @@ impl AnimationUIState {
                 anim.reset();
                 self.emit_state(channel, group, emitter);
             }
+            ControlMessage::ResetGroup => {
+                for i in 0..N_ANIM {
+                    let Some(anim) = group.get_animation_mut(i) else {
+                        continue;
+                    };
+                    anim.reset();
+                }
+                self.emit_state(channel, group, emitter);
+            }
         }
         Ok(())
     }
@@ -242,6 +251,8 @@ pub enum ControlMessage {
     Paste,
     /// Reset the currently-selected animation.
     Reset,
+    /// Reset all the animations for the currently-selected group.
+    ResetGroup,
 }
 
 /// Nudge a parameter up or down.

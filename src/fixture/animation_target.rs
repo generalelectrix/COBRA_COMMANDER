@@ -7,6 +7,7 @@ use num_traits::ToPrimitive;
 use strum::IntoEnumIterator;
 use tunnels::animation::Animation;
 
+/// The number of animators to use for each group.
 pub const N_ANIM: usize = 4;
 pub type TargetedAnimations<T> = [TargetedAnimation<T>; N_ANIM];
 

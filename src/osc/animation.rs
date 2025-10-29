@@ -34,8 +34,11 @@ const STANDING: Button = button("Standing");
 const COPY: Button = button("Copy");
 const PASTE: Button = button("Paste");
 
-// reset
+/// Trigger reset of currently-selected animation.
 const RESET: Button = button("Reset");
+
+/// Trigger reset of all animations in the currently-selected group.
+const RESET_GROUP: Button = button("ResetGroup");
 
 const WAVEFORM_SELECT: RadioButton = RadioButton {
     control: "Waveform",
@@ -100,6 +103,7 @@ impl AnimationUIState {
         PASTE.map_trigger(map, || AnimationControlMessage::Paste);
 
         RESET.map_trigger(map, || AnimationControlMessage::Reset);
+        RESET_GROUP.map_trigger(map, || AnimationControlMessage::ResetGroup);
     }
 }
 
