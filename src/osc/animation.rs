@@ -34,6 +34,9 @@ const STANDING: Button = button("Standing");
 const COPY: Button = button("Copy");
 const PASTE: Button = button("Paste");
 
+// reset
+const RESET: Button = button("Reset");
+
 const WAVEFORM_SELECT: RadioButton = RadioButton {
     control: "Waveform",
     n: 6,
@@ -95,6 +98,8 @@ impl AnimationUIState {
 
         COPY.map_trigger(map, || AnimationControlMessage::Copy);
         PASTE.map_trigger(map, || AnimationControlMessage::Paste);
+
+        RESET.map_trigger(map, || AnimationControlMessage::Reset);
     }
 }
 

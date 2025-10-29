@@ -116,6 +116,13 @@ impl AnimationUIState {
                 *anim.anim_mut() = self.clipboard.clone();
                 self.emit_state(channel, group, emitter);
             }
+            ControlMessage::Reset => {
+                let Some(anim) = self.current_animation(channel, group) else {
+                    return Ok(());
+                };
+                anim.reset();
+                self.emit_state(channel, group, emitter);
+            }
         }
         Ok(())
     }
@@ -233,6 +240,8 @@ pub enum ControlMessage {
     SelectAnimation(usize),
     Copy,
     Paste,
+    /// Reset the currently-selected animation.
+    Reset,
 }
 
 /// Nudge a parameter up or down.
@@ -276,4 +285,6 @@ impl ControllableTargetedAnimation for EmptyAnimation {
     fn target_labels(&self) -> Vec<String> {
         vec![]
     }
+
+    fn reset(&mut self) {}
 }

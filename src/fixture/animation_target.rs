@@ -98,6 +98,8 @@ pub trait ControllableTargetedAnimation {
     fn set_target(&mut self, index: AnimationTargetIndex) -> anyhow::Result<()>;
     /// Return the labels for the animation target type.
     fn target_labels(&self) -> Vec<String>;
+    /// Reset the state of this animation to default.
+    fn reset(&mut self);
 }
 
 impl<T: AnimationTarget> ControllableTargetedAnimation for TargetedAnimation<T> {
@@ -126,6 +128,10 @@ impl<T: AnimationTarget> ControllableTargetedAnimation for TargetedAnimation<T> 
 
     fn target_labels(&self) -> Vec<String> {
         T::iter().map(|t| t.to_string()).collect()
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
     }
 }
 
