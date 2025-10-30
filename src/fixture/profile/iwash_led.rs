@@ -22,7 +22,7 @@ pub struct IWashLed {
 impl Default for IWashLed {
     fn default() -> Self {
         Self {
-            color: Color::for_subcontrol(None, crate::color::ColorSpace::Hsv),
+            color: Color::for_subcontrol(None, crate::color::ColorSpace::Hsluv),
             pan: Bipolar::coarse_fine("Pan", 0).with_mirroring(true),
             tilt: Bipolar::coarse_fine("Tilt", 2).with_mirroring(true),
         }
