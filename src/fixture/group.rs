@@ -3,6 +3,7 @@
 use anyhow::{ensure, Context};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
+use log::error;
 use std::fmt::{Debug, Display};
 use std::time::Duration;
 
@@ -208,7 +209,15 @@ impl FixtureGroup {
                 continue;
             };
             let phase_offset = phase_offset_per_fixture * i as f64;
-            let dmx_buf = &mut dmx_buffers[cfg.universe][dmx_index..dmx_index + cfg.channel_count];
+            let Some(dmx_univ_buf) = dmx_buffers.get_mut(cfg.universe) else {
+                error!(
+                    "Universe index {} for patch {i} of {} is out of range.",
+                    cfg.universe,
+                    self.qualified_name(),
+                );
+                continue;
+            };
+            let dmx_buf = &mut dmx_univ_buf[dmx_index..dmx_index + cfg.channel_count];
             self.fixture.render(
                 phase_offset,
                 i,
