@@ -434,14 +434,14 @@ pub trait PatchFixture: Sized + 'static {
     {
         let group_options: Self::GroupOptions = group_options.parse().context("group options")?;
         let patch_options: Self::PatchOptions = patch_options.parse().context("patch options")?;
-        Self::new_patch(group_options, patch_options)
+        Ok(Self::new_patch(group_options, patch_options))
     }
 
     /// Given group- and patch-level options, produce a patch config.
     fn new_patch(
         group_options: Self::GroupOptions,
         patch_options: Self::PatchOptions,
-    ) -> Result<PatchConfig>;
+    ) -> PatchConfig;
 
     /// Return the menu of patch options for this fixture type.
     fn patch_options() -> Vec<(String, PatchOption)>

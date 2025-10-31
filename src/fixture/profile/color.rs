@@ -45,11 +45,11 @@ impl PatchFixture for Color {
     fn new(options: Self::GroupOptions) -> Self {
         Self::for_subcontrol(None, options.control_color_space)
     }
-    fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> Result<PatchConfig> {
-        Ok(PatchConfig {
+    fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> PatchConfig {
+        PatchConfig {
             channel_count: options.kind.channel_count(),
             render_mode: Some(options.kind.render_mode()),
-        })
+        }
     }
 }
 

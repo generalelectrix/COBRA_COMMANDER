@@ -117,11 +117,11 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
             fn new_patch(
                 _group_options: Self::GroupOptions,
                 _patch_options: Self::PatchOptions,
-            ) -> anyhow::Result<crate::fixture::patch::PatchConfig> {
-                Ok(crate::fixture::patch::PatchConfig {
+            ) -> crate::fixture::patch::PatchConfig {
+                crate::fixture::patch::PatchConfig {
                     channel_count: #channel_count,
                     render_mode: None,
-                })
+                }
             }
         }
 

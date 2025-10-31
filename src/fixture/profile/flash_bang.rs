@@ -51,11 +51,11 @@ impl PatchFixture for FlashBang {
         }
     }
 
-    fn new_patch(options: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
-        Ok(PatchConfig {
+    fn new_patch(options: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
+        PatchConfig {
             channel_count: if options.paired { 10 } else { 5 },
             render_mode: None,
-        })
+        }
     }
 }
 

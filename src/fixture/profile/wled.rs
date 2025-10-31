@@ -47,11 +47,11 @@ impl PatchFixture for Wled {
         }
     }
 
-    fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
-        Ok(PatchConfig {
+    fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
+        PatchConfig {
             channel_count: 0,
             render_mode: None,
-        })
+        }
     }
 }
 
