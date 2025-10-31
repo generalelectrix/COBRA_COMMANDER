@@ -426,15 +426,24 @@ pub trait PatchFixture: Sized + 'static {
         Ok(Self::new(Self::parse_group_options(options)?))
     }
 
+    /// Parse and validate patch options.
+    fn parse_patch_options(options: Options) -> Result<Self::PatchOptions>
+    where
+        <Self as PatchFixture>::PatchOptions: DeserializeOwned,
+    {
+        options.parse().context("patch options")
+    }
+
     /// Parse options and create a patch config.
     fn create_patch(group_options: Options, patch_options: Options) -> Result<PatchConfig>
     where
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
         <Self as PatchFixture>::PatchOptions: DeserializeOwned,
     {
-        let group_options: Self::GroupOptions = group_options.parse().context("group options")?;
-        let patch_options: Self::PatchOptions = patch_options.parse().context("patch options")?;
-        Ok(Self::new_patch(group_options, patch_options))
+        Ok(Self::new_patch(
+            Self::parse_group_options(group_options)?,
+            Self::parse_patch_options(patch_options)?,
+        ))
     }
 
     /// Given group- and patch-level options, produce a patch config.
