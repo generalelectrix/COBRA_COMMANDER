@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use crate::{
     animation::AnimationUIState,
@@ -10,8 +13,8 @@ use crate::{
     dmx::DmxBuffer,
     fixture::{animation_target::ControllableTargetedAnimation, Patch},
     master::MasterControls,
-    midi::{MidiControlMessage, MidiHandler},
-    osc::{OscControlMessage, ScopedControlEmitter},
+    midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
+    osc::{EmitOscMessage, OscControlMessage, ScopedControlEmitter},
     preview::Previewer,
 };
 
@@ -25,6 +28,7 @@ use rust_dmx::DmxPort;
 pub struct Show {
     controller: Controller,
     patch: Patch,
+    patch_file_path: PathBuf,
     channels: Channels,
     master_controls: MasterControls,
     animation_ui_state: AnimationUIState,
@@ -42,7 +46,8 @@ pub const UPDATE_INTERVAL: Duration = Duration::from_micros(25300);
 
 impl Show {
     pub fn new(
-        mut patch: Patch,
+        patch: Patch,
+        patch_file_path: PathBuf,
         controller: Controller,
         clocks: Clocks,
         animation_service: Option<AnimationPublisher>,
@@ -54,11 +59,10 @@ impl Show {
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
-        patch.initialize_color_organs();
-
         let mut show = Self {
             controller,
             patch,
+            patch_file_path,
             channels,
             master_controls,
             animation_ui_state,
@@ -66,7 +70,7 @@ impl Show {
             animation_service,
             preview,
         };
-        show.refresh_ui()?;
+        show.refresh_ui();
         Ok(show)
     }
 
@@ -122,7 +126,8 @@ impl Show {
             ControlMessage::RegisterClient(client_id) => {
                 println!("Registering new OSC client at {client_id}.");
                 self.controller.register_osc_client(client_id);
-                self.refresh_ui()
+                self.refresh_ui();
+                Ok(())
             }
             ControlMessage::DeregisterClient(client_id) => {
                 println!("Deregistering OSC client at {}.", client_id);
@@ -185,9 +190,23 @@ impl Show {
         match msg.group() {
             "Meta" => {
                 match msg.control() {
+                    "ReloadPatch" => {
+                        self.patch.repatch_from_file(&self.patch_file_path)?;
+                        sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
+                        Channels::emit_osc_state_change(
+                            crate::channel::StateChange::Clear,
+                            &ScopedControlEmitter {
+                                entity: crate::osc::channels::GROUP,
+                                emitter: &sender,
+                            },
+                        );
+                        // Re-initialize the channels to match the new patch.
+                        self.channels = Channels::from_iter(self.patch.channels().cloned());
+                        self.refresh_ui();
+                    }
                     "RefreshUI" => {
                         if msg.get_bool()? {
-                            self.refresh_ui()?;
+                            self.refresh_ui();
                         }
                     }
                     // TODO: it would be nicer for this to be scoped under Animation,
@@ -197,7 +216,7 @@ impl Show {
                             group.reset_animations();
                         }
                         // TODO: this is overkill but easiest solution
-                        self.refresh_ui()?;
+                        self.refresh_ui();
                     }
                     unknown => {
                         bail!("unknown Meta control {}", unknown)
@@ -262,7 +281,7 @@ impl Show {
     }
 
     /// Send messages to refresh all UI state.
-    fn refresh_ui(&mut self) -> anyhow::Result<()> {
+    fn refresh_ui(&mut self) {
         let emitter = &self.controller.sender_with_metadata(None);
         for (key, group) in self.patch.iter_with_keys() {
             group.emit_state(ChannelStateEmitter::new(
@@ -276,20 +295,21 @@ impl Show {
         self.channels.emit_state(false, &self.patch, emitter);
 
         if let Some(current_channel) = self.channels.current_channel() {
-            self.animation_ui_state.emit_state(
-                current_channel,
-                self.channels
-                    .group_by_channel(&self.patch, current_channel)?,
-                &ScopedControlEmitter {
-                    entity: crate::osc::animation::GROUP,
-                    emitter,
-                },
-            );
+            if let Ok(group) = self.channels.group_by_channel(&self.patch, current_channel) {
+                self.animation_ui_state.emit_state(
+                    current_channel,
+                    group,
+                    &ScopedControlEmitter {
+                        entity: crate::osc::animation::GROUP,
+                        emitter,
+                    },
+                );
+            } else {
+                error!("Refreshing UI: could not get fixture group for current channel {current_channel}.");
+            }
         }
 
         self.clocks.emit_state(&mut self.controller);
-
-        Ok(())
     }
 
     /// If we have a animation publisher configured, send current state.

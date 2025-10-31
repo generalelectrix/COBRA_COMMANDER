@@ -130,7 +130,7 @@ fn main() -> Result<()> {
 }
 
 fn run_show(args: RunArgs) -> Result<()> {
-    let patch = Patch::patch_all(load_patch(&args.patch_file)?)?;
+    let patch = Patch::from_file(&args.patch_file)?;
 
     let zmq_ctx = Context::new();
 
@@ -197,6 +197,7 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     let mut show = Show::new(
         patch,
+        args.patch_file,
         controller,
         clocks,
         animation_service,
@@ -213,15 +214,9 @@ fn run_show(args: RunArgs) -> Result<()> {
 }
 
 fn check_patch(args: CheckArgs) -> Result<()> {
-    Patch::patch_all(load_patch(&args.patch_file)?)?;
+    Patch::from_file(&args.patch_file)?;
     println!("Patch is OK.");
     Ok(())
-}
-
-fn load_patch(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
-    let patch_file = File::open(path)
-        .with_context(|| format!("unable to read patch file \"{}\"", path.to_string_lossy()))?;
-    Ok(serde_yaml::from_reader(patch_file)?)
 }
 
 fn prompt_start_animation_service(ctx: &Context) -> Result<Option<AnimationPublisher>> {

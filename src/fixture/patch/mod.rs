@@ -3,6 +3,8 @@ use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::path::Path;
 
 use anyhow::bail;
 use log::info;
@@ -48,7 +50,7 @@ impl Patch {
     }
 
     /// Initialize a new fixture patch.
-    pub fn new() -> Self {
+    fn new() -> Self {
         assert!(!PATCHERS.is_empty());
         let mut patchers = HashMap::new();
         for patcher in PATCHERS {
@@ -77,19 +79,34 @@ impl Patch {
         Ok(p)
     }
 
+    /// Initialize a patch from a patch file.
+    pub fn from_file(path: &Path) -> Result<Self> {
+        Self::patch_all(&parse_file(path)?)
+    }
+
     /// Initialize a patch from a collection of groups.
-    pub fn patch_all(groups: Vec<FixtureGroupConfig>) -> Result<Self> {
+    pub fn patch_all(groups: &[FixtureGroupConfig]) -> Result<Self> {
         let mut patch = Self::new();
         for group in groups {
             patch.patch(&group).with_context(|| {
                 format!(
                     "patching {}{}",
                     group.fixture,
-                    group.group.map(|g| format!("({g})")).unwrap_or_default()
+                    group
+                        .group
+                        .as_ref()
+                        .map(|g| format!("({g})"))
+                        .unwrap_or_default()
                 )
             })?;
         }
+        patch.initialize_color_organs();
         Ok(patch)
+    }
+
+    /// Re-initialize a patch from a file.
+    pub fn repatch_from_file(&mut self, path: &Path) -> Result<()> {
+        self.repatch(&parse_file(path)?)
     }
 
     /// Re-intialize a patch from new configs.
@@ -98,24 +115,30 @@ impl Patch {
     /// materially changed.
     ///
     /// If any patch error occurs, we must ensure that the original patch remains
-    /// unchanged. This is a bit tricky, since some fixture types may perform
-    /// complex initialization of external resources like sockets and so we need
-    /// to make sure that we've released resources before patching anything new.
-    fn repatch(&mut self, groups: Vec<FixtureGroupConfig>) -> Result<()> {
-        // Step 1: divide up groups into things we have already vs. things
-        // that we need to add or replace.
-        let (keep_existing, make_new): (Vec<_>, Vec<_>) = groups.into_iter().partition(|g| {
-            let Some(existing) = self.fixtures.get(g.key()) else {
-                // No existing patch matches the provided key.
-                return false;
+    /// unchanged.
+    ///
+    /// TODO: this approach will become problematic if we add control for any
+    /// fixtures that require exclusive control of an external resource such as
+    /// binding a socket.
+    pub fn repatch(&mut self, groups: &[FixtureGroupConfig]) -> Result<()> {
+        let mut new_patch = Self::patch_all(groups)?;
+        // Ensure we have enough universes.
+        let new_univ = new_patch.universe_count();
+        let current_univ = self.universe_count();
+        ensure!(
+            new_univ <= current_univ,
+            "new patch requires {new_univ} universe(s) but the show was only configured with {current_univ}",
+        );
+        // Retain state from existing fixture models if they match.
+        // Since we're mutating the existing patch from here on out, we need to
+        // make sure that none of these operations can fail.
+        for (key, new) in new_patch.fixtures.iter_mut() {
+            let Some(existing) = self.fixtures.remove(key) else {
+                continue;
             };
-            if existing.fixture_type().as_ref() != g.fixture.as_str() {
-                return false;
-            }
-            // Same key, same fixture type; if the options match, keep it.
-            existing.options() == &g.options
-        });
-        todo!();
+            new.reconfigure_from(existing);
+        }
+        *self = new_patch;
         Ok(())
     }
 
@@ -230,21 +253,24 @@ impl Patch {
     ///
     /// This should be called after all fixtures are patched.
     /// TODO: update the color organ codebase to handle a change in fixture count.
-    pub fn initialize_color_organs(&mut self) {
+    fn initialize_color_organs(&mut self) {
         for key in &self.color_organs {
             self.fixtures[key].use_color_organ();
         }
     }
 
     /// Dynamically get the universe count.
+    ///
+    /// This is just based on the indices provided by fixtures; we could have
+    /// "holes" where we don't actually have any fixtures patched.
     pub fn universe_count(&self) -> usize {
-        let mut universes = HashSet::new();
-        for group in self.fixtures.values() {
-            for element in group.fixture_configs() {
-                universes.insert(element.universe);
-            }
-        }
-        universes.len()
+        self.fixtures
+            .values()
+            .flat_map(|group| group.fixture_configs())
+            .map(|cfg| cfg.universe)
+            .max()
+            .unwrap_or_default()
+            + 1
     }
     /// Get the fixture/channel patched with this key.
     pub fn get(&self, key: &str) -> Result<&FixtureGroup> {
@@ -274,6 +300,12 @@ impl Patch {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FixtureGroup> {
         self.fixtures.values_mut()
     }
+}
+
+fn parse_file(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
+    let patch_file = File::open(path)
+        .with_context(|| format!("unable to read patch file \"{}\"", path.to_string_lossy()))?;
+    Ok(serde_yaml::from_reader(patch_file)?)
 }
 
 /// Mapping between a universe/address pair and the type of fixture already
@@ -370,7 +402,7 @@ mod test {
         ",
         )?;
         assert_eq!(2, cfg.len());
-        let p = Patch::patch_all(cfg)?;
+        let p = Patch::patch_all(&cfg)?;
         assert_eq!(
             "Color",
             p.channels.iter().exactly_one().unwrap().to_string()
@@ -425,7 +457,7 @@ mod test {
 
     fn assert_fail_patch(patch_yaml: &str, snippet: &str) {
         let Err(err) = Patch::patch_all(
-            serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml)
+            &serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml)
                 .expect("invalid patch format"),
         ) else {
             panic!("patch didn't fail")
@@ -582,7 +614,7 @@ mod test {
     #[test]
     fn test_wled() {
         Patch::patch_all(
-            parse(
+            &parse(
                 "
 - fixture: Wled
   url: http://foo.bar.baz

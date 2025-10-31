@@ -146,6 +146,9 @@ impl MidiHandler for NovationLaunchControlXL {
                 }
             }
             ChannelStateChange::ChannelLabels(_) => (),
+            ChannelStateChange::Clear => {
+                self.clear(output);
+            }
         }
     }
 

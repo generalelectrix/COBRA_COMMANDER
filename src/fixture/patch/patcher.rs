@@ -3,7 +3,6 @@ use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use std::fmt::{Display, Write};
 
-
 use super::{OptionsMenu, PatchOption};
 use crate::config::{FixtureGroupKey, Options};
 use crate::fixture::fixture::{
@@ -18,11 +17,6 @@ use linkme::distributed_slice;
 /// Use the register_patcher macro for fixtures that cannot derive patch.
 #[distributed_slice]
 pub static PATCHERS: [Patcher];
-
-pub struct PatchConfig {
-    pub channel_count: usize,
-    pub render_mode: Option<RenderMode>,
-}
 
 #[derive(Clone)]
 pub struct Patcher {
@@ -76,6 +70,12 @@ impl Display for Patcher {
         }
         Ok(())
     }
+}
+
+/// A configuration for a single fixture to be patched in a group.
+pub struct PatchConfig {
+    pub channel_count: usize,
+    pub render_mode: Option<RenderMode>,
 }
 
 pub trait PatchFixture: Sized + 'static {

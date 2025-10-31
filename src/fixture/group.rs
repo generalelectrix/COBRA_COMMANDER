@@ -64,6 +64,21 @@ impl FixtureGroup {
         }
     }
 
+    /// Reconfigure this group using the state from another group, if compatible.
+    ///
+    /// Return true if we performed reconfiguration.
+    ///
+    /// This allows maintaining mutable fixture state when repatching, so control
+    /// parameters do not change if the patch for this group is compatible.
+    pub fn reconfigure_from(&mut self, other: FixtureGroup) -> bool {
+        if self.fixture_type != other.fixture_type || self.options != other.options {
+            return false;
+        }
+        self.fixture = other.fixture;
+        self.strobe_enabled = other.strobe_enabled;
+        true
+    }
+
     /// Patch an additional fixture in this group.
     pub fn patch(&mut self, cfg: GroupFixtureConfig) {
         self.fixture_configs.push(cfg);
@@ -83,16 +98,6 @@ impl FixtureGroup {
     /// Get a mutable reference to the group's color organ, if in use.
     pub fn color_organ_mut(&mut self) -> Option<&mut ColorOrganHsluv> {
         self.color_organ.as_mut()
-    }
-
-    /// Get the fixture type.
-    pub fn fixture_type(&self) -> FixtureType {
-        self.fixture_type
-    }
-
-    /// Get the options this group was created with.
-    pub fn options(&self) -> &Options {
-        &self.options
     }
 
     /// Return a struct that can write the qualified name of this group.

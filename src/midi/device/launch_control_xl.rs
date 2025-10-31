@@ -56,20 +56,7 @@ impl MidiDevice for NovationLaunchControlXL {
         debug!("Sending Launch Control XL sysex template select command (User 1).");
         out.send_raw(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x11, 0x77, TEMPLATE_ID, 0xF7])?;
         debug!("Clearing all Launch Control XL LEDs.");
-        for channel in 0..Self::CHANNEL_COUNT {
-            for row in 0..3 {
-                self.emit(
-                    LaunchControlXLStateChange::Channel {
-                        channel,
-                        state: LaunchControlXLChannelStateChange::Knob {
-                            row,
-                            state: LedState::OFF,
-                        },
-                    },
-                    out,
-                );
-            }
-        }
+        self.clear(out);
         Ok(())
     }
 }
@@ -203,6 +190,24 @@ impl NovationLaunchControlXL {
                 state,
                 output,
             ),
+        }
+    }
+
+    /// Clear all controller indicators.
+    pub fn clear(&self, output: &mut Output) {
+        for channel in 0..Self::CHANNEL_COUNT {
+            for row in 0..3 {
+                self.emit(
+                    LaunchControlXLStateChange::Channel {
+                        channel,
+                        state: LaunchControlXLChannelStateChange::Knob {
+                            row,
+                            state: LedState::OFF,
+                        },
+                    },
+                    output,
+                );
+            }
         }
     }
 }
