@@ -14,7 +14,7 @@ use crate::{
     fixture::{animation_target::ControllableTargetedAnimation, Patch},
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
-    osc::{EmitOscMessage, OscControlMessage, ScopedControlEmitter},
+    osc::{OscControlMessage, ScopedControlEmitter},
     preview::Previewer,
 };
 

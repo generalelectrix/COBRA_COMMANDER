@@ -2,7 +2,7 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
@@ -88,7 +88,7 @@ impl Patch {
     pub fn patch_all(groups: &[FixtureGroupConfig]) -> Result<Self> {
         let mut patch = Self::new();
         for group in groups {
-            patch.patch(&group).with_context(|| {
+            patch.patch(group).with_context(|| {
                 format!(
                     "patching {}{}",
                     group.fixture,

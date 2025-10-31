@@ -11,8 +11,7 @@ use osc::prompt_osc_config;
 use rust_dmx::select_port;
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
-use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use strum_macros::Display;
 use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
@@ -24,7 +23,6 @@ use zmq::Context;
 use crate::animation_visualizer::{
     animation_publisher, run_animation_visualizer, AnimationPublisher,
 };
-use crate::config::FixtureGroupConfig;
 use crate::control::Controller;
 use crate::midi::ColorOrgan;
 use crate::preview::Previewer;
