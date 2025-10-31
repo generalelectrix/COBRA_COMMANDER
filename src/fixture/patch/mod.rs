@@ -22,57 +22,6 @@ pub use patcher::{
 
 pub use option::{enum_patch_option, AsPatchOption, NoOptions, OptionsMenu, PatchOption};
 
-/// Mapping between a universe/address pair and the type of fixture already
-/// addressed over that pair, as well as the starting address.
-#[derive(Default, Clone)]
-struct UsedAddrs(HashMap<(UniverseIdx, usize), (FixtureType, usize)>);
-
-impl UsedAddrs {
-    /// Attempt to allocate requested addresses for the provided fixture type.
-    ///
-    /// The addresses will only be allocated if there are no conflicts.
-    pub fn allocate(
-        &mut self,
-        fixture_type: FixtureType,
-        universe: UniverseIdx,
-        start_dmx_index: usize,
-        channel_count: usize,
-    ) -> Result<()> {
-        ensure!(
-            start_dmx_index < 512,
-            "dmx address {} out of range",
-            start_dmx_index + 1
-        );
-        let next_dmx_addr = start_dmx_index + channel_count;
-        ensure!(
-            next_dmx_addr <= 512,
-            "impossible to patch a fixture with {channel_count} channels at start address {}",
-            start_dmx_index + 1
-        );
-        for this_index in start_dmx_index..start_dmx_index + channel_count {
-            if let Some((existing_fixture, patched_at)) = self.0.get(&(universe, this_index)) {
-                bail!(
-                    "{fixture_type} at {} overlaps at DMX address {} in universe {} with {} at {}",
-                    start_dmx_index + 1,
-                    this_index + 1,
-                    universe,
-                    existing_fixture,
-                    patched_at + 1,
-                );
-            }
-        }
-        // No conflicts; allocate addresses.
-        for this_index in start_dmx_index..start_dmx_index + channel_count {
-            let existing = self
-                .0
-                .insert((universe, this_index), (fixture_type, start_dmx_index));
-            debug_assert!(existing.is_none());
-        }
-
-        Ok(())
-    }
-}
-
 /// Factory for fixture instances.
 ///
 /// Creates fixture instances based on configurations.
@@ -324,6 +273,57 @@ impl Patch {
     /// Iterate over all patched fixtures, mutably.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FixtureGroup> {
         self.fixtures.values_mut()
+    }
+}
+
+/// Mapping between a universe/address pair and the type of fixture already
+/// addressed over that pair, as well as the starting address.
+#[derive(Default, Clone)]
+struct UsedAddrs(HashMap<(UniverseIdx, usize), (FixtureType, usize)>);
+
+impl UsedAddrs {
+    /// Attempt to allocate requested addresses for the provided fixture type.
+    ///
+    /// The addresses will only be allocated if there are no conflicts.
+    pub fn allocate(
+        &mut self,
+        fixture_type: FixtureType,
+        universe: UniverseIdx,
+        start_dmx_index: usize,
+        channel_count: usize,
+    ) -> Result<()> {
+        ensure!(
+            start_dmx_index < 512,
+            "dmx address {} out of range",
+            start_dmx_index + 1
+        );
+        let next_dmx_addr = start_dmx_index + channel_count;
+        ensure!(
+            next_dmx_addr <= 512,
+            "impossible to patch a fixture with {channel_count} channels at start address {}",
+            start_dmx_index + 1
+        );
+        for this_index in start_dmx_index..start_dmx_index + channel_count {
+            if let Some((existing_fixture, patched_at)) = self.0.get(&(universe, this_index)) {
+                bail!(
+                    "{fixture_type} at {} overlaps at DMX address {} in universe {} with {} at {}",
+                    start_dmx_index + 1,
+                    this_index + 1,
+                    universe,
+                    existing_fixture,
+                    patched_at + 1,
+                );
+            }
+        }
+        // No conflicts; allocate addresses.
+        for this_index in start_dmx_index..start_dmx_index + channel_count {
+            let existing = self
+                .0
+                .insert((universe, this_index), (fixture_type, start_dmx_index));
+            debug_assert!(existing.is_none());
+        }
+
+        Ok(())
     }
 }
 
