@@ -30,7 +30,7 @@ impl Deref for FixtureType {
 
 impl AsRef<str> for FixtureType {
     fn as_ref(&self) -> &str {
-        &self.0
+        self.0
     }
 }
 

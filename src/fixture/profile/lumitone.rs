@@ -66,7 +66,7 @@ impl PatchFixture for Lumitone {
     type GroupOptions = GroupOptions;
     type PatchOptions = NoOptions;
 
-    fn new(options: Self::GroupOptions) -> Result<Self> {
+    fn new(options: Self::GroupOptions) -> Self {
         // Instantiate the control sender.
         let (send, recv) = channel();
 
@@ -98,7 +98,7 @@ impl PatchFixture for Lumitone {
             }
         });
 
-        Ok(l)
+        l
     }
 
     fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {

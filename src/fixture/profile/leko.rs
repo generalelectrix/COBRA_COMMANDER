@@ -56,8 +56,8 @@ impl PatchFixture for Leko {
     type GroupOptions = NoOptions;
     type PatchOptions = PatchOptions;
 
-    fn new(_options: Self::GroupOptions) -> Result<Self> {
-        Ok(Default::default())
+    fn new(_options: Self::GroupOptions) -> Self {
+        Default::default()
     }
 
     fn new_patch(

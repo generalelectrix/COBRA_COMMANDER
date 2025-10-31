@@ -408,7 +408,9 @@ pub trait PatchFixture: Sized + 'static {
     }
 
     /// Create a new instance of the fixture from parsed options.
-    fn new(options: Self::GroupOptions) -> Result<Self>;
+    fn new(options: Self::GroupOptions) -> Self;
+
+    /// Parse and validate options.
 
     /// Parse options and create a new group.
     fn create(options: Options) -> Result<Self>
@@ -416,7 +418,7 @@ pub trait PatchFixture: Sized + 'static {
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
         let options: Self::GroupOptions = options.parse().context("group options")?;
-        Self::new(options)
+        Ok(Self::new(options))
     }
 
     /// Parse options and create a patch config.
