@@ -1,22 +1,15 @@
 //! Define patchers for fixture types.
-use anyhow::{anyhow, ensure, Context, Result};
-use itertools::Itertools;
-use ordermap::{OrderMap, OrderSet};
+use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
-use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Write};
 
-use anyhow::bail;
-use log::info;
 
 use super::{OptionsMenu, PatchOption};
-use crate::config::{FixtureGroupConfig, FixtureGroupKey, Options};
-use crate::dmx::UniverseIdx;
+use crate::config::{FixtureGroupKey, Options};
 use crate::fixture::fixture::{
     AnimatedFixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture, RenderMode,
 };
 use crate::fixture::group::FixtureGroup;
-use crate::fixture::group::GroupFixtureConfig;
 use linkme::distributed_slice;
 
 /// Distributed registry for things that we can patch.

@@ -2,21 +2,16 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
-use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Write};
 
 use anyhow::bail;
 use log::info;
 
-use super::fixture::{
-    AnimatedFixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture, RenderMode,
-};
+use super::fixture::FixtureType;
 use super::group::FixtureGroup;
-use crate::config::{FixtureGroupConfig, FixtureGroupKey, Options};
+use crate::config::{FixtureGroupConfig, FixtureGroupKey};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
-use linkme::distributed_slice;
 
 mod option;
 mod patcher;

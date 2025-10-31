@@ -76,7 +76,7 @@ pub mod prelude {
     pub use crate::fixture::control::*;
     pub use crate::master::MasterControls;
     pub use crate::osc::prelude::*;
-    pub use anyhow::{bail, Result};
+    pub use anyhow::bail;
     pub use fixture_macros::{
         register_patcher, Control, EmitState, OptionsMenu, PatchFixture, Update,
     };

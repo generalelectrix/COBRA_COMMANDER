@@ -1,5 +1,4 @@
 //! Flexible control profile for a single-color fixture.
-use anyhow::Result;
 use log::error;
 use strum_macros::{Display, EnumIter, VariantArray};
 
