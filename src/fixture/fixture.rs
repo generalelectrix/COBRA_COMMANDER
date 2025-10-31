@@ -28,6 +28,12 @@ impl Deref for FixtureType {
     }
 }
 
+impl AsRef<str> for FixtureType {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl Display for FixtureType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.0)

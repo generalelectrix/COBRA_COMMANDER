@@ -135,22 +135,51 @@ impl Patch {
         Ok(p)
     }
 
-    /// Initialize a patch from a collection of fixtures.
-    pub fn patch_all(fixtures: impl IntoIterator<Item = FixtureGroupConfig>) -> Result<Self> {
+    /// Initialize a patch from a collection of groups.
+    pub fn patch_all(groups: Vec<FixtureGroupConfig>) -> Result<Self> {
         let mut patch = Self::new();
-        for fixture in fixtures {
-            patch.patch(&fixture).with_context(|| {
+        for group in groups {
+            patch.patch(&group).with_context(|| {
                 format!(
                     "patching {}{}",
-                    fixture.fixture,
-                    fixture.group.map(|g| format!("({g})")).unwrap_or_default()
+                    group.fixture,
+                    group.group.map(|g| format!("({g})")).unwrap_or_default()
                 )
             })?;
         }
         Ok(patch)
     }
 
+    /// Re-intialize a patch from new configs.
+    ///
+    /// This allows retaining all existing state for any groups that haven't
+    /// materially changed.
+    ///
+    /// If any patch error occurs, we must ensure that the original patch remains
+    /// unchanged. This is a bit tricky, since some fixture types may perform
+    /// complex initialization of external resources like sockets and so we need
+    /// to make sure that we've released resources before patching anything new.
+    fn repatch(&mut self, groups: Vec<FixtureGroupConfig>) -> Result<()> {
+        // Step 1: divide up groups into things we have already vs. things
+        // that we need to add or replace.
+        let (keep_existing, make_new): (Vec<_>, Vec<_>) = groups.into_iter().partition(|g| {
+            let Some(existing) = self.fixtures.get(g.key()) else {
+                // No existing patch matches the provided key.
+                return false;
+            };
+            if existing.fixture_type().as_ref() != g.fixture.as_str() {
+                return false;
+            }
+            // Same key, same fixture type; if the options match, keep it.
+            existing.options() == &g.options
+        });
+        todo!();
+        Ok(())
+    }
+
     /// Patch a fixture group config.
+    ///
+    ///
     fn patch(&mut self, cfg: &FixtureGroupConfig) -> Result<()> {
         let patcher = self.patcher(&cfg.fixture)?;
 
@@ -162,10 +191,7 @@ impl Patch {
             );
         }
 
-        let group_key = cfg
-            .group
-            .clone()
-            .unwrap_or_else(|| FixtureGroupKey(cfg.fixture.to_string()));
+        let group_key = FixtureGroupKey(cfg.key().to_string());
 
         ensure!(
             !self.fixtures.contains_key(&group_key),
@@ -426,11 +452,8 @@ pub trait CreateNonAnimatedGroup: PatchFixture + NonAnimatedFixture + Sized + 's
     where
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
-        Ok(FixtureGroup::empty(
-            Self::NAME,
-            key,
-            Box::new(Self::create(options)?),
-        ))
+        let fixture = Box::new(Self::create(options.clone())?);
+        Ok(FixtureGroup::empty(Self::NAME, key, fixture, options))
     }
 }
 
@@ -443,13 +466,15 @@ pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static 
     where
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
+        let fixture = Self::create(options.clone())?;
         Ok(FixtureGroup::empty(
             Self::NAME,
             key,
             Box::new(FixtureWithAnimations {
-                fixture: Self::create(options)?,
+                fixture,
                 animations: Default::default(),
             }),
+            options,
         ))
     }
 }

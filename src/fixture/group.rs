@@ -15,6 +15,7 @@ use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
 use crate::color::Hsluv;
 use crate::config::FixtureGroupKey;
+use crate::config::Options;
 use crate::dmx::DmxBuffer;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
@@ -32,6 +33,11 @@ pub struct FixtureGroup {
     color_organ: Option<ColorOrganHsluv>,
     /// The inner implementation of the fixture.
     fixture: Box<dyn Fixture>,
+    /// The group options that were used to construct the fixture.
+    ///
+    /// These are retained to determine if we need to re-initialize a group when
+    /// repatching.
+    options: Options,
     /// Is strobing enabled for this fixture?
     /// FIXME: it feels a bit odd to have group-level controllable parameters.
     /// This might be a side effect of not having a data structure that
@@ -45,6 +51,7 @@ impl FixtureGroup {
         fixture_type: FixtureType,
         key: FixtureGroupKey,
         fixture: Box<dyn Fixture>,
+        options: Options,
     ) -> Self {
         Self {
             fixture_type,
@@ -52,6 +59,7 @@ impl FixtureGroup {
             fixture_configs: vec![],
             color_organ: None,
             fixture,
+            options,
             strobe_enabled: false,
         }
     }
@@ -75,6 +83,16 @@ impl FixtureGroup {
     /// Get a mutable reference to the group's color organ, if in use.
     pub fn color_organ_mut(&mut self) -> Option<&mut ColorOrganHsluv> {
         self.color_organ.as_mut()
+    }
+
+    /// Get the fixture type.
+    pub fn fixture_type(&self) -> FixtureType {
+        self.fixture_type
+    }
+
+    /// Get the options this group was created with.
+    pub fn options(&self) -> &Options {
+        &self.options
     }
 
     /// Return a struct that can write the qualified name of this group.
