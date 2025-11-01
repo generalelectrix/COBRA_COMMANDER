@@ -341,6 +341,9 @@ pub enum StateChange {
         channel_id: ChannelId,
         msg: ChannelStateChange,
     },
+    /// Clear all channel state; this makes way for a total refresh, in case
+    /// the number of valid channels has changed.
+    Clear,
 }
 
 pub type KnobIndex = u8;

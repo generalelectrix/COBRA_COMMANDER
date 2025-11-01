@@ -56,18 +56,15 @@ impl PatchFixture for Leko {
     type GroupOptions = NoOptions;
     type PatchOptions = PatchOptions;
 
-    fn new(_options: Self::GroupOptions) -> Result<Self> {
-        Ok(Default::default())
+    fn new(_options: Self::GroupOptions) -> Self {
+        Default::default()
     }
 
-    fn new_patch(
-        _: Self::GroupOptions,
-        options: Self::PatchOptions,
-    ) -> anyhow::Result<PatchConfig> {
-        Ok(PatchConfig {
+    fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> PatchConfig {
+        PatchConfig {
             channel_count: options.kind.channel_count(),
             render_mode: Some(options.kind.render_mode()),
-        })
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 //! Types related to specifying and controlling individual fixture models.
 use std::fmt::{Debug, Display};
+use std::hash::Hash;
 use std::ops::Deref;
 use std::time::Duration;
 
@@ -24,6 +25,12 @@ pub struct FixtureType(pub &'static str);
 impl Deref for FixtureType {
     type Target = str;
     fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl AsRef<str> for FixtureType {
+    fn as_ref(&self) -> &str {
         self.0
     }
 }

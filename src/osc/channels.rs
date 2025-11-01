@@ -65,6 +65,10 @@ impl Channels {
                     CHANNEL_STROBE.set(channel_id.into(), v, send);
                 }
             },
+            StateChange::Clear => {
+                // No action needed, full state update will overwrite all existing state
+                // even if number of channels has changed.
+            }
         }
     }
 }

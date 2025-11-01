@@ -3,6 +3,7 @@
 use anyhow::{ensure, Context};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
+use log::error;
 use std::fmt::{Debug, Display};
 use std::time::Duration;
 
@@ -15,6 +16,7 @@ use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
 use crate::color::Hsluv;
 use crate::config::FixtureGroupKey;
+use crate::config::Options;
 use crate::dmx::DmxBuffer;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
@@ -32,6 +34,11 @@ pub struct FixtureGroup {
     color_organ: Option<ColorOrganHsluv>,
     /// The inner implementation of the fixture.
     fixture: Box<dyn Fixture>,
+    /// The group options that were used to construct the fixture.
+    ///
+    /// These are retained to determine if we need to re-initialize a group when
+    /// repatching.
+    options: Options,
     /// Is strobing enabled for this fixture?
     /// FIXME: it feels a bit odd to have group-level controllable parameters.
     /// This might be a side effect of not having a data structure that
@@ -45,6 +52,7 @@ impl FixtureGroup {
         fixture_type: FixtureType,
         key: FixtureGroupKey,
         fixture: Box<dyn Fixture>,
+        options: Options,
     ) -> Self {
         Self {
             fixture_type,
@@ -52,8 +60,24 @@ impl FixtureGroup {
             fixture_configs: vec![],
             color_organ: None,
             fixture,
+            options,
             strobe_enabled: false,
         }
+    }
+
+    /// Reconfigure this group using the state from another group, if compatible.
+    ///
+    /// Return true if we performed reconfiguration.
+    ///
+    /// This allows maintaining mutable fixture state when repatching, so control
+    /// parameters do not change if the patch for this group is compatible.
+    pub fn reconfigure_from(&mut self, other: FixtureGroup) -> bool {
+        if self.fixture_type != other.fixture_type || self.options != other.options {
+            return false;
+        }
+        self.fixture = other.fixture;
+        self.strobe_enabled = other.strobe_enabled;
+        true
     }
 
     /// Patch an additional fixture in this group.
@@ -185,7 +209,15 @@ impl FixtureGroup {
                 continue;
             };
             let phase_offset = phase_offset_per_fixture * i as f64;
-            let dmx_buf = &mut dmx_buffers[cfg.universe][dmx_index..dmx_index + cfg.channel_count];
+            let Some(dmx_univ_buf) = dmx_buffers.get_mut(cfg.universe) else {
+                error!(
+                    "Universe index {} for patch {i} of {} is out of range.",
+                    cfg.universe,
+                    self.qualified_name(),
+                );
+                continue;
+            };
+            let dmx_buf = &mut dmx_univ_buf[dmx_index..dmx_index + cfg.channel_count];
             self.fixture.render(
                 phase_offset,
                 i,
