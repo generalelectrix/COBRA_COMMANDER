@@ -27,6 +27,8 @@ use rust_dmx::DmxPort;
 
 pub struct Show {
     controller: Controller,
+    dmx_ports: Vec<Box<dyn DmxPort>>,
+    dmx_buffers: Vec<DmxBuffer>,
     patch: Patch,
     patch_file_path: PathBuf,
     channels: Channels,
@@ -49,6 +51,7 @@ impl Show {
         patch: Patch,
         patch_file_path: PathBuf,
         controller: Controller,
+        dmx_ports: Vec<Box<dyn DmxPort>>,
         clocks: Clocks,
         animation_service: Option<AnimationPublisher>,
         preview: Previewer,
@@ -61,6 +64,8 @@ impl Show {
 
         let mut show = Self {
             controller,
+            dmx_buffers: vec![[0u8; 512]; dmx_ports.len()],
+            dmx_ports,
             patch,
             patch_file_path,
             channels,
@@ -75,9 +80,8 @@ impl Show {
     }
 
     /// Run the show forever in the current thread.
-    pub fn run(&mut self, dmx_ports: &mut [Box<dyn DmxPort>]) {
+    pub fn run(&mut self) {
         let mut last_update = Instant::now();
-        let mut dmx_buffers = vec![[0u8; 512]; dmx_ports.len()];
 
         loop {
             // Process a control event if one is pending.
@@ -101,8 +105,8 @@ impl Show {
 
             // Render the state of the show.
             if should_render {
-                self.render(&mut dmx_buffers);
-                for (port, buffer) in dmx_ports.iter_mut().zip(&dmx_buffers) {
+                self.render();
+                for (port, buffer) in self.dmx_ports.iter_mut().zip(&self.dmx_buffers) {
                     if let Err(e) = port.write(buffer) {
                         error!("DMX write error: {e:#}.");
                     }
@@ -203,6 +207,10 @@ impl Show {
                         // Re-initialize the channels to match the new patch.
                         self.channels = Channels::from_iter(self.patch.channels().cloned());
                         self.refresh_ui();
+                        // Zero out the DMX buffers.
+                        for buf in &mut self.dmx_buffers {
+                            buf.fill(0);
+                        }
                     }
                     "RefreshUI" => {
                         if msg.get_bool()? {
@@ -271,12 +279,12 @@ impl Show {
     }
 
     /// Render the state of the show out to DMX.
-    fn render(&self, dmx_buffers: &mut [DmxBuffer]) {
+    fn render(&mut self) {
         self.preview.start_frame();
         // NOTE: we don't bother to empty the buffer because we will always
         // overwrite all previously-rendered state.
         for group in self.patch.iter() {
-            group.render(&self.master_controls, dmx_buffers, &self.preview);
+            group.render(&self.master_controls, &mut self.dmx_buffers, &self.preview);
         }
     }
 

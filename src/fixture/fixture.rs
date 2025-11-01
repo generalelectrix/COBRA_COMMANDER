@@ -1,5 +1,6 @@
 //! Types related to specifying and controlling individual fixture models.
 use std::fmt::{Debug, Display};
+use std::hash::Hash;
 use std::ops::Deref;
 use std::time::Duration;
 

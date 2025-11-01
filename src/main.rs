@@ -197,6 +197,7 @@ fn run_show(args: RunArgs) -> Result<()> {
         patch,
         args.patch_file,
         controller,
+        dmx_ports,
         clocks,
         animation_service,
         args.cli_preview
@@ -206,7 +207,7 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     println!("Running show.");
 
-    show.run(&mut dmx_ports);
+    show.run();
 
     Ok(())
 }
