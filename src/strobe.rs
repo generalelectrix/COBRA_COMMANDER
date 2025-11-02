@@ -117,6 +117,7 @@ enum DistributorStrategy {
 enum FlashDistribution {
     /// Strobe every group at once.
     All,
+    #[expect(dead_code)]
     /// Strobe this group index next.
     One(usize),
 }

@@ -136,7 +136,7 @@ impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
         _animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        if group_controls.strobe_enabled && self.strobed {
+        if self.strobed && group_controls.strobe_enabled {
             if let Some(state) = group_controls.strobe_shutter() {
                 self.render.render(&state, dmx_buf);
                 return;
