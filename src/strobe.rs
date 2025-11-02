@@ -28,13 +28,36 @@ use crate::{
 };
 
 /// A strobe flash; when on, lasts for an integer number of frames.
-#[derive(Debug, Default)]
-pub struct FlashState(Option<u8>);
+#[derive(Debug)]
+pub struct FlashState {
+    duration: u8,
+    flash: Option<u8>,
+}
 
 impl FlashState {
+    pub fn new(response: StrobeResponse) -> Self {
+        Self {
+            duration: response.length(),
+            flash: None,
+        }
+    }
+
     /// Return true if this flash is on.
     pub fn is_on(&self) -> bool {
-        self.0.is_some()
+        self.flash.is_some()
+    }
+
+    /// Update this flash by the provided number of frames.
+    pub fn update(&mut self, n_frames: u8) {
+        let Some(age) = self.flash else {
+            return;
+        };
+        let age = age.saturating_add(n_frames);
+        if age >= self.duration {
+            self.flash = None;
+        } else {
+            self.flash = Some(age);
+        }
     }
 }
 
@@ -43,6 +66,15 @@ impl FlashState {
 pub enum StrobeResponse {
     Short,
     Long,
+}
+
+impl StrobeResponse {
+    pub fn length(self) -> u8 {
+        match self {
+            Self::Short => 1,
+            Self::Long => 3,
+        }
+    }
 }
 
 /// Strobe state that subscribers will use to follow the global strobe clock.

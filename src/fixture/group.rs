@@ -46,8 +46,9 @@ pub struct FixtureGroup {
     /// This might be a side effect of not having a data structure that
     /// represents "channel state".
     strobe_enabled: bool,
-    /// Current strobe flash state for this group, if managed externally.
-    flash_state: FlashState,
+    /// Current strobe flash state for this group. If the fixture cannot strobe,
+    /// this will be None.
+    flash_state: Option<FlashState>,
 }
 
 impl FixtureGroup {
@@ -191,6 +192,7 @@ impl FixtureGroup {
         if let Some(color_organ) = &mut self.color_organ {
             color_organ.update(delta_t);
         }
+        self.flash_state.update(1);
     }
 
     /// Render into the provided DMX universe.
