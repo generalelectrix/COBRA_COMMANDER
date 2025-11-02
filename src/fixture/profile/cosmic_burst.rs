@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 6]
-#[strobe]
+#[strobe(Short)]
 pub struct CosmicBurst {
     #[channel_control]
     #[animate]
@@ -17,7 +17,7 @@ impl Default for CosmicBurst {
     fn default() -> Self {
         Self {
             dimmer: Unipolar::full_channel("Dimmer", 2)
-                .strobed_short()
+                .strobed()
                 .with_channel_level(),
             // strobe: Strobe::channel("Strobe", 1, 64, 95, 32),
             rotation: Bipolar::split_channel("Rotation", 0, 125, 8, 130, 247, 0)

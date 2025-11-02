@@ -6,7 +6,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
-#[strobe]
+#[strobe(Short)]
 pub struct TriPhase {
     red: Bool<()>,
     green: Bool<()>,
@@ -28,7 +28,7 @@ impl Default for TriPhase {
             green: Bool::new_off("Green", ()),
             blue: Bool::new_off("Blue", ()),
             dimmer: Unipolar::full_channel("Dimmer", 3)
-                .strobed_short()
+                .strobed()
                 .with_channel_level(),
             // strobe: Strobe::channel("Strobe", 2, 1, 255, 0),
             rotation: Bipolar::split_channel("Rotation", 1, 120, 10, 135, 245, 0)

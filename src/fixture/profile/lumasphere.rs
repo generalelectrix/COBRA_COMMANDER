@@ -149,8 +149,8 @@ impl crate::fixture::Control for Lumasphere {
         Ok(false)
     }
 
-    fn can_strobe(&self) -> bool {
-        true
+    fn can_strobe(&self) -> Option<StrobeResponse> {
+        None
     }
 }
 

@@ -4,7 +4,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 10]
-#[strobe]
+#[strobe(Long)]
 pub struct RushWizard {
     #[channel_control]
     #[animate]
@@ -29,7 +29,7 @@ impl Default for RushWizard {
     fn default() -> Self {
         Self {
             dimmer: Unipolar::full_channel("Dimmer", 1)
-                .strobed_long()
+                .strobed()
                 .with_channel_level(),
             color: LabeledSelect::new(
                 "Color",

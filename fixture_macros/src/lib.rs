@@ -204,7 +204,7 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 /// conditionally handle if Some.
 ///
 /// If the fixture is capable of using global strobing, annotate the struct with
-/// the #[strobe] attribute.
+/// the #[strobe(Short)] or #[strobe(Long)] attribute.
 #[proc_macro_derive(
     Control,
     attributes(
@@ -234,7 +234,11 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
     let mut animate_target_idents = vec![];
     let mut animate_subtarget_types = vec![];
 
-    let can_strobe = has_attr(&attrs, "strobe");
+    let strobe_mode = if let Some(mode) = get_attr_list(&attrs, "strobe") {
+        quote!(Some(crate::strobe::StrobeResponse::#mode))
+    } else {
+        quote!(None)
+    };
 
     for field in fields.named.iter() {
         if field_has_attr(field, "skip_control") {
@@ -362,8 +366,8 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
                 Ok(false)
             }
 
-            fn can_strobe(&self) -> bool {
-                #can_strobe
+            fn can_strobe(&self) -> Option<crate::strobe::StrobeResponse> {
+                #strobe_mode
             }
         }
 
@@ -415,6 +419,18 @@ fn field_has_attr(field: &Field, ident: &str) -> bool {
 
 fn has_attr(attrs: &[Attribute], ident: &str) -> bool {
     attrs.iter().any(|attr| attr.meta.path().is_ident(ident))
+}
+
+fn get_attr_list(attrs: &[Attribute], ident: &str) -> Option<proc_macro2::TokenStream> {
+    attrs
+        .iter()
+        .filter_map(|attr| {
+            if !attr.meta.path().is_ident(ident) {
+                return None;
+            }
+            Some(attr.meta.require_list().unwrap().tokens.clone())
+        })
+        .next()
 }
 
 fn get_attr_and_payload(attrs: &[Attribute], ident: &str) -> Option<String> {

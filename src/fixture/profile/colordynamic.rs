@@ -5,7 +5,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
-#[strobe]
+#[strobe(Long)]
 pub struct Colordynamic {
     #[channel_control]
     shutter: ChannelLevelBool<BoolChannel>,
@@ -25,7 +25,7 @@ impl Default for Colordynamic {
     fn default() -> Self {
         Colordynamic {
             shutter: Bool::full_channel("ShutterOpen", 3)
-                .strobed_long()
+                .strobed()
                 .with_channel_level(),
             // shutter: ShutterStrobe::new(
             //     Bool::full_channel("ShutterOpen", 3),

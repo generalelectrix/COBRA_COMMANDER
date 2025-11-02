@@ -24,7 +24,6 @@ use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 use crate::preview::Previewer;
 use crate::strobe::FlashState;
-use crate::strobe::StrobeResponse;
 
 pub struct FixtureGroup {
     /// The fixture type of this group.
@@ -62,9 +61,7 @@ impl FixtureGroup {
     ) -> Self {
         Self {
             strobe_enabled: false,
-            flash_state: fixture
-                .can_strobe()
-                .then_some(FlashState::new(StrobeResponse::Short)), // FIXME: need to get the response parameter
+            flash_state: fixture.can_strobe().map(FlashState::new),
             fixture_type,
             key,
             fixture_configs: vec![],
@@ -177,7 +174,7 @@ impl FixtureGroup {
         let emitter = &FixtureStateEmitter::new(&self.key, channel_emitter);
         if matches!(msg, ChannelControlMessage::ToggleStrobe) {
             // If the fixture can't strobe, ignore the control.
-            if !self.fixture.can_strobe() {
+            if self.flash_state.is_none() {
                 return Ok(true);
             }
             self.strobe_enabled = !self.strobe_enabled;

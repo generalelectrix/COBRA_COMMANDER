@@ -5,7 +5,7 @@ use strum_macros::{Display, EnumIter, VariantArray};
 use crate::{color::*, fixture::prelude::*, preview::FixturePreviewer};
 
 #[derive(Debug, Control, EmitState, Update)]
-#[strobe]
+#[strobe(Short)]
 pub struct Color {
     #[channel_control]
     #[animate]
@@ -166,9 +166,7 @@ impl Color {
             }
         }
 
-        if let Some(strobe_intensity) =
-            group_controls.strobe_intensity(crate::strobe::StrobeResponse::Short)
-        {
+        if let Some(strobe_intensity) = group_controls.strobe_intensity() {
             val = strobe_intensity.val();
         }
 

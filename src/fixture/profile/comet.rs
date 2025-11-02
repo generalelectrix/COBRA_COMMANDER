@@ -4,7 +4,7 @@ use crate::{fixture::prelude::*, osc::OscControlMessage, util::unipolar_to_range
 
 #[derive(Debug, EmitState, Control, PatchFixture)]
 #[channel_count = 5]
-#[strobe]
+#[strobe(Long)]
 pub struct Comet {
     shutter_open: ChannelLevelBool<BoolChannel>,
     trigger_state: TriggerState,
@@ -19,7 +19,7 @@ impl Default for Comet {
     fn default() -> Self {
         Self {
             shutter_open: Bool::full_channel("Shutter", 0)
-                .strobed_long()
+                .strobed()
                 .with_channel_level(),
             trigger_state: TriggerState::default(),
             // strobe: Strobe::channel("Strobe", 0, 151, 255, 75),

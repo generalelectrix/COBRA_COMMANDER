@@ -47,7 +47,7 @@ impl<'a> FixtureGroupControls<'a> {
     /// Return Some containing a strobe intensity if strobe override is active.
     ///
     /// Return None if we should not be strobing.
-    pub fn strobe_intensity(&self, response: StrobeResponse) -> Option<UnipolarFloat> {
+    pub fn strobe_intensity(&self) -> Option<UnipolarFloat> {
         if !self.strobe_enabled {
             return None;
         }
@@ -61,9 +61,8 @@ impl<'a> FixtureGroupControls<'a> {
     /// Return Some containing a strobe state if strobe override is active.
     ///
     /// Return None if we should not be strobing.
-    pub fn strobe_shutter(&self, response: StrobeResponse) -> Option<bool> {
-        self.strobe_intensity(response)
-            .map(|i| i > UnipolarFloat::ZERO)
+    pub fn strobe_shutter(&self) -> Option<bool> {
+        self.strobe_intensity().map(|i| i > UnipolarFloat::ZERO)
     }
 }
 
@@ -83,6 +82,7 @@ pub mod prelude {
     pub use crate::fixture::animation_target::{Subtarget, TargetedAnimationValues};
     pub use crate::fixture::control::*;
     pub use crate::osc::prelude::*;
+    pub use crate::strobe::StrobeResponse;
     pub use anyhow::bail;
     pub use fixture_macros::{
         register_patcher, Control, EmitState, OptionsMenu, PatchFixture, Update,

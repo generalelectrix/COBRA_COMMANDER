@@ -10,7 +10,7 @@ use crate::fixture::{
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 14]
-#[strobe]
+#[strobe(Short)]
 pub struct Ufo {
     #[channel_control]
     #[animate_subtarget(Hue, Sat, Val)]

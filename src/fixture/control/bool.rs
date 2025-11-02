@@ -18,7 +18,7 @@ pub struct Bool<R: RenderToDmx<bool>> {
     val: bool,
     name: String,
     render: R,
-    strobed: Option<StrobeResponse>,
+    strobed: bool,
 }
 
 /// A bool control that renders into a single DMX channel at full range.
@@ -32,7 +32,7 @@ impl<R: RenderToDmx<bool>> Bool<R> {
             val: false,
             name: name.into(),
             render,
-            strobed: None,
+            strobed: false,
         }
     }
 
@@ -43,7 +43,7 @@ impl<R: RenderToDmx<bool>> Bool<R> {
             val: true,
             name: name.into(),
             render,
-            strobed: None,
+            strobed: false,
         }
     }
 
@@ -51,15 +51,9 @@ impl<R: RenderToDmx<bool>> Bool<R> {
         self.val
     }
 
-    /// Listen to the global strobe clock, short pulse width.
-    pub fn strobed_short(mut self) -> Self {
-        self.strobed = Some(StrobeResponse::Short);
-        self
-    }
-
-    /// Listen to the global strobe clock, long pulse width.
-    pub fn strobed_long(mut self) -> Self {
-        self.strobed = Some(StrobeResponse::Long);
+    /// Listen to the global strobe clock.
+    pub fn strobed(mut self) -> Self {
+        self.strobed = true;
         self
     }
 
@@ -145,12 +139,10 @@ impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
         _animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        if group_controls.strobe_enabled {
-            if let Some(response) = self.strobed {
-                if let Some(state) = group_controls.strobe_shutter(response) {
-                    self.render.render(&state, dmx_buf);
-                    return;
-                }
+        if group_controls.strobe_enabled && self.strobed {
+            if let Some(state) = group_controls.strobe_shutter() {
+                self.render.render(&state, dmx_buf);
+                return;
             }
         }
         self.render.render(&self.val, dmx_buf);

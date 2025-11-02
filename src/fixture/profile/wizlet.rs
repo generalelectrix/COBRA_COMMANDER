@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 12]
-#[strobe]
+#[strobe(Short)]
 pub struct Wizlet {
     #[channel_control]
     #[animate]
@@ -61,7 +61,7 @@ impl Default for Wizlet {
             .with_mirroring(true)
             .with_channel_knob(2),
             dimmer: Unipolar::full_channel("Dimmer", 5)
-                .strobed_short()
+                .strobed()
                 .with_channel_level(),
         }
     }

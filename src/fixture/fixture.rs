@@ -17,6 +17,7 @@ use crate::channel::ChannelControlMessage;
 use crate::fixture::animation_target::AnimationTarget;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
+use crate::strobe::StrobeResponse;
 
 /// Statically-defined fixture type name.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -110,8 +111,8 @@ pub trait Control {
         emitter: &FixtureStateEmitter,
     ) -> anyhow::Result<bool>;
 
-    /// Return true if this fixture can strobe.
-    fn can_strobe(&self) -> bool;
+    /// If this fixture can strobe, return its response profile.
+    fn can_strobe(&self) -> Option<StrobeResponse>;
 }
 
 #[derive(Clone, Copy)]
@@ -229,7 +230,7 @@ impl<F: AnimatedFixture> Control for FixtureWithAnimations<F> {
         self.fixture.control_from_channel(msg, emitter)
     }
 
-    fn can_strobe(&self) -> bool {
+    fn can_strobe(&self) -> Option<StrobeResponse> {
         self.fixture.can_strobe()
     }
 }
