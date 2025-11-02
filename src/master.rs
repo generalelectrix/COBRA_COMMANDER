@@ -7,12 +7,11 @@ use tunnels::clock_server::StaticClockBank;
 
 use crate::fixture::prelude::*;
 use crate::osc::ScopedControlEmitter;
-use crate::strobe::{Distributor, StrobeClock, StrobeState};
+use crate::strobe::{Distributor, StrobeClock};
 
 #[derive(Default)]
 pub struct MasterControls {
     strobe_clock: StrobeClock,
-    pub strobe_state: StrobeState,
     pub clock_state: StaticClockBank,
     pub audio_envelope: UnipolarFloat,
 }
@@ -23,8 +22,7 @@ impl MasterControls {
             entity: GROUP,
             emitter,
         };
-        self.strobe_state = self
-            .strobe_clock
+        self.strobe_clock
             .update(delta_t, self.audio_envelope, emitter);
     }
 
@@ -69,9 +67,14 @@ impl MasterControls {
         self.strobe_clock.control_osc(msg, emitter)
     }
 
-    /// Get a flash distributor for the specified number of groups.
-    pub fn flash_distributor(&mut self, groups_to_strobe: usize) -> Distributor {
-        self.strobe_state.distributor(groups_to_strobe)
+    /// Update and fetch the flash distributor.
+    pub fn flash_distributor(&mut self, group_count: usize) -> Distributor {
+        self.strobe_clock.distributor(group_count)
+    }
+
+    /// Get the strobe clock.
+    pub fn strobe(&self) -> &StrobeClock {
+        &self.strobe_clock
     }
 }
 

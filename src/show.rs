@@ -281,11 +281,7 @@ impl Show {
             group.update(
                 FixtureGroupUpdate {
                     master_controls: &self.master_controls,
-                    flash_now: if group.strobe_enabled() {
-                        flash_distributor.next()
-                    } else {
-                        false
-                    },
+                    flash_now: flash_distributor.flash_now(group.strobe_enabled()),
                 },
                 delta_t,
             );

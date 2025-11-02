@@ -93,7 +93,7 @@ impl AnimatedFixture for FlashBang {
             self.intensity
                 .control
                 .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity))
-                * group_controls.strobe().master_intensity,
+                * group_controls.strobe_clock().intensity(),
         );
         for (flash, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
             *chan = if flash.is_some() { intensity } else { 0 };

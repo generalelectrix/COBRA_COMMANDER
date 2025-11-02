@@ -75,7 +75,7 @@ impl AnimatedFixture for FreqStrobe {
             self.intensity
                 .control
                 .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity))
-                * group_controls.strobe().master_intensity,
+                * group_controls.strobe_clock().intensity(),
         );
         self.flasher.render(group_controls, intensity, dmx_buf);
         for &i in &*dmx_buf {

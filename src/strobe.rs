@@ -83,50 +83,53 @@ impl StrobeResponse {
 }
 
 #[derive(Debug)]
-pub enum Distributor {
-    /// No flashes to distribute.
-    None,
-    /// Strobe every group at once.
-    All,
+pub struct Distributor {
+    request_count: usize,
+    strategy: Option<DistributorStrategy>,
 }
 
 impl Distributor {
-    pub fn next(&mut self) -> bool {
-        match self {
-            Self::None => false,
-            Self::All => true,
+    pub fn flash_now(&mut self, strobe_active_for_group: bool) -> bool {
+        use DistributorStrategy::*;
+        if !strobe_active_for_group {
+            return false;
         }
+        let flash_now = match self.strategy {
+            None => false,
+            Some(All) => true,
+            Some(One(i)) => i == self.request_count,
+        };
+        self.request_count += 1;
+        flash_now
     }
 }
 
-/// Strobe state that subscribers will use to follow the global strobe clock.
-#[derive(Default, Debug, Clone, Copy)]
-pub struct StrobeState {
-    /// True if the master strobe clock is switched on.
-    ///
-    /// This is only needed for strobe followers that cannot use the flash
-    /// distribution mechanism.
-    pub strobe_on: bool,
-
-    /// true if the strobe clock flashed during the last update, either due
-    /// to the clock ticking or the manual flash button.
-    pub flash_now: bool,
-
-    /// Current value for the mater strobe intensity.
-    pub master_intensity: UnipolarFloat,
-
-    /// The current strobe rate - this is provided as a potential shim to allow
-    /// fixtures that can't be strobed well from DMX to use the legacy strobing
-    /// behavior.
-    pub rate: UnipolarFloat,
+/// Distribute flashes.
+#[derive(Debug)]
+enum DistributorStrategy {
+    /// Strobe every group at once.
+    All,
+    /// Strobe one group index.
+    One(usize),
 }
 
-impl StrobeState {
-    pub fn distributor(&self, group_count: usize) -> Distributor {
-        if !self.flash_now {
-            Distributor::None
-        } else {
-            Distributor::All
+/// Keep track of flash distribution state.
+enum FlashDistribution {
+    /// Strobe every group at once.
+    All,
+    /// Strobe this group index next.
+    One(usize),
+}
+
+impl FlashDistribution {
+    /// Advance flash distribution for the next flash.
+    /// Take the number of active strobe targets into account.
+    pub fn advance(&mut self, group_count: usize) {
+        match self {
+            Self::All => (),
+            Self::One(i) => {
+                *i = (*i + 1) % group_count;
+            }
         }
     }
 }
@@ -149,8 +152,12 @@ pub struct StrobeClock {
     strobe_on: bool,
     /// If true, trigger a flash on the next update.
     flash_next_update: bool,
+    /// If true, the strobe clock ticked on this update.
+    flash_now: bool,
     /// Intensity of the flash.
     intensity: UnipolarFloat,
+    /// Current flash distribution strategy.
+    distribution: FlashDistribution,
     osc_controls: GroupControlMap<ControlMessage>,
 }
 
@@ -168,7 +175,9 @@ impl Default for StrobeClock {
             tick_indicator: Default::default(),
             strobe_on: false,
             flash_next_update: false,
+            flash_now: false,
             intensity: UnipolarFloat::ONE,
+            distribution: FlashDistribution::All,
             osc_controls,
         };
         // Set initial rate to our minimum.
@@ -205,7 +214,7 @@ impl StrobeClock {
         delta_t: Duration,
         audio_envelope: UnipolarFloat,
         emitter: &ScopedControlEmitter,
-    ) -> StrobeState {
+    ) {
         self.clock.update_state(delta_t, audio_envelope);
         // Update the tap sync/rate flasher.
         if let Some(tick_state) = self
@@ -216,16 +225,44 @@ impl StrobeClock {
         }
         // If the strobe clock ticked this frame and we're strobing, flash.
         // Also flash if we have a queued manual flash.
-        let flash_now = (self.strobe_on && self.clock.ticked()) || self.flash_next_update;
-        if flash_now {
+        self.flash_now = (self.strobe_on && self.clock.ticked()) || self.flash_next_update;
+        if self.flash_now {
             self.flash_next_update = false;
         }
+    }
 
-        StrobeState {
-            strobe_on: self.strobe_on,
-            flash_now,
-            master_intensity: self.intensity,
-            rate: unipolar_from_rate(self.rate_raw),
+    /// Return the current set intensity.
+    pub fn intensity(&self) -> UnipolarFloat {
+        self.intensity
+    }
+
+    /// Return true if the master strobe enable is turned on.
+    pub fn strobe_on(&self) -> bool {
+        self.strobe_on
+    }
+
+    /// Get the current rate, rescaled back into a unipolar control.
+    pub fn rate_control(&self) -> UnipolarFloat {
+        unipolar_from_rate(self.rate_raw)
+    }
+
+    /// Get a flash distributor if we have a flash this frame.
+    /// Potentially update the state of the distributor if the number of
+    /// strobed groups isn't compatible with current settings.
+    pub fn distributor(&mut self, group_count: usize) -> Distributor {
+        if !self.flash_now {
+            return Distributor {
+                request_count: 0,
+                strategy: None,
+            };
+        }
+        self.distribution.advance(group_count);
+        Distributor {
+            request_count: 0,
+            strategy: match self.distribution {
+                FlashDistribution::All => Some(DistributorStrategy::All),
+                FlashDistribution::One(i) => Some(DistributorStrategy::One(i)),
+            },
         }
     }
 

@@ -1,9 +1,4 @@
-use crate::{
-    color::Hsluv,
-    master::MasterControls,
-    preview::FixturePreviewer,
-    strobe::StrobeState,
-};
+use crate::{color::Hsluv, master::MasterControls, preview::FixturePreviewer, strobe::StrobeClock};
 
 pub mod animation_target;
 mod control;
@@ -39,9 +34,9 @@ pub struct FixtureGroupControls<'a> {
 }
 
 impl<'a> FixtureGroupControls<'a> {
-    // TODO: eliminate the need for this method
-    pub fn strobe(&self) -> &StrobeState {
-        &self.master_controls.strobe_state
+    /// Get the strobe clock.
+    pub fn strobe_clock(&self) -> &StrobeClock {
+        self.master_controls.strobe()
     }
 
     /// Return Some containing a strobe intensity if strobe override is active.
@@ -52,7 +47,7 @@ impl<'a> FixtureGroupControls<'a> {
             return None;
         }
         Some(if self.flash_on {
-            self.master_controls.strobe_state.master_intensity
+            self.strobe_clock().intensity()
         } else {
             UnipolarFloat::ZERO
         })
