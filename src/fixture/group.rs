@@ -24,6 +24,7 @@ use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 use crate::preview::Previewer;
 use crate::strobe::FlashState;
+use crate::strobe::StrobeResponse;
 
 pub struct FixtureGroup {
     /// The fixture type of this group.
@@ -60,14 +61,16 @@ impl FixtureGroup {
         options: Options,
     ) -> Self {
         Self {
+            strobe_enabled: false,
+            flash_state: fixture
+                .can_strobe()
+                .then_some(FlashState::new(StrobeResponse::Short)), // FIXME: need to get the response parameter
             fixture_type,
             key,
             fixture_configs: vec![],
             color_organ: None,
             fixture,
             options,
-            strobe_enabled: false,
-            flash_state: Default::default(),
         }
     }
 
@@ -192,7 +195,9 @@ impl FixtureGroup {
         if let Some(color_organ) = &mut self.color_organ {
             color_organ.update(delta_t);
         }
-        self.flash_state.update(1);
+        if let Some(fs) = &mut self.flash_state {
+            fs.update(1);
+        }
     }
 
     /// Render into the provided DMX universe.
@@ -235,7 +240,11 @@ impl FixtureGroup {
                         })
                     }),
                     strobe_enabled: self.strobe_enabled,
-                    flash_on: self.flash_state.is_on(),
+                    flash_on: self
+                        .flash_state
+                        .as_ref()
+                        .map(FlashState::is_on)
+                        .unwrap_or_default(),
                     preview: &preview,
                 },
                 dmx_buf,
