@@ -87,20 +87,21 @@ impl MidiHandler for NovationLaunchControlXL {
                     msg: ScopedChannelControlMessage::ToggleStrobe,
                 },
             }),
-            SideButton(b) => match b {
-                Record => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
-                    crate::strobe::ControlMessage::ToggleStrobeOn,
-                )),
-                Solo => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
-                    crate::strobe::ControlMessage::Tap,
-                )),
-                Mute => ShowControlMessage::Master(crate::master::ControlMessage::Strobe(
-                    crate::strobe::ControlMessage::FlashNow,
-                )),
-                _ => {
-                    return None;
-                }
-            },
+            SideButton(b) => {
+                use crate::strobe::ControlMessage::*;
+                use crate::strobe::Multiplier::*;
+                use crate::strobe::StateChange::*;
+                ShowControlMessage::Master(crate::master::ControlMessage::Strobe(match b {
+                    Record => ToggleStrobeOn,
+                    Solo => Tap,
+                    Mute => FlashNow,
+                    Device => Set(Mult(One)),
+                    Left => Set(Mult(Two)),
+                    Right => Set(Mult(Three)),
+                    Up => Set(Mult(Four)),
+                    Down => Set(Mult(Eight)),
+                }))
+            }
         })
     }
 
@@ -154,37 +155,19 @@ impl MidiHandler for NovationLaunchControlXL {
 
     fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {
         use crate::strobe::StateChange::*;
+        use LaunchControlXLSideButton::*;
         match msg {
             crate::master::StateChange::Strobe(s) => match s {
-                StrobeOn(v) => {
-                    self.emit(
-                        LaunchControlXLStateChange::SideButton {
-                            button: LaunchControlXLSideButton::Record,
-                            state: side_button_state(*v),
-                        },
-                        output,
-                    );
-                }
-                Ticked(v) => {
-                    self.emit(
-                        LaunchControlXLStateChange::SideButton {
-                            button: LaunchControlXLSideButton::Solo,
-                            state: side_button_state(*v),
-                        },
-                        output,
-                    );
+                StrobeOn(v) => self.emit_side_button(Record, *v, output),
+                Ticked(v) => self.emit_side_button(Solo, *v, output),
+                Mult(m) => {
+                    let set_index = m.as_index();
+                    for (i, button) in [Device, Left, Right, Up, Down].iter().enumerate() {
+                        self.emit_side_button(*button, i == set_index, output);
+                    }
                 }
                 _ => (),
             },
         }
-    }
-}
-
-fn side_button_state(v: bool) -> LedState {
-    // Side buttons can only be yellow or off...
-    if v {
-        LedState::YELLOW
-    } else {
-        LedState::OFF
     }
 }
