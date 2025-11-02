@@ -37,21 +37,21 @@ impl PatchFixture for Wled {
     type GroupOptions = GroupOptions;
     type PatchOptions = NoOptions;
 
-    fn new(options: Self::GroupOptions) -> Result<Self> {
-        Ok(Self {
+    fn new(options: Self::GroupOptions) -> Self {
+        Self {
             level: Unipolar::new("Level", ()).with_channel_level(),
             speed: Unipolar::new("Speed", ()).with_channel_knob(0),
             size: Unipolar::new("Size", ()).with_channel_knob(1),
             preset: IndexedSelect::new("Preset", options.preset_count, false, ()),
             controller: WledController::run(options.url),
-        })
+        }
     }
 
-    fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
-        Ok(PatchConfig {
+    fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
+        PatchConfig {
             channel_count: 0,
             render_mode: None,
-        })
+        }
     }
 }
 

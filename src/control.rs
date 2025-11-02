@@ -170,3 +170,26 @@ impl CreateControlEvent<Device> for ControlMessage {
         Self::Midi(MidiControlMessage { device, event })
     }
 }
+
+#[cfg(test)]
+pub mod mock {
+    use super::*;
+
+    pub struct NoOpEmitter;
+
+    impl EmitOscMessage for NoOpEmitter {
+        fn emit_osc(&self, _: OscMessage) {}
+    }
+
+    impl EmitMidiChannelMessage for NoOpEmitter {
+        fn emit_midi_channel_message(&self, _: &crate::channel::StateChange) {}
+    }
+
+    impl EmitMidiAnimationMessage for NoOpEmitter {
+        fn emit_midi_animation_message(&self, _: &crate::animation::StateChange) {}
+    }
+
+    impl EmitMidiMasterMessage for NoOpEmitter {
+        fn emit_midi_master_message(&self, _: &crate::master::StateChange) {}
+    }
+}

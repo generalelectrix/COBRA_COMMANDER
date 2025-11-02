@@ -9,6 +9,7 @@ use crate::fixture::prelude::*;
 use crate::osc::ScopedControlEmitter;
 use crate::strobe::{StrobeClock, StrobeState};
 
+#[derive(Default)]
 pub struct MasterControls {
     strobe_clock: StrobeClock,
     pub strobe_state: StrobeState,
@@ -17,15 +18,6 @@ pub struct MasterControls {
 }
 
 impl MasterControls {
-    pub fn new() -> Self {
-        Self {
-            strobe_clock: Default::default(),
-            strobe_state: Default::default(),
-            clock_state: Default::default(),
-            audio_envelope: Default::default(),
-        }
-    }
-
     pub fn update(&mut self, delta_t: Duration, emitter: &dyn EmitControlMessage) {
         let emitter = &ScopedControlEmitter {
             entity: GROUP,

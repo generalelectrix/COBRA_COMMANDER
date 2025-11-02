@@ -34,28 +34,28 @@ impl PatchFixture for FlashBang {
     type GroupOptions = GroupOptions;
     type PatchOptions = NoOptions;
 
-    fn new(options: Self::GroupOptions) -> Result<Self> {
+    fn new(options: Self::GroupOptions) -> Self {
         let flasher = if options.paired {
             Box::new(paired_flasher()) as Box<dyn UnsizedFlasher>
         } else {
             Box::new(single_flasher())
         };
 
-        Ok(Self {
+        Self {
             intensity: Unipolar::new("Intensity", ())
                 .at(UnipolarFloat::new(0.1))
                 .with_channel_knob(0),
             chase: IndexedSelect::new("Chase", flasher.len(), false, ()),
             reverse: Bool::new_off("Reverse", ()),
             flasher,
-        })
+        }
     }
 
-    fn new_patch(options: Self::GroupOptions, _: Self::PatchOptions) -> Result<PatchConfig> {
-        Ok(PatchConfig {
+    fn new_patch(options: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
+        PatchConfig {
             channel_count: if options.paired { 10 } else { 5 },
             render_mode: None,
-        })
+        }
     }
 }
 

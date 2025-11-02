@@ -11,8 +11,7 @@ use osc::prompt_osc_config;
 use rust_dmx::select_port;
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
-use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use strum_macros::Display;
 use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
@@ -24,7 +23,6 @@ use zmq::Context;
 use crate::animation_visualizer::{
     animation_publisher, run_animation_visualizer, AnimationPublisher,
 };
-use crate::config::FixtureGroupConfig;
 use crate::control::Controller;
 use crate::midi::ColorOrgan;
 use crate::preview::Previewer;
@@ -130,7 +128,7 @@ fn main() -> Result<()> {
 }
 
 fn run_show(args: RunArgs) -> Result<()> {
-    let patch = Patch::patch_all(load_patch(&args.patch_file)?)?;
+    let patch = Patch::from_file(&args.patch_file)?;
 
     let zmq_ctx = Context::new();
 
@@ -197,7 +195,9 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     let mut show = Show::new(
         patch,
+        args.patch_file,
         controller,
+        dmx_ports,
         clocks,
         animation_service,
         args.cli_preview
@@ -207,21 +207,15 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     println!("Running show.");
 
-    show.run(&mut dmx_ports);
+    show.run();
 
     Ok(())
 }
 
 fn check_patch(args: CheckArgs) -> Result<()> {
-    Patch::patch_all(load_patch(&args.patch_file)?)?;
+    Patch::from_file(&args.patch_file)?;
     println!("Patch is OK.");
     Ok(())
-}
-
-fn load_patch(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
-    let patch_file = File::open(path)
-        .with_context(|| format!("unable to read patch file \"{}\"", path.to_string_lossy()))?;
-    Ok(serde_yaml::from_reader(patch_file)?)
 }
 
 fn prompt_start_animation_service(ctx: &Context) -> Result<Option<AnimationPublisher>> {

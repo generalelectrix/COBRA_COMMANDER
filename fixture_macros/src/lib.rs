@@ -110,18 +110,18 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
             type GroupOptions = crate::fixture::patch::NoOptions;
             type PatchOptions = crate::fixture::patch::NoOptions;
 
-            fn new(_options: Self::GroupOptions) -> anyhow::Result<Self> {
-                Ok(Self::default())
+            fn new(_options: Self::GroupOptions) -> Self {
+                Self::default()
             }
 
             fn new_patch(
                 _group_options: Self::GroupOptions,
                 _patch_options: Self::PatchOptions,
-            ) -> anyhow::Result<crate::fixture::patch::PatchConfig> {
-                Ok(crate::fixture::patch::PatchConfig {
+            ) -> crate::fixture::patch::PatchConfig {
+                crate::fixture::patch::PatchConfig {
                     channel_count: #channel_count,
                     render_mode: None,
-                })
+                }
             }
         }
 

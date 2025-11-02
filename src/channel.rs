@@ -341,6 +341,9 @@ pub enum StateChange {
         channel_id: ChannelId,
         msg: ChannelStateChange,
     },
+    /// Clear all channel state; this makes way for a total refresh, in case
+    /// the number of valid channels has changed.
+    Clear,
 }
 
 pub type KnobIndex = u8;
@@ -378,6 +381,18 @@ impl KnobValue {
         match self {
             Self::Bipolar(v) => *v,
             Self::Unipolar(v) => v.rescale_as_bipolar(),
+        }
+    }
+}
+
+#[cfg(test)]
+pub mod mock {
+    use crate::{channel::ChannelStateEmitter, control::mock::NoOpEmitter};
+
+    pub fn no_op_emitter() -> ChannelStateEmitter<'static> {
+        ChannelStateEmitter {
+            channel_id: None,
+            emitter: &NoOpEmitter,
         }
     }
 }

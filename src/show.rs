@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use crate::{
     animation::AnimationUIState,
@@ -10,7 +13,7 @@ use crate::{
     dmx::DmxBuffer,
     fixture::{animation_target::ControllableTargetedAnimation, Patch},
     master::MasterControls,
-    midi::{MidiControlMessage, MidiHandler},
+    midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
     osc::{OscControlMessage, ScopedControlEmitter},
     preview::Previewer,
 };
@@ -24,7 +27,10 @@ use rust_dmx::DmxPort;
 
 pub struct Show {
     controller: Controller,
+    dmx_ports: Vec<Box<dyn DmxPort>>,
+    dmx_buffers: Vec<DmxBuffer>,
     patch: Patch,
+    patch_file_path: PathBuf,
     channels: Channels,
     master_controls: MasterControls,
     animation_ui_state: AnimationUIState,
@@ -42,38 +48,39 @@ pub const UPDATE_INTERVAL: Duration = Duration::from_micros(25300);
 
 impl Show {
     pub fn new(
-        mut patch: Patch,
+        patch: Patch,
+        patch_file_path: PathBuf,
         controller: Controller,
+        dmx_ports: Vec<Box<dyn DmxPort>>,
         clocks: Clocks,
         animation_service: Option<AnimationPublisher>,
         preview: Previewer,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
-        let master_controls = MasterControls::new();
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
-        patch.initialize_color_organs();
-
         let mut show = Self {
             controller,
+            dmx_buffers: vec![[0u8; 512]; dmx_ports.len()],
+            dmx_ports,
             patch,
+            patch_file_path,
             channels,
-            master_controls,
+            master_controls: Default::default(),
             animation_ui_state,
             clocks,
             animation_service,
             preview,
         };
-        show.refresh_ui()?;
+        show.refresh_ui();
         Ok(show)
     }
 
     /// Run the show forever in the current thread.
-    pub fn run(&mut self, dmx_ports: &mut [Box<dyn DmxPort>]) {
+    pub fn run(&mut self) {
         let mut last_update = Instant::now();
-        let mut dmx_buffers = vec![[0u8; 512]; dmx_ports.len()];
 
         loop {
             // Process a control event if one is pending.
@@ -97,8 +104,8 @@ impl Show {
 
             // Render the state of the show.
             if should_render {
-                self.render(&mut dmx_buffers);
-                for (port, buffer) in dmx_ports.iter_mut().zip(&dmx_buffers) {
+                self.render();
+                for (port, buffer) in self.dmx_ports.iter_mut().zip(&self.dmx_buffers) {
                     if let Err(e) = port.write(buffer) {
                         error!("DMX write error: {e:#}.");
                     }
@@ -122,7 +129,8 @@ impl Show {
             ControlMessage::RegisterClient(client_id) => {
                 println!("Registering new OSC client at {client_id}.");
                 self.controller.register_osc_client(client_id);
-                self.refresh_ui()
+                self.refresh_ui();
+                Ok(())
             }
             ControlMessage::DeregisterClient(client_id) => {
                 println!("Deregistering OSC client at {}.", client_id);
@@ -185,9 +193,27 @@ impl Show {
         match msg.group() {
             "Meta" => {
                 match msg.control() {
+                    "ReloadPatch" => {
+                        self.patch.repatch_from_file(&self.patch_file_path)?;
+                        sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
+                        Channels::emit_osc_state_change(
+                            crate::channel::StateChange::Clear,
+                            &ScopedControlEmitter {
+                                entity: crate::osc::channels::GROUP,
+                                emitter: &sender,
+                            },
+                        );
+                        // Re-initialize the channels to match the new patch.
+                        self.channels = Channels::from_iter(self.patch.channels().cloned());
+                        self.refresh_ui();
+                        // Zero out the DMX buffers.
+                        for buf in &mut self.dmx_buffers {
+                            buf.fill(0);
+                        }
+                    }
                     "RefreshUI" => {
                         if msg.get_bool()? {
-                            self.refresh_ui()?;
+                            self.refresh_ui();
                         }
                     }
                     // TODO: it would be nicer for this to be scoped under Animation,
@@ -197,7 +223,7 @@ impl Show {
                             group.reset_animations();
                         }
                         // TODO: this is overkill but easiest solution
-                        self.refresh_ui()?;
+                        self.refresh_ui();
                     }
                     unknown => {
                         bail!("unknown Meta control {}", unknown)
@@ -252,17 +278,17 @@ impl Show {
     }
 
     /// Render the state of the show out to DMX.
-    fn render(&self, dmx_buffers: &mut [DmxBuffer]) {
+    fn render(&mut self) {
         self.preview.start_frame();
         // NOTE: we don't bother to empty the buffer because we will always
         // overwrite all previously-rendered state.
         for group in self.patch.iter() {
-            group.render(&self.master_controls, dmx_buffers, &self.preview);
+            group.render(&self.master_controls, &mut self.dmx_buffers, &self.preview);
         }
     }
 
     /// Send messages to refresh all UI state.
-    fn refresh_ui(&mut self) -> anyhow::Result<()> {
+    fn refresh_ui(&mut self) {
         let emitter = &self.controller.sender_with_metadata(None);
         for (key, group) in self.patch.iter_with_keys() {
             group.emit_state(ChannelStateEmitter::new(
@@ -276,20 +302,21 @@ impl Show {
         self.channels.emit_state(false, &self.patch, emitter);
 
         if let Some(current_channel) = self.channels.current_channel() {
-            self.animation_ui_state.emit_state(
-                current_channel,
-                self.channels
-                    .group_by_channel(&self.patch, current_channel)?,
-                &ScopedControlEmitter {
-                    entity: crate::osc::animation::GROUP,
-                    emitter,
-                },
-            );
+            if let Ok(group) = self.channels.group_by_channel(&self.patch, current_channel) {
+                self.animation_ui_state.emit_state(
+                    current_channel,
+                    group,
+                    &ScopedControlEmitter {
+                        entity: crate::osc::animation::GROUP,
+                        emitter,
+                    },
+                );
+            } else {
+                error!("Refreshing UI: could not get fixture group for current channel {current_channel}.");
+            }
         }
 
         self.clocks.emit_state(&mut self.controller);
-
-        Ok(())
     }
 
     /// If we have a animation publisher configured, send current state.

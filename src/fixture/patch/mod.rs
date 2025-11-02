@@ -2,76 +2,27 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
-use serde::de::DeserializeOwned;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Write};
+use std::collections::HashMap;
+use std::fs::File;
+use std::path::Path;
 
 use anyhow::bail;
 use log::info;
 
-use super::fixture::{
-    AnimatedFixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture, RenderMode,
-};
+use super::fixture::FixtureType;
 use super::group::FixtureGroup;
-use crate::config::{FixtureGroupConfig, FixtureGroupKey, Options};
+use crate::config::{FixtureGroupConfig, FixtureGroupKey};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
-use linkme::distributed_slice;
 
 mod option;
+mod patcher;
+
+pub use patcher::{
+    CreateAnimatedGroup, CreateNonAnimatedGroup, PatchConfig, PatchFixture, Patcher, PATCHERS,
+};
 
 pub use option::{enum_patch_option, AsPatchOption, NoOptions, OptionsMenu, PatchOption};
-
-/// Mapping between a universe/address pair and the type of fixture already
-/// addressed over that pair, as well as the starting address.
-#[derive(Default, Clone)]
-struct UsedAddrs(HashMap<(UniverseIdx, usize), (FixtureType, usize)>);
-
-impl UsedAddrs {
-    /// Attempt to allocate requested addresses for the provided fixture type.
-    ///
-    /// The addresses will only be allocated if there are no conflicts.
-    pub fn allocate(
-        &mut self,
-        fixture_type: FixtureType,
-        universe: UniverseIdx,
-        start_dmx_index: usize,
-        channel_count: usize,
-    ) -> Result<()> {
-        ensure!(
-            start_dmx_index < 512,
-            "dmx address {} out of range",
-            start_dmx_index + 1
-        );
-        let next_dmx_addr = start_dmx_index + channel_count;
-        ensure!(
-            next_dmx_addr <= 512,
-            "impossible to patch a fixture with {channel_count} channels at start address {}",
-            start_dmx_index + 1
-        );
-        for this_index in start_dmx_index..start_dmx_index + channel_count {
-            if let Some((existing_fixture, patched_at)) = self.0.get(&(universe, this_index)) {
-                bail!(
-                    "{fixture_type} at {} overlaps at DMX address {} in universe {} with {} at {}",
-                    start_dmx_index + 1,
-                    this_index + 1,
-                    universe,
-                    existing_fixture,
-                    patched_at + 1,
-                );
-            }
-        }
-        // No conflicts; allocate addresses.
-        for this_index in start_dmx_index..start_dmx_index + channel_count {
-            let existing = self
-                .0
-                .insert((universe, this_index), (fixture_type, start_dmx_index));
-            debug_assert!(existing.is_none());
-        }
-
-        Ok(())
-    }
-}
 
 /// Factory for fixture instances.
 ///
@@ -92,13 +43,6 @@ pub struct Patch {
     color_organs: OrderSet<FixtureGroupKey>,
 }
 
-/// Distributed registry for things that we can patch.
-///
-/// The derive macros for the patch traits handle this.
-/// Use the register_patcher macro for fixtures that cannot derive patch.
-#[distributed_slice]
-pub static PATCHERS: [Patcher];
-
 impl Patch {
     /// Return the full menu of fixtures we can patch, sorted by name.
     pub fn menu() -> Vec<Patcher> {
@@ -106,7 +50,7 @@ impl Patch {
     }
 
     /// Initialize a new fixture patch.
-    pub fn new() -> Self {
+    fn new() -> Self {
         assert!(!PATCHERS.is_empty());
         let mut patchers = HashMap::new();
         for patcher in PATCHERS {
@@ -135,22 +79,72 @@ impl Patch {
         Ok(p)
     }
 
-    /// Initialize a patch from a collection of fixtures.
-    pub fn patch_all(fixtures: impl IntoIterator<Item = FixtureGroupConfig>) -> Result<Self> {
+    /// Initialize a patch from a patch file.
+    pub fn from_file(path: &Path) -> Result<Self> {
+        Self::patch_all(&parse_file(path)?)
+    }
+
+    /// Initialize a patch from a collection of groups.
+    pub fn patch_all(groups: &[FixtureGroupConfig]) -> Result<Self> {
         let mut patch = Self::new();
-        for fixture in fixtures {
-            patch.patch(&fixture).with_context(|| {
+        for group in groups {
+            patch.patch(group).with_context(|| {
                 format!(
                     "patching {}{}",
-                    fixture.fixture,
-                    fixture.group.map(|g| format!("({g})")).unwrap_or_default()
+                    group.fixture,
+                    group
+                        .group
+                        .as_ref()
+                        .map(|g| format!("({g})"))
+                        .unwrap_or_default()
                 )
             })?;
         }
+        patch.initialize_color_organs();
         Ok(patch)
     }
 
+    /// Re-initialize a patch from a file.
+    pub fn repatch_from_file(&mut self, path: &Path) -> Result<()> {
+        self.repatch(&parse_file(path)?)
+    }
+
+    /// Re-intialize a patch from new configs.
+    ///
+    /// This allows retaining all existing state for any groups that haven't
+    /// materially changed.
+    ///
+    /// If any patch error occurs, we must ensure that the original patch remains
+    /// unchanged.
+    ///
+    /// TODO: this approach will become problematic if we add control for any
+    /// fixtures that require exclusive control of an external resource such as
+    /// binding a socket.
+    pub fn repatch(&mut self, groups: &[FixtureGroupConfig]) -> Result<()> {
+        let mut new_patch = Self::patch_all(groups)?;
+        // Ensure we have enough universes.
+        let new_univ = new_patch.universe_count();
+        let current_univ = self.universe_count();
+        ensure!(
+            new_univ <= current_univ,
+            "new patch requires {new_univ} universe(s) but the show was only configured with {current_univ}",
+        );
+        // Retain state from existing fixture models if they match.
+        // Since we're mutating the existing patch from here on out, we need to
+        // make sure that none of these operations can fail.
+        for (key, new) in new_patch.fixtures.iter_mut() {
+            let Some(existing) = self.fixtures.remove(key) else {
+                continue;
+            };
+            new.reconfigure_from(existing);
+        }
+        *self = new_patch;
+        Ok(())
+    }
+
     /// Patch a fixture group config.
+    ///
+    ///
     fn patch(&mut self, cfg: &FixtureGroupConfig) -> Result<()> {
         let patcher = self.patcher(&cfg.fixture)?;
 
@@ -162,10 +156,7 @@ impl Patch {
             );
         }
 
-        let group_key = cfg
-            .group
-            .clone()
-            .unwrap_or_else(|| FixtureGroupKey(cfg.fixture.to_string()));
+        let group_key = FixtureGroupKey(cfg.key().to_string());
 
         ensure!(
             !self.fixtures.contains_key(&group_key),
@@ -262,21 +253,24 @@ impl Patch {
     ///
     /// This should be called after all fixtures are patched.
     /// TODO: update the color organ codebase to handle a change in fixture count.
-    pub fn initialize_color_organs(&mut self) {
+    fn initialize_color_organs(&mut self) {
         for key in &self.color_organs {
             self.fixtures[key].use_color_organ();
         }
     }
 
     /// Dynamically get the universe count.
+    ///
+    /// This is just based on the indices provided by fixtures; we could have
+    /// "holes" where we don't actually have any fixtures patched.
     pub fn universe_count(&self) -> usize {
-        let mut universes = HashSet::new();
-        for group in self.fixtures.values() {
-            for element in group.fixture_configs() {
-                universes.insert(element.universe);
-            }
-        }
-        universes.len()
+        self.fixtures
+            .values()
+            .flat_map(|group| group.fixture_configs())
+            .map(|cfg| cfg.universe)
+            .max()
+            .unwrap_or_default()
+            + 1
     }
     /// Get the fixture/channel patched with this key.
     pub fn get(&self, key: &str) -> Result<&FixtureGroup> {
@@ -308,162 +302,74 @@ impl Patch {
     }
 }
 
-pub struct PatchConfig {
-    pub channel_count: usize,
-    pub render_mode: Option<RenderMode>,
+fn parse_file(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
+    let patch_file = File::open(path)
+        .with_context(|| format!("unable to read patch file \"{}\"", path.to_string_lossy()))?;
+    Ok(serde_yaml::from_reader(patch_file)?)
 }
 
-#[derive(Clone)]
-pub struct Patcher {
-    pub name: FixtureType,
-    pub create_group: fn(FixtureGroupKey, Options) -> Result<FixtureGroup>,
-    pub group_options: fn() -> Vec<(String, PatchOption)>,
-    pub create_patch: fn(group_options: Options, patch_options: Options) -> Result<PatchConfig>,
-    pub patch_options: fn() -> Vec<(String, PatchOption)>,
-}
+/// Mapping between a universe/address pair and the type of fixture already
+/// addressed over that pair, as well as the starting address.
+#[derive(Default, Clone)]
+struct UsedAddrs(HashMap<(UniverseIdx, usize), (FixtureType, usize)>);
 
-impl Display for Patcher {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)?;
-
-        let patch_opts = (self.patch_options)();
-        let group_opts = (self.group_options)();
-        // If a fixture doesn't take options, we should be able to get a channel count.
-        // TODO: we should make it possible to generate patch configs for all
-        // enumerable options
-        if patch_opts.is_empty() && group_opts.is_empty() {
-            if let Ok(fix) = (self.create_patch)(Default::default(), Default::default()) {
-                if fix.channel_count > 0 {
-                    write!(
-                        f,
-                        " ({} channel{})",
-                        fix.channel_count,
-                        if fix.channel_count > 1 { "s" } else { "" }
-                    )?;
-                }
+impl UsedAddrs {
+    /// Attempt to allocate requested addresses for the provided fixture type.
+    ///
+    /// The addresses will only be allocated if there are no conflicts.
+    pub fn allocate(
+        &mut self,
+        fixture_type: FixtureType,
+        universe: UniverseIdx,
+        start_dmx_index: usize,
+        channel_count: usize,
+    ) -> Result<()> {
+        ensure!(
+            start_dmx_index < 512,
+            "dmx address {} out of range",
+            start_dmx_index + 1
+        );
+        let next_dmx_addr = start_dmx_index + channel_count;
+        ensure!(
+            next_dmx_addr <= 512,
+            "impossible to patch a fixture with {channel_count} channels at start address {}",
+            start_dmx_index + 1
+        );
+        for this_index in start_dmx_index..start_dmx_index + channel_count {
+            if let Some((existing_fixture, patched_at)) = self.0.get(&(universe, this_index)) {
+                bail!(
+                    "{fixture_type} at {} overlaps at DMX address {} in universe {} with {} at {}",
+                    start_dmx_index + 1,
+                    this_index + 1,
+                    universe,
+                    existing_fixture,
+                    patched_at + 1,
+                );
             }
         }
-
-        if patch_opts.is_empty() && group_opts.is_empty() {
-            return Ok(());
-        }
-        f.write_char('\n')?;
-        if !group_opts.is_empty() {
-            writeln!(f, "  group-level options:")?;
-        }
-
-        for (key, opt) in group_opts {
-            writeln!(f, "    {key}: {opt}")?;
+        // No conflicts; allocate addresses.
+        for this_index in start_dmx_index..start_dmx_index + channel_count {
+            let existing = self
+                .0
+                .insert((universe, this_index), (fixture_type, start_dmx_index));
+            debug_assert!(existing.is_none());
         }
 
-        if !patch_opts.is_empty() {
-            writeln!(f, "  patch-level options:")?;
-        }
-
-        for (key, opt) in patch_opts {
-            writeln!(f, "    {key}: {opt}")?;
-        }
         Ok(())
     }
 }
-
-pub trait PatchFixture: Sized + 'static {
-    const NAME: FixtureType;
-
-    type GroupOptions;
-    type PatchOptions;
-
-    /// Return the menu of group-level options for this fixture type.
-    fn group_options() -> Vec<(String, PatchOption)>
-    where
-        <Self as PatchFixture>::GroupOptions: OptionsMenu,
-    {
-        Self::GroupOptions::menu()
-    }
-
-    /// Create a new instance of the fixture from parsed options.
-    fn new(options: Self::GroupOptions) -> Result<Self>;
-
-    /// Parse options and create a new group.
-    fn create(options: Options) -> Result<Self>
-    where
-        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
-    {
-        let options: Self::GroupOptions = options.parse().context("group options")?;
-        Self::new(options)
-    }
-
-    /// Parse options and create a patch config.
-    fn create_patch(group_options: Options, patch_options: Options) -> Result<PatchConfig>
-    where
-        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
-        <Self as PatchFixture>::PatchOptions: DeserializeOwned,
-    {
-        let group_options: Self::GroupOptions = group_options.parse().context("group options")?;
-        let patch_options: Self::PatchOptions = patch_options.parse().context("patch options")?;
-        Self::new_patch(group_options, patch_options)
-    }
-
-    /// Given group- and patch-level options, produce a patch config.
-    fn new_patch(
-        group_options: Self::GroupOptions,
-        patch_options: Self::PatchOptions,
-    ) -> Result<PatchConfig>;
-
-    /// Return the menu of patch options for this fixture type.
-    fn patch_options() -> Vec<(String, PatchOption)>
-    where
-        <Self as PatchFixture>::PatchOptions: OptionsMenu,
-    {
-        Self::PatchOptions::menu()
-    }
-}
-
-/// Create a fixture group for a non-animated fixture.
-pub trait CreateNonAnimatedGroup: PatchFixture + NonAnimatedFixture + Sized + 'static {
-    /// Create an empty fixture group for this type of fixture.
-    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup>
-    where
-        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
-    {
-        Ok(FixtureGroup::empty(
-            Self::NAME,
-            key,
-            Box::new(Self::create(options)?),
-        ))
-    }
-}
-
-impl<T> CreateNonAnimatedGroup for T where T: PatchFixture + NonAnimatedFixture + Sized + 'static {}
-
-/// Create a fixture group for an animated fixture.
-pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static {
-    /// Create an empty fixture group for this type of fixture.
-    fn create_group(key: FixtureGroupKey, options: Options) -> Result<FixtureGroup>
-    where
-        <Self as PatchFixture>::GroupOptions: DeserializeOwned,
-    {
-        Ok(FixtureGroup::empty(
-            Self::NAME,
-            key,
-            Box::new(FixtureWithAnimations {
-                fixture: Self::create(options)?,
-                animations: Default::default(),
-            }),
-        ))
-    }
-}
-
-impl<T> CreateAnimatedGroup for T where T: PatchFixture + AnimatedFixture + Sized + 'static {}
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
+        channel::mock::no_op_emitter,
         config::FixtureGroupConfig,
+        dmx::DmxBuffer,
         fixture::{color::Model as ColorModel, fixture::EnumRenderModel},
     };
     use anyhow::Result;
+    use number::UnipolarFloat;
 
     fn parse(patch_yaml: &str) -> Result<Vec<FixtureGroupConfig>> {
         Ok(serde_yaml::from_str(patch_yaml)?)
@@ -499,7 +405,7 @@ mod test {
         ",
         )?;
         assert_eq!(2, cfg.len());
-        let p = Patch::patch_all(cfg)?;
+        let p = Patch::patch_all(&cfg)?;
         assert_eq!(
             "Color",
             p.channels.iter().exactly_one().unwrap().to_string()
@@ -554,7 +460,7 @@ mod test {
 
     fn assert_fail_patch(patch_yaml: &str, snippet: &str) {
         let Err(err) = Patch::patch_all(
-            serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml)
+            &serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml)
                 .expect("invalid patch format"),
         ) else {
             panic!("patch didn't fail")
@@ -711,7 +617,7 @@ mod test {
     #[test]
     fn test_wled() {
         Patch::patch_all(
-            parse(
+            &parse(
                 "
 - fixture: Wled
   url: http://foo.bar.baz
@@ -723,5 +629,99 @@ mod test {
             .unwrap(),
         )
         .unwrap();
+    }
+
+    /// Test repatching behavior.
+    #[test]
+    fn test_repatch() -> Result<()> {
+        let mut cfg = parse(
+            "
+- fixture: Color
+  control_color_space: Hsluv
+  patches:
+    - addr: 1
+    - addr:
+        start: 4
+        count: 2
+      kind: Rgb
+- fixture: Dimmer
+  group: TestGroup
+  patches:
+    - addr: 1
+      universe: 1
+      mirror: true
+    - addr: 12
+        ",
+        )?;
+        let mut patch = Patch::patch_all(&cfg)?;
+
+        let initial = render(&patch);
+        // Should be all zeros, since everything is down.
+        assert!(initial.iter().flatten().all(|&v| v == 0));
+
+        // Twiddle some controls and render fixture state.
+        for f in patch.iter_mut() {
+            twiddle(f);
+        }
+        let twiddled = render(&patch);
+
+        for (pre, post) in twiddled.iter().zip_eq(&initial) {
+            assert_ne!(pre, post);
+        }
+
+        // Repatching with the same config should result in so fixture models
+        // being updated.
+        patch.repatch(&cfg)?;
+
+        assert_eq!(render(&patch), twiddled);
+
+        // If we change the group names, repatching should force new models.
+        cfg[0].group = Some(FixtureGroupKey("NewColor".to_string()));
+
+        patch.repatch(&cfg)?;
+        let new_bufs = render(&patch);
+        assert_eq!(2, new_bufs.len());
+        assert_eq!(new_bufs[0], initial[0]);
+        assert_eq!(new_bufs[1], twiddled[1]);
+
+        twiddle(patch.iter_mut().next().unwrap());
+        assert_eq!(twiddled, render(&patch));
+
+        // Repatching with different patches should not force a new model.
+        cfg[0].patches.truncate(1);
+        patch.repatch(&cfg)?;
+
+        let new_bufs = render(&patch);
+        // Should have different output since we have a different number of patches.
+        assert_ne!(new_bufs[0], initial[0]);
+        assert_ne!(new_bufs[0], twiddled[0]);
+        Ok(())
+    }
+
+    /// Twiddle some channel-level knobs to move away from initial state.
+    fn twiddle(f: &mut FixtureGroup) {
+        let _ = f.control_from_channel(
+            &crate::channel::ChannelControlMessage::Knob {
+                index: 0,
+                value: crate::channel::KnobValue::Unipolar(UnipolarFloat::new(0.5)),
+            },
+            no_op_emitter(),
+        );
+        let _ = f.control_from_channel(
+            &crate::channel::ChannelControlMessage::Level(UnipolarFloat::new(0.75)),
+            no_op_emitter(),
+        );
+    }
+
+    /// Render each group in the patch into a separate buffer.
+    fn render(patch: &Patch) -> Vec<DmxBuffer> {
+        patch
+            .iter()
+            .map(|f| {
+                let mut fresh_bufs = vec![[0u8; 512]];
+                f.render(&Default::default(), &mut fresh_bufs, &Default::default());
+                fresh_bufs[0]
+            })
+            .collect()
     }
 }

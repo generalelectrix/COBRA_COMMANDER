@@ -40,6 +40,14 @@ pub struct FixtureGroupConfig {
     pub options: Options,
 }
 
+impl FixtureGroupConfig {
+    /// Get the key for this group, either the name of the fixture, or the
+    /// group name if one is provided.
+    pub fn key(&self) -> &str {
+        self.group.as_deref().unwrap_or(&self.fixture)
+    }
+}
+
 /// One or more instances of a fixture to patch in the context of a group.
 #[derive(Clone, Debug, Deserialize)]
 pub struct PatchBlock {
@@ -81,7 +89,7 @@ const fn _true() -> bool {
 /// Options that will be passed to a fixture to parse into a strong type.
 /// Using Mapping allows us to accept any valid yaml as the keys and values,
 /// so fixtures are pretty free to structure their options structs.
-#[derive(Clone, Default, Debug, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
 pub struct Options {
     #[serde(flatten)]
     value: Mapping,
