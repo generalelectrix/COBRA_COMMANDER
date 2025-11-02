@@ -18,10 +18,13 @@ use crate::color::Hsluv;
 use crate::config::FixtureGroupKey;
 use crate::config::Options;
 use crate::dmx::DmxBuffer;
+use crate::fixture::fixture::FixtureGroupUpdate;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 use crate::preview::Previewer;
+use crate::strobe::FlashState;
+use crate::strobe::StrobeResponse;
 
 pub struct FixtureGroup {
     /// The fixture type of this group.
@@ -39,11 +42,14 @@ pub struct FixtureGroup {
     /// These are retained to determine if we need to re-initialize a group when
     /// repatching.
     options: Options,
-    /// Is strobing enabled for this fixture?
+    /// Is strobing enabled for this group?
     /// FIXME: it feels a bit odd to have group-level controllable parameters.
     /// This might be a side effect of not having a data structure that
     /// represents "channel state".
     strobe_enabled: bool,
+    /// Current strobe flash state for this group. If the fixture cannot strobe,
+    /// this will be None.
+    flash_state: Option<FlashState>,
 }
 
 impl FixtureGroup {
@@ -52,16 +58,18 @@ impl FixtureGroup {
         fixture_type: FixtureType,
         key: FixtureGroupKey,
         fixture: Box<dyn Fixture>,
+        strobe_response: Option<StrobeResponse>,
         options: Options,
     ) -> Self {
         Self {
+            strobe_enabled: false,
+            flash_state: strobe_response.map(FlashState::new),
             fixture_type,
             key,
             fixture_configs: vec![],
             color_organ: None,
             fixture,
             options,
-            strobe_enabled: false,
         }
     }
 
@@ -110,6 +118,10 @@ impl FixtureGroup {
             fixture_type: self.fixture_type,
             key: &self.key.0,
         }
+    }
+
+    pub fn strobe_enabled(&self) -> bool {
+        self.strobe_enabled
     }
 
     pub fn get_animation_mut(
@@ -168,7 +180,7 @@ impl FixtureGroup {
         let emitter = &FixtureStateEmitter::new(&self.key, channel_emitter);
         if matches!(msg, ChannelControlMessage::ToggleStrobe) {
             // If the fixture can't strobe, ignore the control.
-            if !self.fixture.can_strobe() {
+            if self.flash_state.is_none() {
                 return Ok(true);
             }
             self.strobe_enabled = !self.strobe_enabled;
@@ -181,10 +193,17 @@ impl FixtureGroup {
     }
 
     /// The master controls are provided to potentially alter the update.
-    pub fn update(&mut self, master_controls: &MasterControls, delta_t: Duration) {
-        self.fixture.update(master_controls, delta_t);
+    pub fn update(&mut self, update: FixtureGroupUpdate, delta_t: Duration) {
+        self.fixture.update(update, delta_t);
         if let Some(color_organ) = &mut self.color_organ {
             color_organ.update(delta_t);
+        }
+        if let Some(fs) = &mut self.flash_state {
+            if update.flash_now {
+                fs.flash_now();
+            } else {
+                fs.update(1);
+            }
         }
     }
 
@@ -228,6 +247,11 @@ impl FixtureGroup {
                         })
                     }),
                     strobe_enabled: self.strobe_enabled,
+                    flash_on: self
+                        .flash_state
+                        .as_ref()
+                        .map(FlashState::is_on)
+                        .unwrap_or_default(),
                     preview: &preview,
                 },
                 dmx_buf,

@@ -11,7 +11,9 @@ use crate::{
     color::Hsluv,
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
-    fixture::{animation_target::ControllableTargetedAnimation, Patch},
+    fixture::{
+        animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate, Patch,
+    },
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
     osc::{OscControlMessage, ScopedControlEmitter},
@@ -270,8 +272,19 @@ impl Show {
 
         self.master_controls
             .update(delta_t, &self.controller.sender_with_metadata(None));
-        for fixture in self.patch.iter_mut() {
-            fixture.update(&self.master_controls, delta_t);
+
+        let mut flash_distributor = self
+            .master_controls
+            .flash_distributor(self.patch.iter().filter(|g| g.strobe_enabled()).count());
+
+        for group in self.patch.iter_mut() {
+            group.update(
+                FixtureGroupUpdate {
+                    master_controls: &self.master_controls,
+                    flash_now: flash_distributor.flash_now(group.strobe_enabled()),
+                },
+                delta_t,
+            );
         }
 
         if let Err(err) = self.publish_animation_state() {

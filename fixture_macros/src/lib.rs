@@ -92,7 +92,10 @@ fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
 /// The fixture must implement Default.
 /// Use the channel_count attribute to specify the DMX channel count.
 /// Registers the fixture type with the patch.
-#[proc_macro_derive(PatchFixture, attributes(channel_count))]
+///
+/// If the fixture is capable of using global strobing, annotate the struct with
+/// the #[strobe(Short)] or #[strobe(Long)] attribute.
+#[proc_macro_derive(PatchFixture, attributes(channel_count, strobe))]
 pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, attrs, .. } = parse_macro_input!(input as DeriveInput);
 
@@ -103,6 +106,12 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
 
     let register = register_patcher_impl(&ident);
 
+    let strobe_mode = if let Some(mode) = get_attr_list(&attrs, "strobe") {
+        quote!(Some(crate::strobe::StrobeResponse::#mode))
+    } else {
+        quote!(None)
+    };
+
     quote! {
         impl crate::fixture::patch::PatchFixture for #ident {
             const NAME: FixtureType = FixtureType(#name);
@@ -112,6 +121,10 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
 
             fn new(_options: Self::GroupOptions) -> Self {
                 Self::default()
+            }
+
+            fn can_strobe() -> Option<crate::strobe::StrobeResponse> {
+                #strobe_mode
             }
 
             fn new_patch(
@@ -202,9 +215,6 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 ///
 /// Fields that may be absent (defined as an Option) can set #[optional] to
 /// conditionally handle if Some.
-///
-/// If the fixture is capable of using global strobing, annotate the struct with
-/// the #[strobe] attribute.
 #[proc_macro_derive(
     Control,
     attributes(
@@ -214,13 +224,10 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
         animate_subtarget,
         on_change,
         optional,
-        strobe,
     )
 )]
 pub fn derive_control(input: TokenStream) -> TokenStream {
-    let DeriveInput {
-        ident, attrs, data, ..
-    } = parse_macro_input!(input as DeriveInput);
+    let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
 
     let Data::Struct(struct_data) = data else {
         panic!("Can only derive Control for structs.");
@@ -233,8 +240,6 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
 
     let mut animate_target_idents = vec![];
     let mut animate_subtarget_types = vec![];
-
-    let can_strobe = has_attr(&attrs, "strobe");
 
     for field in fields.named.iter() {
         if field_has_attr(field, "skip_control") {
@@ -361,10 +366,6 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
                 #channel_control_lines
                 Ok(false)
             }
-
-            fn can_strobe(&self) -> bool {
-                #can_strobe
-            }
         }
 
         #anim_target_enum
@@ -415,6 +416,18 @@ fn field_has_attr(field: &Field, ident: &str) -> bool {
 
 fn has_attr(attrs: &[Attribute], ident: &str) -> bool {
     attrs.iter().any(|attr| attr.meta.path().is_ident(ident))
+}
+
+fn get_attr_list(attrs: &[Attribute], ident: &str) -> Option<proc_macro2::TokenStream> {
+    attrs
+        .iter()
+        .filter_map(|attr| {
+            if !attr.meta.path().is_ident(ident) {
+                return None;
+            }
+            Some(attr.meta.require_list().unwrap().tokens.clone())
+        })
+        .next()
 }
 
 fn get_attr_and_payload(attrs: &[Attribute], ident: &str) -> Option<String> {

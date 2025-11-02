@@ -27,6 +27,45 @@ use crate::{
     show::UPDATE_INTERVAL,
 };
 
+/// A strobe flash; when on, lasts for an integer number of frames.
+#[derive(Debug)]
+pub struct FlashState {
+    duration: u8,
+    flash: Option<u8>,
+}
+
+impl FlashState {
+    pub fn new(response: StrobeResponse) -> Self {
+        Self {
+            duration: response.length(),
+            flash: None,
+        }
+    }
+
+    /// Start a new flash.
+    pub fn flash_now(&mut self) {
+        self.flash = Some(self.duration);
+    }
+
+    /// Return true if this flash is on.
+    pub fn is_on(&self) -> bool {
+        self.flash.is_some()
+    }
+
+    /// Update this flash by the provided number of frames.
+    pub fn update(&mut self, n_frames: u8) {
+        let Some(age) = self.flash else {
+            return;
+        };
+        let age = age.saturating_add(n_frames);
+        if age >= self.duration {
+            self.flash = None;
+        } else {
+            self.flash = Some(age);
+        }
+    }
+}
+
 /// Should a fixture use the short or long flash duration?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StrobeResponse {
@@ -34,60 +73,68 @@ pub enum StrobeResponse {
     Long,
 }
 
-/// Strobe state that subscribers will use to follow the global strobe clock.
-/// If active, whatever we fill in for the intensity field should override the
-/// channel level when rendering.
-#[derive(Default, Debug, Clone, Copy)]
-pub struct StrobeState {
-    /// True if the master strobe clock is switched on.
-    ///
-    /// Note that even when we switch this off, any active flashes will complete
-    /// before the intensity override is turned off.
-    pub strobe_on: bool,
-
-    /// true if the strobe clock flashed during the last update, either due
-    /// to the clock ticking or the manual flash button.
-    ///
-    /// Fixtures that manage their own internal flash state can use this during
-    /// their update method to trigger flashes.
-    pub flash_now: bool,
-
-    /// Current value for the mater strobe intensity.
-    pub master_intensity: UnipolarFloat,
-
-    /// true if the "short" flash is active.
-    short_flash_on: bool,
-    /// true if the "long" flash is active.
-    long_flash_on: bool,
-    /// The current strobe rate - this is provided as a potential shim to allow
-    /// fixtures that can't be strobed well from DMX to use the legacy strobing
-    /// behavior.
-    pub rate: UnipolarFloat,
+impl StrobeResponse {
+    pub fn length(self) -> u8 {
+        match self {
+            Self::Short => 1,
+            Self::Long => 3,
+        }
+    }
 }
 
-impl StrobeState {
-    /// Return Some if strobing is active, with the intensity that should be
-    /// rendered.
-    ///
-    /// Note that this will always be Some if strobing is active, and the
-    /// flash state will be encoded in the inner intensity.
-    pub fn intensity(&self, response: StrobeResponse) -> Option<UnipolarFloat> {
-        let flash_on = match response {
-            StrobeResponse::Short => self.short_flash_on,
-            StrobeResponse::Long => self.long_flash_on,
-        };
-        // Return None - as in, no strobe intensity override - if strobe is off
-        // and there's no active flash.
-        if !self.strobe_on && !flash_on {
-            return None;
+#[derive(Debug)]
+pub struct Distributor {
+    request_count: usize,
+    strategy: Option<DistributorStrategy>,
+}
+
+impl Distributor {
+    pub fn flash_now(&mut self, strobe_active_for_group: bool) -> bool {
+        use DistributorStrategy::*;
+        if !strobe_active_for_group {
+            return false;
         }
-        // Strobe is on or the relevant flash is active - return an override,
-        // either the intensity
-        Some(if flash_on {
-            self.master_intensity
-        } else {
-            UnipolarFloat::ZERO
-        })
+        let flash_now = match self.strategy {
+            None => false,
+            Some(All) => true,
+            Some(One(i)) => i == self.request_count,
+        };
+        self.request_count += 1;
+        flash_now
+    }
+}
+
+/// Distribute flashes.
+#[derive(Debug)]
+enum DistributorStrategy {
+    /// Strobe every group at once.
+    All,
+    /// Strobe one group index.
+    One(usize),
+}
+
+/// Keep track of flash distribution state.
+enum FlashDistribution {
+    /// Strobe every group at once.
+    All,
+    #[expect(dead_code)]
+    /// Strobe this group index next.
+    One(usize),
+}
+
+impl FlashDistribution {
+    /// Advance flash distribution for the next flash.
+    /// Take the number of active strobe targets into account.
+    pub fn advance(&mut self, group_count: usize) {
+        if group_count == 0 {
+            return;
+        }
+        match self {
+            Self::All => (),
+            Self::One(i) => {
+                *i = (*i + 1) % group_count;
+            }
+        }
     }
 }
 
@@ -105,20 +152,16 @@ pub struct StrobeClock {
     /// True if the current rate was set from a tap.
     set_from_tap: bool,
     tick_indicator: TransientIndicator,
-    /// The current flash state; if Some, the flash is on.
-    /// The value inside represents the number of state updates that the flash
-    /// has been active for, so we can decide when to disable it again.
-    flash: Option<u8>,
     /// If true, the strobe clock is running.
     strobe_on: bool,
     /// If true, trigger a flash on the next update.
     flash_next_update: bool,
-    /// How many frame updates should a short flash last for?
-    flash_duration_short: u8,
-    /// How many frame updates should a long flash last for?
-    flash_duration_long: u8,
+    /// If true, the strobe clock ticked on this update.
+    flash_now: bool,
     /// Intensity of the flash.
     intensity: UnipolarFloat,
+    /// Current flash distribution strategy.
+    distribution: FlashDistribution,
     osc_controls: GroupControlMap<ControlMessage>,
 }
 
@@ -134,12 +177,11 @@ impl Default for StrobeClock {
             tap_sync: Default::default(),
             set_from_tap: false,
             tick_indicator: Default::default(),
-            flash: None,
             strobe_on: false,
             flash_next_update: false,
-            flash_duration_short: 1,
-            flash_duration_long: 3,
+            flash_now: false,
             intensity: UnipolarFloat::ONE,
+            distribution: FlashDistribution::All,
             osc_controls,
         };
         // Set initial rate to our minimum.
@@ -176,7 +218,7 @@ impl StrobeClock {
         delta_t: Duration,
         audio_envelope: UnipolarFloat,
         emitter: &ScopedControlEmitter,
-    ) -> StrobeState {
+    ) {
         self.clock.update_state(delta_t, audio_envelope);
         // Update the tap sync/rate flasher.
         if let Some(tick_state) = self
@@ -187,33 +229,44 @@ impl StrobeClock {
         }
         // If the strobe clock ticked this frame and we're strobing, flash.
         // Also flash if we have a queued manual flash.
-        let flash_now = (self.strobe_on && self.clock.ticked()) || self.flash_next_update;
-        if flash_now {
-            self.flash = Some(0);
+        self.flash_now = (self.strobe_on && self.clock.ticked()) || self.flash_next_update;
+        if self.flash_now {
             self.flash_next_update = false;
         }
+    }
 
-        // Age the flash if we have one running.
-        let (short_flash_on, long_flash_on) = if let Some(flash_age) = self.flash {
-            if flash_age >= self.flash_duration_long {
-                self.flash = None;
-                (false, false)
-            } else {
-                let new_age = flash_age + 1;
-                self.flash = Some(new_age);
-                (new_age <= self.flash_duration_short, true)
-            }
-        } else {
-            (false, false)
-        };
+    /// Return the current set intensity.
+    pub fn intensity(&self) -> UnipolarFloat {
+        self.intensity
+    }
 
-        StrobeState {
-            strobe_on: self.strobe_on,
-            flash_now,
-            master_intensity: self.intensity,
-            short_flash_on,
-            long_flash_on,
-            rate: unipolar_from_rate(self.rate_raw),
+    /// Return true if the master strobe enable is turned on.
+    pub fn strobe_on(&self) -> bool {
+        self.strobe_on
+    }
+
+    /// Get the current rate, rescaled back into a unipolar control.
+    pub fn rate_control(&self) -> UnipolarFloat {
+        unipolar_from_rate(self.rate_raw)
+    }
+
+    /// Get a flash distributor if we have a flash this frame.
+    /// Potentially update the state of the distributor if the number of
+    /// strobed groups isn't compatible with current settings.
+    pub fn distributor(&mut self, group_count: usize) -> Distributor {
+        if !self.flash_now || group_count == 0 {
+            return Distributor {
+                request_count: 0,
+                strategy: None,
+            };
+        }
+        self.distribution.advance(group_count);
+        Distributor {
+            request_count: 0,
+            strategy: match self.distribution {
+                FlashDistribution::All => Some(DistributorStrategy::All),
+                FlashDistribution::One(i) => Some(DistributorStrategy::One(i)),
+            },
         }
     }
 

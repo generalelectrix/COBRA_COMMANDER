@@ -111,14 +111,10 @@ impl crate::fixture::Control for Venus {
     ) -> anyhow::Result<bool> {
         Ok(false)
     }
-
-    fn can_strobe(&self) -> bool {
-        false
-    }
 }
 
 impl Update for Venus {
-    fn update(&mut self, _: &MasterControls, delta_t: Duration) {
+    fn update(&mut self, _: FixtureGroupUpdate, delta_t: Duration) {
         self.base_rotation.update(delta_t);
         self.cradle_motion.update(delta_t);
         self.head_rotation.update(delta_t);

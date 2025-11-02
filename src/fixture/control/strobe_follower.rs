@@ -69,8 +69,8 @@ impl<R: RenderToDmx<Option<UnipolarFloat>>> RenderToDmxWithAnimations for Strobe
         _animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        let rate = (group_controls.strobe_enabled && group_controls.strobe().strobe_on)
-            .then(|| group_controls.strobe().rate);
+        let rate = (group_controls.strobe_enabled && group_controls.strobe_clock().strobe_on())
+            .then(|| group_controls.strobe_clock().rate_control());
         self.render.render(&rate, dmx_buf);
     }
 }

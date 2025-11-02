@@ -6,7 +6,6 @@ use number::UnipolarFloat;
 use crate::{
     channel::KnobIndex,
     osc::{EmitScopedOscMessage, OscControlMessage},
-    strobe::StrobeResponse,
     util::unipolar_to_range,
 };
 
@@ -21,7 +20,7 @@ pub struct Unipolar<R: RenderToDmx<UnipolarFloat>> {
     val: UnipolarFloat,
     name: String,
     render: R,
-    strobed: Option<StrobeResponse>,
+    strobed: bool,
 }
 
 /// A unipolar control that renders into a single DMX channel over a range.
@@ -34,7 +33,7 @@ impl<R: RenderToDmx<UnipolarFloat>> Unipolar<R> {
             val: UnipolarFloat::ZERO,
             name: name.into(),
             render,
-            strobed: None,
+            strobed: false,
         }
     }
 
@@ -49,15 +48,9 @@ impl<R: RenderToDmx<UnipolarFloat>> Unipolar<R> {
         self
     }
 
-    /// Listen to the global strobe clock, short pulse width.
-    pub fn strobed_short(mut self) -> Self {
-        self.strobed = Some(StrobeResponse::Short);
-        self
-    }
-
-    /// Listen to the global strobe clock, long pulse width.
-    pub fn strobed_long(mut self) -> Self {
-        self.strobed = Some(StrobeResponse::Long);
+    /// Listen to the global strobe clock.
+    pub fn strobed(mut self) -> Self {
+        self.strobed = true;
         self
     }
 
@@ -169,12 +162,10 @@ impl<R: RenderToDmx<UnipolarFloat>> RenderToDmxWithAnimations for Unipolar<R> {
         animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        if group_controls.strobe_enabled {
-            if let Some(response) = self.strobed {
-                if let Some(intensity) = group_controls.strobe_intensity(response) {
-                    self.render.render(&intensity, dmx_buf);
-                    return;
-                }
+        if self.strobed && group_controls.strobe_enabled {
+            if let Some(intensity) = group_controls.strobe_intensity() {
+                self.render.render(&intensity, dmx_buf);
+                return;
             }
         }
         self.render.render(&self.val_with_anim(animations), dmx_buf);

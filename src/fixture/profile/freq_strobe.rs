@@ -12,7 +12,7 @@ const CELL_COUNT: usize = 16;
 
 #[derive(EmitState, Control, PatchFixture)]
 #[channel_count = 16]
-#[strobe]
+#[strobe(Short)]
 pub struct FreqStrobe {
     #[channel_control]
     #[animate]
@@ -41,9 +41,9 @@ impl Default for FreqStrobe {
 }
 
 impl Update for FreqStrobe {
-    fn update(&mut self, master_controls: &MasterControls, _dt: std::time::Duration) {
+    fn update(&mut self, update: FixtureGroupUpdate, _dt: std::time::Duration) {
         self.flasher.update(
-            master_controls.strobe_state.flash_now,
+            update.flash_now,
             self.pattern.selected(),
             self.multiplier.selected(),
             self.reverse.val(),
@@ -75,7 +75,7 @@ impl AnimatedFixture for FreqStrobe {
             self.intensity
                 .control
                 .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity))
-                * group_controls.strobe().master_intensity,
+                * group_controls.strobe_clock().intensity(),
         );
         self.flasher.render(group_controls, intensity, dmx_buf);
         for &i in &*dmx_buf {

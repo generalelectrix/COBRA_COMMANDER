@@ -5,7 +5,6 @@ use strum_macros::{Display, EnumIter, VariantArray};
 use crate::{color::*, fixture::prelude::*, preview::FixturePreviewer};
 
 #[derive(Debug, Control, EmitState, Update)]
-#[strobe]
 pub struct Color {
     #[channel_control]
     #[animate]
@@ -43,6 +42,9 @@ impl PatchFixture for Color {
 
     fn new(options: Self::GroupOptions) -> Self {
         Self::for_subcontrol(None, options.control_color_space)
+    }
+    fn can_strobe() -> Option<StrobeResponse> {
+        Some(StrobeResponse::Short)
     }
     fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> PatchConfig {
         PatchConfig {
@@ -166,9 +168,7 @@ impl Color {
             }
         }
 
-        if let Some(strobe_intensity) =
-            group_controls.strobe_intensity(crate::strobe::StrobeResponse::Short)
-        {
+        if let Some(strobe_intensity) = group_controls.strobe_intensity() {
             val = strobe_intensity.val();
         }
 

@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
-#[strobe]
+#[strobe(Short)]
 pub struct Starlight {
     #[channel_control]
     #[animate]
@@ -16,7 +16,7 @@ impl Default for Starlight {
     fn default() -> Self {
         Self {
             dimmer: Unipolar::full_channel("Dimmer", 1)
-                .strobed_short()
+                .strobed()
                 .with_channel_level(),
             // strobe: Strobe::channel("Strobe", 2, 10, 255, 0),
             rotation: Bipolar::split_channel("Rotation", 3, 191, 128, 192, 255, 0)

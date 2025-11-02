@@ -148,14 +148,10 @@ impl crate::fixture::Control for Lumasphere {
     ) -> anyhow::Result<bool> {
         Ok(false)
     }
-
-    fn can_strobe(&self) -> bool {
-        true
-    }
 }
 
 impl Update for Lumasphere {
-    fn update(&mut self, _: &MasterControls, delta_t: Duration) {
+    fn update(&mut self, _: FixtureGroupUpdate, delta_t: Duration) {
         self.ball_rotation.update(delta_t);
     }
 }

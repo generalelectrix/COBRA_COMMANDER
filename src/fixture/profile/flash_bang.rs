@@ -10,7 +10,6 @@ use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
 
 #[derive(EmitState, Control)]
-#[strobe]
 pub struct FlashBang {
     #[channel_control]
     #[animate]
@@ -51,6 +50,10 @@ impl PatchFixture for FlashBang {
         }
     }
 
+    fn can_strobe() -> Option<StrobeResponse> {
+        Some(StrobeResponse::Short)
+    }
+
     fn new_patch(options: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
         PatchConfig {
             channel_count: if options.paired { 10 } else { 5 },
@@ -60,12 +63,9 @@ impl PatchFixture for FlashBang {
 }
 
 impl Update for FlashBang {
-    fn update(&mut self, master_controls: &MasterControls, _dt: std::time::Duration) {
-        self.flasher.update(
-            master_controls.strobe_state.flash_now,
-            self.chase.selected(),
-            self.reverse.val(),
-        );
+    fn update(&mut self, update: FixtureGroupUpdate, _dt: std::time::Duration) {
+        self.flasher
+            .update(update.flash_now, self.chase.selected(), self.reverse.val());
     }
 }
 
@@ -93,7 +93,7 @@ impl AnimatedFixture for FlashBang {
             self.intensity
                 .control
                 .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity))
-                * group_controls.strobe().master_intensity,
+                * group_controls.strobe_clock().intensity(),
         );
         for (flash, chan) in self.flasher.cells().iter().zip(dmx_buf.iter_mut()) {
             *chan = if flash.is_some() { intensity } else { 0 };

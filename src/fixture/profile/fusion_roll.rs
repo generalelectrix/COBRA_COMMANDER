@@ -1,8 +1,8 @@
-use crate::{fixture::prelude::*, strobe::StrobeResponse};
+use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 11]
-#[strobe]
+#[strobe(Short)]
 pub struct FusionRoll {
     #[channel_control]
     #[animate]
@@ -72,7 +72,7 @@ impl FusionRoll {
         dmx_buf: &mut [u8],
     ) {
         if self.led_strobe_on.val() && group_controls.strobe_enabled {
-            if let Some(strobe_override) = group_controls.strobe_intensity(StrobeResponse::Short) {
+            if let Some(strobe_override) = group_controls.strobe_intensity() {
                 dmx_buf[4] = unipolar_to_range(0, 255, strobe_override);
                 return;
             }
@@ -86,7 +86,7 @@ impl FusionRoll {
 
     fn render_laser_state(&self, group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
         if self.laser_strobe_on.val() && group_controls.strobe_enabled {
-            if let Some(flash_on) = group_controls.strobe_shutter(StrobeResponse::Short) {
+            if let Some(flash_on) = group_controls.strobe_shutter() {
                 dmx_buf[6] = if flash_on { 8 } else { 0 };
                 return;
             }

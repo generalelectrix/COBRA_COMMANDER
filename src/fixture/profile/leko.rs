@@ -16,7 +16,6 @@ use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 use crate::fixture::{patch::NoOptions, prelude::*};
 
 #[derive(Debug, EmitState, Control, Update)]
-#[strobe]
 pub struct Leko {
     #[channel_control]
     #[animate]
@@ -41,7 +40,7 @@ impl Default for Leko {
     fn default() -> Self {
         Self {
             level: Unipolar::full_channel("Level", 0)
-                .strobed_long()
+                .strobed()
                 .with_channel_level(),
             gobo1: Bipolar::new("Gobo1", ()).with_detent().with_channel_knob(0),
             gobo2: Bipolar::new("Gobo2", ()).with_detent().with_channel_knob(1),
@@ -58,6 +57,10 @@ impl PatchFixture for Leko {
 
     fn new(_options: Self::GroupOptions) -> Self {
         Default::default()
+    }
+
+    fn can_strobe() -> Option<StrobeResponse> {
+        Some(StrobeResponse::Long)
     }
 
     fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> PatchConfig {

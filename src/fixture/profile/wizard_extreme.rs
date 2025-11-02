@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 11]
-#[strobe]
+#[strobe(Long)]
 pub struct WizardExtreme {
     #[channel_control]
     #[animate]
@@ -28,7 +28,7 @@ impl Default for WizardExtreme {
     fn default() -> Self {
         Self {
             shutter: Unipolar::channel("Dimmer", 0, 0, 129)
-                .strobed_long()
+                .strobed()
                 .with_channel_level(),
             color: LabeledSelect::new(
                 "Color",
