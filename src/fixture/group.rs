@@ -8,7 +8,7 @@ use std::fmt::{Debug, Display};
 use std::time::Duration;
 
 use log::debug;
-use number::{Phase, UnipolarFloat};
+use number::Phase;
 
 use super::animation_target::ControllableTargetedAnimation;
 use super::fixture::{Fixture, FixtureType, RenderMode};
@@ -181,12 +181,7 @@ impl FixtureGroup {
     }
 
     /// The master controls are provided to potentially alter the update.
-    pub fn update(
-        &mut self,
-        master_controls: &MasterControls,
-        delta_t: Duration,
-        _audio_envelope: UnipolarFloat,
-    ) {
+    pub fn update(&mut self, master_controls: &MasterControls, delta_t: Duration) {
         self.fixture.update(master_controls, delta_t);
         if let Some(color_organ) = &mut self.color_organ {
             color_organ.update(delta_t);

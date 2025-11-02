@@ -22,7 +22,6 @@ pub use crate::channel::ChannelId;
 use anyhow::{bail, Result};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
-use number::UnipolarFloat;
 use rust_dmx::DmxPort;
 
 pub struct Show {
@@ -264,14 +263,17 @@ impl Show {
     /// Update the state of the show using the provided timestep.
     fn update(&mut self, delta_t: Duration) {
         self.clocks.update(delta_t, &mut self.controller);
-        self.master_controls
-            .update(delta_t, &self.controller.sender_with_metadata(None));
-        for fixture in self.patch.iter_mut() {
-            fixture.update(&self.master_controls, delta_t, UnipolarFloat::ZERO);
-        }
+
         let clock_state = self.clocks.get();
         self.master_controls.clock_state = clock_state.clock_bank;
         self.master_controls.audio_envelope = clock_state.audio_envelope;
+
+        self.master_controls
+            .update(delta_t, &self.controller.sender_with_metadata(None));
+        for fixture in self.patch.iter_mut() {
+            fixture.update(&self.master_controls, delta_t);
+        }
+
         if let Err(err) = self.publish_animation_state() {
             error!("Animation state publishing error: {err}.");
         };
