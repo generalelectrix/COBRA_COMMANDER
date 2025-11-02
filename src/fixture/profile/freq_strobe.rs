@@ -41,9 +41,9 @@ impl Default for FreqStrobe {
 }
 
 impl Update for FreqStrobe {
-    fn update(&mut self, master_controls: &MasterControls, _dt: std::time::Duration) {
+    fn update(&mut self, update: FixtureGroupUpdate, _dt: std::time::Duration) {
         self.flasher.update(
-            master_controls.strobe_state.flash_now,
+            update.flash_now,
             self.pattern.selected(),
             self.multiplier.selected(),
             self.reverse.val(),

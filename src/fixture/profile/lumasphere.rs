@@ -155,7 +155,7 @@ impl crate::fixture::Control for Lumasphere {
 }
 
 impl Update for Lumasphere {
-    fn update(&mut self, _: &MasterControls, delta_t: Duration) {
+    fn update(&mut self, _: FixtureGroupUpdate, delta_t: Duration) {
         self.ball_rotation.update(delta_t);
     }
 }

@@ -60,12 +60,9 @@ impl PatchFixture for FlashBang {
 }
 
 impl Update for FlashBang {
-    fn update(&mut self, master_controls: &MasterControls, _dt: std::time::Duration) {
-        self.flasher.update(
-            master_controls.strobe_state.flash_now,
-            self.chase.selected(),
-            self.reverse.val(),
-        );
+    fn update(&mut self, update: FixtureGroupUpdate, _dt: std::time::Duration) {
+        self.flasher
+            .update(update.flash_now, self.chase.selected(), self.reverse.val());
     }
 }
 

@@ -122,11 +122,17 @@ pub enum StrobeControlMode {
     Internal,
 }
 
+#[derive(Clone, Copy)]
+pub struct FixtureGroupUpdate<'a> {
+    pub master_controls: &'a MasterControls,
+    pub flash_now: bool,
+}
+
 /// Update time-driven internal state.
 pub trait Update {
     /// Update the internal state by the timestep dt.
     #[allow(unused_variables)]
-    fn update(&mut self, master_controls: &MasterControls, dt: Duration) {}
+    fn update(&mut self, update: FixtureGroupUpdate, dt: Duration) {}
 }
 
 pub trait NonAnimatedFixture: Update + EmitState + Control {
@@ -237,11 +243,11 @@ impl<F: AnimatedFixture> Control for FixtureWithAnimations<F> {
 }
 
 impl<F: AnimatedFixture> Update for FixtureWithAnimations<F> {
-    fn update(&mut self, master_controls: &MasterControls, dt: Duration) {
-        self.fixture.update(master_controls, dt);
+    fn update(&mut self, update: FixtureGroupUpdate, dt: Duration) {
+        self.fixture.update(update, dt);
         for ta in &mut self.animations {
             ta.animation
-                .update_state(dt, master_controls.audio_envelope);
+                .update_state(dt, update.master_controls.audio_envelope);
         }
     }
 }

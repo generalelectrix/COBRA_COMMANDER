@@ -18,6 +18,7 @@ use crate::color::Hsluv;
 use crate::config::FixtureGroupKey;
 use crate::config::Options;
 use crate::dmx::DmxBuffer;
+use crate::fixture::fixture::FixtureGroupUpdate;
 use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
@@ -181,8 +182,8 @@ impl FixtureGroup {
     }
 
     /// The master controls are provided to potentially alter the update.
-    pub fn update(&mut self, master_controls: &MasterControls, delta_t: Duration) {
-        self.fixture.update(master_controls, delta_t);
+    pub fn update(&mut self, update: FixtureGroupUpdate, delta_t: Duration) {
+        self.fixture.update(update, delta_t);
         if let Some(color_organ) = &mut self.color_organ {
             color_organ.update(delta_t);
         }

@@ -63,7 +63,9 @@ impl<'a> FixtureGroupControls<'a> {
 
 pub mod prelude {
     pub use super::fixture::EnumRenderModel;
-    pub use super::fixture::{AnimatedFixture, FixtureType, NonAnimatedFixture, Update};
+    pub use super::fixture::{
+        AnimatedFixture, FixtureGroupUpdate, FixtureType, NonAnimatedFixture, Update,
+    };
     pub use super::patch::{
         AsPatchOption, CreateAnimatedGroup, CreateNonAnimatedGroup, NoOptions, PatchConfig,
         PatchFixture,
@@ -74,7 +76,6 @@ pub mod prelude {
     pub use crate::control::EmitControlMessage;
     pub use crate::fixture::animation_target::{Subtarget, TargetedAnimationValues};
     pub use crate::fixture::control::*;
-    pub use crate::master::MasterControls;
     pub use crate::osc::prelude::*;
     pub use anyhow::bail;
     pub use fixture_macros::{
