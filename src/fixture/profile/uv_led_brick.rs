@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 7]
-#[strobe]
+#[strobe_external]
 pub struct UvLedBrick {
     #[channel_control]
     #[animate]

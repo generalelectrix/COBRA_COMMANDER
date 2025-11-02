@@ -5,7 +5,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
-#[strobe]
+#[strobe_external]
 pub struct Colordynamic {
     #[channel_control]
     shutter: ChannelLevelBool<BoolChannel>,

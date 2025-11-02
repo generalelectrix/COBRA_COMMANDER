@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 2]
-#[strobe]
+#[strobe_external]
 pub struct Hypnotic {
     #[channel_control]
     on: ChannelLevelBool<Bool<()>>,

@@ -110,8 +110,16 @@ pub trait Control {
         emitter: &FixtureStateEmitter,
     ) -> anyhow::Result<bool>;
 
-    /// Return true if this fixture can strobe.
-    fn can_strobe(&self) -> bool;
+    /// If this fixture can strobe, return the strobe operation mode.
+    fn strobe_mode(&self) -> Option<StrobeControlMode>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StrobeControlMode {
+    /// Fixture expects strobe state to be managed externally.
+    External,
+    /// Fixture manages strobe state internally, with flashes triggered by update.
+    Internal,
 }
 
 /// Update time-driven internal state.
@@ -223,8 +231,8 @@ impl<F: AnimatedFixture> Control for FixtureWithAnimations<F> {
         self.fixture.control_from_channel(msg, emitter)
     }
 
-    fn can_strobe(&self) -> bool {
-        self.fixture.can_strobe()
+    fn strobe_mode(&self) -> Option<StrobeControlMode> {
+        self.fixture.strobe_mode()
     }
 }
 

@@ -2,7 +2,7 @@ use crate::{fixture::prelude::*, strobe::StrobeResponse};
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 11]
-#[strobe]
+#[strobe_external]
 pub struct FusionRoll {
     #[channel_control]
     #[animate]

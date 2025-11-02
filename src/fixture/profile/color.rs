@@ -5,7 +5,7 @@ use strum_macros::{Display, EnumIter, VariantArray};
 use crate::{color::*, fixture::prelude::*, preview::FixturePreviewer};
 
 #[derive(Debug, Control, EmitState, Update)]
-#[strobe]
+#[strobe_external]
 pub struct Color {
     #[channel_control]
     #[animate]

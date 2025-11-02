@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 11]
-#[strobe]
+#[strobe_external]
 pub struct WizardExtreme {
     #[channel_control]
     #[animate]

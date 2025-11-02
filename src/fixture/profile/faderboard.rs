@@ -77,8 +77,8 @@ impl crate::fixture::Control for Faderboard {
         Ok(false)
     }
 
-    fn can_strobe(&self) -> bool {
-        false
+    fn strobe_mode(&self) -> Option<crate::fixture::fixture::StrobeControlMode> {
+        None
     }
 }
 
