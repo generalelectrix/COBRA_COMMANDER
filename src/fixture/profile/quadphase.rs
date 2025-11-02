@@ -8,7 +8,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 4]
-#[strobe_external]
+#[strobe]
 pub struct QuadPhase {
     red: Bool<()>,
     green: Bool<()>,

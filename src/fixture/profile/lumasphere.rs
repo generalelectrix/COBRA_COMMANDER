@@ -149,8 +149,8 @@ impl crate::fixture::Control for Lumasphere {
         Ok(false)
     }
 
-    fn strobe_mode(&self) -> Option<crate::fixture::fixture::StrobeControlMode> {
-        None
+    fn can_strobe(&self) -> bool {
+        true
     }
 }
 

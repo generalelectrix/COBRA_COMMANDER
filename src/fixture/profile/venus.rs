@@ -112,8 +112,8 @@ impl crate::fixture::Control for Venus {
         Ok(false)
     }
 
-    fn strobe_mode(&self) -> Option<crate::fixture::fixture::StrobeControlMode> {
-        None
+    fn can_strobe(&self) -> bool {
+        false
     }
 }
 

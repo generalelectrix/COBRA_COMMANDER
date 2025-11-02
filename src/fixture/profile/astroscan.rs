@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 9]
-#[strobe_external]
+#[strobe]
 pub struct Astroscan {
     lamp_on: BoolChannel,
     #[channel_control]

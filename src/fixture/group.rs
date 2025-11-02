@@ -174,7 +174,7 @@ impl FixtureGroup {
         let emitter = &FixtureStateEmitter::new(&self.key, channel_emitter);
         if matches!(msg, ChannelControlMessage::ToggleStrobe) {
             // If the fixture can't strobe, ignore the control.
-            if self.fixture.strobe_mode().is_none() {
+            if !self.fixture.can_strobe() {
                 return Ok(true);
             }
             self.strobe_enabled = !self.strobe_enabled;

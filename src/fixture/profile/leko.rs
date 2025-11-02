@@ -16,7 +16,7 @@ use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 use crate::fixture::{patch::NoOptions, prelude::*};
 
 #[derive(Debug, EmitState, Control, Update)]
-#[strobe_external]
+#[strobe]
 pub struct Leko {
     #[channel_control]
     #[animate]

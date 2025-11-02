@@ -4,7 +4,7 @@ use crate::{fixture::prelude::*, osc::OscControlMessage, util::unipolar_to_range
 
 #[derive(Debug, EmitState, Control, PatchFixture)]
 #[channel_count = 5]
-#[strobe_external]
+#[strobe]
 pub struct Comet {
     shutter_open: ChannelLevelBool<BoolChannel>,
     trigger_state: TriggerState,

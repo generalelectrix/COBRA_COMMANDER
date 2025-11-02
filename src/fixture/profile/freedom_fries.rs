@@ -7,7 +7,7 @@ use crate::{color::ColorSpace, fixture::prelude::*};
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 8]
-#[strobe_external]
+#[strobe]
 pub struct FreedomFries {
     #[channel_control]
     #[animate]

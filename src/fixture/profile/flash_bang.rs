@@ -10,7 +10,7 @@ use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
 
 #[derive(EmitState, Control)]
-#[strobe_internal]
+#[strobe]
 pub struct FlashBang {
     #[channel_control]
     #[animate]

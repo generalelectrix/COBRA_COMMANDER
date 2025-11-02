@@ -4,7 +4,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 10]
-#[strobe_external]
+#[strobe]
 pub struct RushWizard {
     #[channel_control]
     #[animate]

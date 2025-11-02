@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 6]
-#[strobe_external]
+#[strobe]
 pub struct CosmicBurst {
     #[channel_control]
     #[animate]

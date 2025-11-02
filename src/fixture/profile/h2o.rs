@@ -3,7 +3,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 3]
-#[strobe_external]
+#[strobe]
 pub struct H2O {
     #[channel_control]
     #[animate]

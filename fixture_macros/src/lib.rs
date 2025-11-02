@@ -203,9 +203,8 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 /// Fields that may be absent (defined as an Option) can set #[optional] to
 /// conditionally handle if Some.
 ///
-/// If the fixture is capable of using global strobing, annotate the struct with:
-/// the #[strobe_internal] attribute if it manages strobe flash state internally,
-/// or the #[strobe_external] attribute if it should be managed by the group.
+/// If the fixture is capable of using global strobing, annotate the struct with
+/// the #[strobe] attribute.
 #[proc_macro_derive(
     Control,
     attributes(
@@ -215,8 +214,7 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
         animate_subtarget,
         on_change,
         optional,
-        strobe_internal,
-        strobe_external,
+        strobe,
     )
 )]
 pub fn derive_control(input: TokenStream) -> TokenStream {
@@ -236,15 +234,7 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
     let mut animate_target_idents = vec![];
     let mut animate_subtarget_types = vec![];
 
-    let strobe_mode = match (
-        has_attr(&attrs, "strobe_internal"),
-        has_attr(&attrs, "strobe_external"),
-    ) {
-        (false, false) => quote!(None),
-        (true, false) => quote!(Some(crate::fixture::fixture::StrobeControlMode::Internal)),
-        (false, true) => quote!(Some(crate::fixture::fixture::StrobeControlMode::External)),
-        (true, true) => panic!("more than one strobe mode attribute"),
-    };
+    let can_strobe = has_attr(&attrs, "strobe");
 
     for field in fields.named.iter() {
         if field_has_attr(field, "skip_control") {
@@ -372,8 +362,8 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
                 Ok(false)
             }
 
-            fn strobe_mode(&self) -> Option<crate::fixture::fixture::StrobeControlMode> {
-                #strobe_mode
+            fn can_strobe(&self) -> bool {
+                #can_strobe
             }
         }
 

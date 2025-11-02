@@ -5,7 +5,7 @@ use crate::fixture::{color::Color, prelude::*};
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 9]
-#[strobe_external]
+#[strobe]
 pub struct RotosphereQ3 {
     #[channel_control]
     #[animate_subtarget(Hue, Sat, Val)]
