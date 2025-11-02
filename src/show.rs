@@ -58,7 +58,6 @@ impl Show {
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
-        let master_controls = MasterControls::new();
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
@@ -69,7 +68,7 @@ impl Show {
             patch,
             patch_file_path,
             channels,
-            master_controls,
+            master_controls: Default::default(),
             animation_ui_state,
             clocks,
             animation_service,

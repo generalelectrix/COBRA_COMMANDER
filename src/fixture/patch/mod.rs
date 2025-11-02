@@ -363,10 +363,13 @@ impl UsedAddrs {
 mod test {
     use super::*;
     use crate::{
+        channel::mock::no_op_emitter,
         config::FixtureGroupConfig,
+        dmx::DmxBuffer,
         fixture::{color::Model as ColorModel, fixture::EnumRenderModel},
     };
     use anyhow::Result;
+    use number::UnipolarFloat;
 
     fn parse(patch_yaml: &str) -> Result<Vec<FixtureGroupConfig>> {
         Ok(serde_yaml::from_str(patch_yaml)?)
@@ -626,5 +629,99 @@ mod test {
             .unwrap(),
         )
         .unwrap();
+    }
+
+    /// Test repatching behavior.
+    #[test]
+    fn test_repatch() -> Result<()> {
+        let mut cfg = parse(
+            "
+- fixture: Color
+  control_color_space: Hsluv
+  patches:
+    - addr: 1
+    - addr:
+        start: 4
+        count: 2
+      kind: Rgb
+- fixture: Dimmer
+  group: TestGroup
+  patches:
+    - addr: 1
+      universe: 1
+      mirror: true
+    - addr: 12
+        ",
+        )?;
+        let mut patch = Patch::patch_all(&cfg)?;
+
+        let initial = render(&patch);
+        // Should be all zeros, since everything is down.
+        assert!(initial.iter().flatten().all(|&v| v == 0));
+
+        // Twiddle some controls and render fixture state.
+        for f in patch.iter_mut() {
+            twiddle(f);
+        }
+        let twiddled = render(&patch);
+
+        for (pre, post) in twiddled.iter().zip_eq(&initial) {
+            assert_ne!(pre, post);
+        }
+
+        // Repatching with the same config should result in so fixture models
+        // being updated.
+        patch.repatch(&cfg)?;
+
+        assert_eq!(render(&patch), twiddled);
+
+        // If we change the group names, repatching should force new models.
+        cfg[0].group = Some(FixtureGroupKey("NewColor".to_string()));
+
+        patch.repatch(&cfg)?;
+        let new_bufs = render(&patch);
+        assert_eq!(2, new_bufs.len());
+        assert_eq!(new_bufs[0], initial[0]);
+        assert_eq!(new_bufs[1], twiddled[1]);
+
+        twiddle(patch.iter_mut().next().unwrap());
+        assert_eq!(twiddled, render(&patch));
+
+        // Repatching with different patches should not force a new model.
+        cfg[0].patches.truncate(1);
+        patch.repatch(&cfg)?;
+
+        let new_bufs = render(&patch);
+        // Should have different output since we have a different number of patches.
+        assert_ne!(new_bufs[0], initial[0]);
+        assert_ne!(new_bufs[0], twiddled[0]);
+        Ok(())
+    }
+
+    /// Twiddle some channel-level knobs to move away from initial state.
+    fn twiddle(f: &mut FixtureGroup) {
+        let _ = f.control_from_channel(
+            &crate::channel::ChannelControlMessage::Knob {
+                index: 0,
+                value: crate::channel::KnobValue::Unipolar(UnipolarFloat::new(0.5)),
+            },
+            no_op_emitter(),
+        );
+        let _ = f.control_from_channel(
+            &crate::channel::ChannelControlMessage::Level(UnipolarFloat::new(0.75)),
+            no_op_emitter(),
+        );
+    }
+
+    /// Render each group in the patch into a separate buffer.
+    fn render(patch: &Patch) -> Vec<DmxBuffer> {
+        patch
+            .iter()
+            .map(|f| {
+                let mut fresh_bufs = vec![[0u8; 512]];
+                f.render(&Default::default(), &mut fresh_bufs, &Default::default());
+                fresh_bufs[0]
+            })
+            .collect()
     }
 }

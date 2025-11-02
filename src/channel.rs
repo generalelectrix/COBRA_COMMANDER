@@ -384,3 +384,15 @@ impl KnobValue {
         }
     }
 }
+
+#[cfg(test)]
+pub mod mock {
+    use crate::{channel::ChannelStateEmitter, control::mock::NoOpEmitter};
+
+    pub fn no_op_emitter() -> ChannelStateEmitter<'static> {
+        ChannelStateEmitter {
+            channel_id: None,
+            emitter: &NoOpEmitter,
+        }
+    }
+}
