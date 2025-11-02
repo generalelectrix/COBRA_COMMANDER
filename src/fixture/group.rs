@@ -120,6 +120,10 @@ impl FixtureGroup {
         }
     }
 
+    pub fn strobe_enabled(&self) -> bool {
+        self.strobe_enabled
+    }
+
     pub fn get_animation_mut(
         &mut self,
         index: usize,

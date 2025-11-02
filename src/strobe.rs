@@ -82,6 +82,23 @@ impl StrobeResponse {
     }
 }
 
+#[derive(Debug)]
+pub enum Distributor {
+    /// No flashes to distribute.
+    None,
+    /// Strobe every group at once.
+    All,
+}
+
+impl Distributor {
+    pub fn next(&mut self) -> bool {
+        match self {
+            Self::None => false,
+            Self::All => true,
+        }
+    }
+}
+
 /// Strobe state that subscribers will use to follow the global strobe clock.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct StrobeState {
@@ -102,6 +119,16 @@ pub struct StrobeState {
     /// fixtures that can't be strobed well from DMX to use the legacy strobing
     /// behavior.
     pub rate: UnipolarFloat,
+}
+
+impl StrobeState {
+    pub fn distributor(&self, group_count: usize) -> Distributor {
+        if !self.flash_now {
+            Distributor::None
+        } else {
+            Distributor::All
+        }
+    }
 }
 
 pub struct StrobeClock {

@@ -272,11 +272,20 @@ impl Show {
 
         self.master_controls
             .update(delta_t, &self.controller.sender_with_metadata(None));
-        for fixture in self.patch.iter_mut() {
-            fixture.update(
+
+        let mut flash_distributor = self
+            .master_controls
+            .flash_distributor(self.patch.iter().filter(|g| g.strobe_enabled()).count());
+
+        for group in self.patch.iter_mut() {
+            group.update(
                 FixtureGroupUpdate {
                     master_controls: &self.master_controls,
-                    flash_now: self.master_controls.strobe_state.flash_now,
+                    flash_now: if group.strobe_enabled() {
+                        flash_distributor.next()
+                    } else {
+                        false
+                    },
                 },
                 delta_t,
             );
