@@ -23,6 +23,7 @@ use crate::fixture::FixtureGroupControls;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 use crate::preview::Previewer;
+use crate::strobe::FlashState;
 
 pub struct FixtureGroup {
     /// The fixture type of this group.
@@ -40,11 +41,13 @@ pub struct FixtureGroup {
     /// These are retained to determine if we need to re-initialize a group when
     /// repatching.
     options: Options,
-    /// Is strobing enabled for this fixture?
+    /// Is strobing enabled for this group?
     /// FIXME: it feels a bit odd to have group-level controllable parameters.
     /// This might be a side effect of not having a data structure that
     /// represents "channel state".
     strobe_enabled: bool,
+    /// Current strobe flash state for this group, if managed externally.
+    flash_state: FlashState,
 }
 
 impl FixtureGroup {
@@ -63,6 +66,7 @@ impl FixtureGroup {
             fixture,
             options,
             strobe_enabled: false,
+            flash_state: Default::default(),
         }
     }
 
@@ -229,6 +233,7 @@ impl FixtureGroup {
                         })
                     }),
                     strobe_enabled: self.strobe_enabled,
+                    flash_on: self.flash_state.is_on(),
                     preview: &preview,
                 },
                 dmx_buf,

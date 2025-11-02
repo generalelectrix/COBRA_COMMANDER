@@ -27,6 +27,17 @@ use crate::{
     show::UPDATE_INTERVAL,
 };
 
+/// A strobe flash; when on, lasts for an integer number of frames.
+#[derive(Debug, Default)]
+pub struct FlashState(Option<u8>);
+
+impl FlashState {
+    /// Return true if this flash is on.
+    pub fn is_on(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
 /// Should a fixture use the short or long flash duration?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StrobeResponse {

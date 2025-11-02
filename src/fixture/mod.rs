@@ -32,6 +32,8 @@ pub struct FixtureGroupControls<'a> {
     color: Option<Hsluv>,
     /// Is master strobing enabled for this group?
     strobe_enabled: bool,
+    /// If strobing is enabled, should this fixture be flashing?
+    flash_on: bool,
     /// Fixture previewer.
     preview: &'a FixturePreviewer<'a>,
 }
@@ -49,7 +51,11 @@ impl<'a> FixtureGroupControls<'a> {
         if !self.strobe_enabled {
             return None;
         }
-        self.master_controls.strobe_state.intensity(response)
+        Some(if self.flash_on {
+            self.master_controls.strobe_state.master_intensity
+        } else {
+            UnipolarFloat::ZERO
+        })
     }
 
     /// Return Some containing a strobe state if strobe override is active.
