@@ -111,6 +111,7 @@ pub trait Control {
     ) -> anyhow::Result<bool>;
 }
 
+/// Data scoped to a specific group to influence state update.
 #[derive(Clone, Copy)]
 pub struct FixtureGroupUpdate<'a> {
     pub master_controls: &'a MasterControls,
