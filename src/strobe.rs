@@ -125,6 +125,9 @@ impl FlashDistribution {
     /// Advance flash distribution for the next flash.
     /// Take the number of active strobe targets into account.
     pub fn advance(&mut self, group_count: usize) {
+        if group_count == 0 {
+            return;
+        }
         match self {
             Self::All => (),
             Self::One(i) => {
@@ -250,7 +253,7 @@ impl StrobeClock {
     /// Potentially update the state of the distributor if the number of
     /// strobed groups isn't compatible with current settings.
     pub fn distributor(&mut self, group_count: usize) -> Distributor {
-        if !self.flash_now {
+        if !self.flash_now || group_count == 0 {
             return Distributor {
                 request_count: 0,
                 strategy: None,
