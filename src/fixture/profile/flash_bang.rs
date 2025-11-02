@@ -10,7 +10,6 @@ use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
 
 #[derive(EmitState, Control)]
-#[strobe(Short)]
 pub struct FlashBang {
     #[channel_control]
     #[animate]
@@ -49,6 +48,10 @@ impl PatchFixture for FlashBang {
             reverse: Bool::new_off("Reverse", ()),
             flasher,
         }
+    }
+
+    fn can_strobe() -> Option<StrobeResponse> {
+        Some(StrobeResponse::Short)
     }
 
     fn new_patch(options: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {

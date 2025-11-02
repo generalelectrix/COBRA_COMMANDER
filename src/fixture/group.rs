@@ -24,6 +24,7 @@ use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 use crate::preview::Previewer;
 use crate::strobe::FlashState;
+use crate::strobe::StrobeResponse;
 
 pub struct FixtureGroup {
     /// The fixture type of this group.
@@ -57,11 +58,12 @@ impl FixtureGroup {
         fixture_type: FixtureType,
         key: FixtureGroupKey,
         fixture: Box<dyn Fixture>,
+        strobe_response: Option<StrobeResponse>,
         options: Options,
     ) -> Self {
         Self {
             strobe_enabled: false,
-            flash_state: fixture.can_strobe().map(FlashState::new),
+            flash_state: strobe_response.map(FlashState::new),
             fixture_type,
             key,
             fixture_configs: vec![],

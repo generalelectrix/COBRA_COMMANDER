@@ -6,7 +6,6 @@ use number::UnipolarFloat;
 use crate::{
     channel::KnobIndex,
     osc::{EmitScopedOscMessage, OscControlMessage},
-    strobe::StrobeResponse,
     util::unipolar_to_range,
 };
 

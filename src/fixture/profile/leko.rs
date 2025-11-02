@@ -16,7 +16,6 @@ use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 use crate::fixture::{patch::NoOptions, prelude::*};
 
 #[derive(Debug, EmitState, Control, Update)]
-#[strobe(Long)]
 pub struct Leko {
     #[channel_control]
     #[animate]
@@ -58,6 +57,10 @@ impl PatchFixture for Leko {
 
     fn new(_options: Self::GroupOptions) -> Self {
         Default::default()
+    }
+
+    fn can_strobe() -> Option<StrobeResponse> {
+        Some(StrobeResponse::Long)
     }
 
     fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> PatchConfig {

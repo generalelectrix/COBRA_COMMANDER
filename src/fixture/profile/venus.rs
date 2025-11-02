@@ -111,10 +111,6 @@ impl crate::fixture::Control for Venus {
     ) -> anyhow::Result<bool> {
         Ok(false)
     }
-
-    fn can_strobe(&self) -> Option<StrobeResponse> {
-        None
-    }
 }
 
 impl Update for Venus {

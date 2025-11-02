@@ -2,10 +2,7 @@
 
 use anyhow::Context;
 
-use crate::{
-    osc::{EmitScopedOscMessage, OscControlMessage},
-    strobe::StrobeResponse,
-};
+use crate::osc::{EmitScopedOscMessage, OscControlMessage};
 
 use super::{
     ChannelControl, ChannelLevelBool, ChannelLevelHandler, OscControl, RenderToDmx,

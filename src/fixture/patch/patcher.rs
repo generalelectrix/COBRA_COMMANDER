@@ -9,6 +9,7 @@ use crate::fixture::fixture::{
     AnimatedFixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture, RenderMode,
 };
 use crate::fixture::group::FixtureGroup;
+use crate::strobe::StrobeResponse;
 use linkme::distributed_slice;
 
 /// Distributed registry for things that we can patch.
@@ -103,12 +104,17 @@ pub trait PatchFixture: Sized + 'static {
         options.parse().context("group options")
     }
 
-    /// Parse options and create a new group.
+    /// Parse options and create a new instance of this fixture.
     fn create(options: Options) -> Result<Self>
     where
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
         Ok(Self::new(Self::parse_group_options(options)?))
+    }
+
+    /// If this fixture can strobe, return its response profile.
+    fn can_strobe() -> Option<StrobeResponse> {
+        None
     }
 
     /// Parse and validate patch options.
@@ -154,7 +160,13 @@ pub trait CreateNonAnimatedGroup: PatchFixture + NonAnimatedFixture + Sized + 's
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
         let fixture = Box::new(Self::create(options.clone())?);
-        Ok(FixtureGroup::empty(Self::NAME, key, fixture, options))
+        Ok(FixtureGroup::empty(
+            Self::NAME,
+            key,
+            fixture,
+            Self::can_strobe(),
+            options,
+        ))
     }
 }
 
@@ -175,6 +187,7 @@ pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static 
                 fixture,
                 animations: Default::default(),
             }),
+            Self::can_strobe(),
             options,
         ))
     }

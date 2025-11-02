@@ -1,4 +1,4 @@
-use crate::{fixture::prelude::*, strobe::StrobeResponse};
+use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
 #[channel_count = 11]

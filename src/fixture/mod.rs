@@ -2,7 +2,7 @@ use crate::{
     color::Hsluv,
     master::MasterControls,
     preview::FixturePreviewer,
-    strobe::{StrobeResponse, StrobeState},
+    strobe::StrobeState,
 };
 
 pub mod animation_target;

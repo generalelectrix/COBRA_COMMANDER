@@ -76,10 +76,6 @@ impl crate::fixture::Control for Faderboard {
     ) -> anyhow::Result<bool> {
         Ok(false)
     }
-
-    fn can_strobe(&self) -> Option<StrobeResponse> {
-        None
-    }
 }
 
 pub type StateChange = (usize, UnipolarFloat);

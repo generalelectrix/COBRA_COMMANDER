@@ -5,7 +5,6 @@ use strum_macros::{Display, EnumIter, VariantArray};
 use crate::{color::*, fixture::prelude::*, preview::FixturePreviewer};
 
 #[derive(Debug, Control, EmitState, Update)]
-#[strobe(Short)]
 pub struct Color {
     #[channel_control]
     #[animate]
@@ -43,6 +42,9 @@ impl PatchFixture for Color {
 
     fn new(options: Self::GroupOptions) -> Self {
         Self::for_subcontrol(None, options.control_color_space)
+    }
+    fn can_strobe() -> Option<StrobeResponse> {
+        Some(StrobeResponse::Short)
     }
     fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> PatchConfig {
         PatchConfig {
