@@ -1,3 +1,6 @@
 - fixture: Color
   patches:
     - addr: 1
+- fixture: FreqStrobe
+  patches:
+    - addr: 10

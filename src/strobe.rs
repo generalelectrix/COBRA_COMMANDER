@@ -42,6 +42,11 @@ impl FlashState {
         }
     }
 
+    /// Start a new flash.
+    pub fn flash_now(&mut self) {
+        self.flash = Some(self.duration);
+    }
+
     /// Return true if this flash is on.
     pub fn is_on(&self) -> bool {
         self.flash.is_some()

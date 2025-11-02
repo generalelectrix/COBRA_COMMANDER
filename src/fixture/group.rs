@@ -196,7 +196,11 @@ impl FixtureGroup {
             color_organ.update(delta_t);
         }
         if let Some(fs) = &mut self.flash_state {
-            fs.update(1);
+            if update.flash_now {
+                fs.flash_now();
+            } else {
+                fs.update(1);
+            }
         }
     }
 
