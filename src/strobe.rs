@@ -223,6 +223,7 @@ impl StrobeClock {
         emit_state_change(&StrobeOn(self.strobe_on), emitter);
         emit_state_change(&Rate(unipolar_from_rate(self.rate_raw)), emitter);
         emit_state_change(&Intensity(self.intensity), emitter);
+        emit_state_change(&Mult(self.rate_mult), emitter);
     }
 
     pub fn control(&mut self, msg: &ControlMessage, emitter: &ScopedControlEmitter) {
