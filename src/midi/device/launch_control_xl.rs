@@ -193,6 +193,23 @@ impl NovationLaunchControlXL {
         }
     }
 
+    /// Process a side button event and emit midi.
+    pub fn emit_side_button(
+        &self,
+        button: LaunchControlXLSideButton,
+        on: bool,
+        output: &mut Output,
+    ) {
+        self.emit(
+            LaunchControlXLStateChange::SideButton {
+                button,
+                // Side buttons can only be yellow or off...
+                state: if on { LedState::YELLOW } else { LedState::OFF },
+            },
+            output,
+        )
+    }
+
     /// Clear all controller indicators.
     pub fn clear(&self, output: &mut Output) {
         for channel in 0..Self::CHANNEL_COUNT {

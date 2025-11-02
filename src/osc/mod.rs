@@ -345,6 +345,7 @@ pub mod prelude {
     pub use super::bipolar_array::{bipolar_array, BipolarArray};
     pub use super::button_array::{button_array, ButtonArray};
     pub use super::label_array::LabelArray;
+    pub use super::radio_button::RadioButton;
     pub use super::unipolar_array::{unipolar_array, UnipolarArray};
     pub use super::FixtureStateEmitter;
     pub use super::{GroupControlMap, OscControlMessage};

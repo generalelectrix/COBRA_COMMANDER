@@ -10,8 +10,10 @@
 //!
 //! The advantage vs. using any given onboard strobe control is that we can
 //! easily synchronize the strobing of multiple fixture types across the rig.
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::time::Duration;
+use strum::VariantArray;
+use strum_macros::VariantArray;
 
 use number::UnipolarFloat;
 use tunnels::{
@@ -97,7 +99,11 @@ pub struct StrobeClock {
     /// to be equal to an integer number of frames, to help get closer to stable
     /// flash timing.
     rate_raw: f64,
+    /// Multiply the clock rate by this value.
+    rate_mult: Multiplier,
     tap_sync: TapSync,
+    /// True if the current rate was set from a tap.
+    set_from_tap: bool,
     tick_indicator: TransientIndicator,
     /// The current flash state; if Some, the flash is on.
     /// The value inside represents the number of state updates that the flash
@@ -123,8 +129,10 @@ impl Default for StrobeClock {
 
         let mut sc = Self {
             clock: Default::default(),
-            rate_raw: 0.,
+            rate_raw: MIN_STROBE_RATE,
+            rate_mult: Default::default(),
             tap_sync: Default::default(),
+            set_from_tap: false,
             tick_indicator: Default::default(),
             flash: None,
             strobe_on: false,
@@ -135,25 +143,31 @@ impl Default for StrobeClock {
             osc_controls,
         };
         // Set initial rate to our minimum.
-        sc.set_rate(MIN_STROBE_RATE, true);
+        sc.apply_rate();
         sc
     }
 }
 
 impl StrobeClock {
-    /// Set both raw and coerced rates.
+    /// Set the actual rate used by the inner clock.
     ///
-    /// If coerce is true, discretize the actual rate passed to the clock into
-    /// an integer number of frames.
-    fn set_rate(&mut self, raw_rate: f64, coerce: bool) {
-        self.rate_raw = raw_rate;
-        if coerce {
-            let interval_frame_count = ((1.0 / raw_rate) / UPDATE_INTERVAL.as_secs_f64()).round();
-            let coerced_rate = 1. / (interval_frame_count * UPDATE_INTERVAL.as_secs_f64());
-            self.clock.rate_coarse = coerced_rate;
+    /// Discretize the actual rate passed to the clock into
+    /// an integer number of frames when the rate has been set from a slider.
+    ///
+    /// Apply clock multipliers at this step.
+    fn apply_rate(&mut self) {
+        let rate = self.rate_raw * self.rate_mult.as_f64();
+        self.clock.rate_coarse = if self.set_from_tap {
+            // Do not coerce tap sync rates to be integer frame numbers;
+            // prefer a bit of jitter but remaining synced with taps
+            // rather than perfect strobing intervals. These are more
+            // likely to be slower anyway, and thus frame jitter will
+            // be less perceptible anyway.
+            rate
         } else {
-            self.clock.rate_coarse = raw_rate;
-        }
+            let interval_frame_count = ((1.0 / rate) / UPDATE_INTERVAL.as_secs_f64()).round();
+            1. / (interval_frame_count * UPDATE_INTERVAL.as_secs_f64())
+        };
     }
 
     /// Update the strobe clock state. Return the updated rendered state.
@@ -209,6 +223,7 @@ impl StrobeClock {
         emit_state_change(&StrobeOn(self.strobe_on), emitter);
         emit_state_change(&Rate(unipolar_from_rate(self.rate_raw)), emitter);
         emit_state_change(&Intensity(self.intensity), emitter);
+        emit_state_change(&Mult(self.rate_mult), emitter);
     }
 
     pub fn control(&mut self, msg: &ControlMessage, emitter: &ScopedControlEmitter) {
@@ -218,12 +233,9 @@ impl StrobeClock {
             Set(msg) => self.handle_state_change(msg, emitter),
             Tap => {
                 if let Some(new_rate) = self.tap_sync.tap() {
-                    // Do not coerce tap sync rates to be integer frame numbers;
-                    // prefer a bit of jitter but remaining synced with taps
-                    // rather than perfect strobing intervals. These are more
-                    // likely to be slower anyway, and thus frame jitter will
-                    // be less perceptible anyway.
-                    self.set_rate(new_rate, false);
+                    self.set_from_tap = true;
+                    self.rate_raw = new_rate;
+                    self.apply_rate();
                     emit_state_change(&Rate(unipolar_from_rate(new_rate)), emitter);
                 }
             }
@@ -258,9 +270,17 @@ impl StrobeClock {
                     self.clock.reset_next_update();
                 }
             }
-            Rate(v) => self.set_rate(rate_from_unipolar(v), true),
+            Rate(v) => {
+                self.rate_raw = rate_from_unipolar(v);
+                self.set_from_tap = false;
+                self.apply_rate();
+            }
             Intensity(v) => self.intensity = v,
             Ticked(_) => (),
+            Mult(m) => {
+                self.rate_mult = m;
+                self.apply_rate();
+            }
         }
         emit_state_change(msg, emitter);
     }
@@ -274,6 +294,7 @@ fn emit_state_change(sc: &StateChange, emitter: &ScopedControlEmitter) {
         StrobeOn(v) => STROBE_ON.send(v, emitter),
         Rate(v) => RATE.send(v, emitter),
         Intensity(v) => INTENSITY.send(v, emitter),
+        Mult(m) => MULT.set(m.as_index(), false, emitter),
     }
 }
 
@@ -320,6 +341,40 @@ pub enum StateChange {
     StrobeOn(bool),
     Rate(UnipolarFloat),
     Intensity(UnipolarFloat),
+    Mult(Multiplier),
+}
+
+/// Apply this multiplier to the strobe clock.
+#[derive(Default, Debug, Clone, Copy, VariantArray)]
+pub enum Multiplier {
+    #[default]
+    One,
+    Two,
+    Three,
+    Four,
+    Eight,
+}
+
+impl Multiplier {
+    pub fn as_f64(self) -> f64 {
+        match self {
+            Self::One => 1.,
+            Self::Two => 2.,
+            Self::Three => 3.,
+            Self::Four => 4.,
+            Self::Eight => 8.,
+        }
+    }
+
+    pub fn as_index(self) -> usize {
+        match self {
+            Self::One => 0,
+            Self::Two => 1,
+            Self::Three => 2,
+            Self::Four => 3,
+            Self::Eight => 4,
+        }
+    }
 }
 
 const FLASH: Button = button("StrobeFlash");
@@ -327,6 +382,11 @@ const TAP: Button = button("StrobeTap");
 const STROBE_ON: Button = button("StrobeOn");
 const RATE: UnipolarOsc = unipolar("StrobeRate");
 const INTENSITY: UnipolarOsc = unipolar("StrobeIntensity");
+const MULT: RadioButton = RadioButton {
+    control: "StrobeMult",
+    n: 5,
+    x_primary_coordinate: false,
+};
 
 fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
     use ControlMessage::*;
@@ -334,7 +394,15 @@ fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
     TAP.map_trigger(map, || Tap);
     STROBE_ON.map_trigger(map, || ToggleStrobeOn);
     RATE.map(map, |v| Set(StateChange::Rate(v)));
-    INTENSITY.map(map, |v| Set(StateChange::Intensity(v)))
+    INTENSITY.map(map, |v| Set(StateChange::Intensity(v)));
+    MULT.map_fallible(map, |i| {
+        Ok(ControlMessage::Set(StateChange::Mult(
+            Multiplier::VARIANTS
+                .get(i)
+                .copied()
+                .ok_or_else(|| anyhow!("strobe multiplier index {i} out of range"))?,
+        )))
+    });
 }
 
 trait EmitMidiStrobeMessage {
