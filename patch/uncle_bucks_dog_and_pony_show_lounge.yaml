@@ -1,0 +1,15 @@
+- fixture: SwarmolonDerby
+  patches:
+    - addr: 1
+    - addr: 10
+      mirror: true
+- fixture: SwarmolonStrobe
+  patches:
+    - addr: 1
+    - addr: 10
+      mirror: true
+- fixture: SwarmolonLasers
+  patches:
+    - addr: 1
+    - addr: 10
+      mirror: true
