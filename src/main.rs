@@ -8,7 +8,7 @@ use local_ip_address::local_ip;
 use log::LevelFilter;
 use midi::Device;
 use osc::prompt_osc_config;
-use rust_dmx::select_port;
+use rust_dmx::{available_ports, select_port, DmxPort, OfflineDmxPort};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
 use std::path::PathBuf;
@@ -79,6 +79,12 @@ struct RunArgs {
     /// Path to a YAML file containing the fixture patch.
     patch_file: PathBuf,
 
+    /// If true, speedrun auto configuration with defaults.
+    ///
+    /// Mostly useful for testing.
+    #[arg(long)]
+    quickstart: bool,
+
     /// Check that the provided patch file is valid and quit.
     #[arg(long)]
     check_patch: bool,
@@ -120,11 +126,73 @@ fn main() -> Result<()> {
     SimpleLogger::init(log_level, LogConfig::default())?;
 
     match args.command {
-        Command::Run(args) => run_show(args),
+        Command::Run(args) => {
+            if args.quickstart {
+                quickstart(args)
+            } else {
+                run_show(args)
+            }
+        }
         Command::Check(args) => check_patch(args),
         Command::Viz => run_animation_visualizer(),
         Command::Fix(args) => fixture_help(args),
     }
+}
+
+fn quickstart(args: RunArgs) -> Result<()> {
+    let patch = Patch::from_file(&args.patch_file)?;
+
+    let clocks = Clocks::internal(None);
+
+    match local_ip() {
+        Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
+        Err(e) => println!("Unable to fetch local IP address: {e}."),
+    }
+
+    let (midi_inputs, midi_outputs) = list_ports()?;
+    let midi_devices = Device::auto_configure(true, &midi_inputs, &midi_outputs);
+    if midi_devices.is_empty() {
+        println!("No known MIDI devices were automatically discovered.");
+    } else {
+        println!("These known MIDI devices were found:");
+        for d in &midi_devices {
+            println!("  - {}", d.device);
+        }
+    }
+
+    let controller = Controller::new(args.osc_receive_port, vec![], midi_devices)?;
+
+    let universe_count = patch.universe_count();
+    println!("This show requires {universe_count} universe(s).");
+
+    let mut dmx_ports = Vec::new();
+
+    let available_ports = available_ports()?;
+
+    for (i, port) in (0..universe_count).zip(available_ports.into_iter().rev().chain(
+        std::iter::repeat_with(|| Box::new(OfflineDmxPort) as Box<dyn DmxPort>),
+    )) {
+        println!("Assigning universe {i} to port {port}.");
+        dmx_ports.push(port);
+    }
+
+    let mut show = Show::new(
+        patch,
+        args.patch_file,
+        controller,
+        dmx_ports,
+        clocks,
+        None,
+        args.cli_preview
+            .then(Previewer::terminal)
+            .unwrap_or_default(),
+    )?;
+
+    println!("Running show.");
+
+    show.run();
+
+    Ok(())
 }
 
 fn run_show(args: RunArgs) -> Result<()> {
@@ -167,7 +235,8 @@ fn run_show(args: RunArgs) -> Result<()> {
         midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all(internal_clocks))?;
     }
 
-    if prompt_bool("Use a color organ?")? {
+    // if prompt_bool("Use a color organ?")? {
+    if false {
         let input_port_name = prompt_indexed_value("Input port:", &midi_inputs)?;
         let output_port_name = prompt_indexed_value("Output port:", &midi_outputs)?;
         midi_devices.push(DeviceSpec {
