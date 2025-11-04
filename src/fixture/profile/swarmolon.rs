@@ -178,8 +178,7 @@ static AFFINITY: LazyLock<HashSet<FixtureType>> = LazyLock::new(|| {
     .collect()
 });
 
-/// Return the set of fixture types that have patch affinity (aka we allow them)
-/// to be patched over each other.
+/// Return the set of Swarmolon fixture types that can be patched over each other.
 pub fn affinity() -> &'static HashSet<FixtureType> {
     &AFFINITY
 }
