@@ -1,0 +1,31 @@
+- fixture: Color
+  group: FrontLeft
+  control_color_space: Hsi
+  patches:
+    - addr: 1
+      kind: SevenChannelRgbw
+- fixture: Color
+  group: FrontRight
+  control_color_space: Hsi
+  patches:
+    - addr: 8
+      kind: SevenChannelRgbw
+- fixture: Color
+  group: Uplights
+  patches:
+    - addr: 50
+- fixture: SwarmolonDerby
+  patches:
+    - addr: 100
+    - addr: 110
+      mirror: true
+- fixture: SwarmolonStrobe
+  patches:
+    - addr: 100
+    - addr: 110
+      mirror: true
+- fixture: SwarmolonLasers
+  patches:
+    - addr: 100
+    - addr: 110
+      mirror: true

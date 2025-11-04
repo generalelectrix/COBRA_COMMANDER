@@ -146,7 +146,7 @@ impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
     }
 }
 
-/// Render a bool float to fixed values.
+/// Render a bool to fixed values.
 #[derive(Debug)]
 pub struct RenderBoolToRange {
     pub dmx_buf_offset: usize,
