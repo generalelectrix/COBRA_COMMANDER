@@ -74,7 +74,8 @@ mod strobe {
     pub struct SwarmolonStrobe {
         #[channel_control]
         pattern_select: ChannelKnobUnipolar<Unipolar<()>>,
-        strobe: StrobeChannel,
+        #[channel_control]
+        rate: ChannelKnobUnipolar<Unipolar<()>>,
     }
 
     const BUF_OFFSET: usize = 4;
@@ -83,20 +84,24 @@ mod strobe {
         fn default() -> Self {
             Self {
                 pattern_select: Unipolar::new("Pattern", ()).with_channel_knob(0),
-                strobe: StrobeFollower::channel(BUF_OFFSET, 19, 10, 0),
+                rate: Unipolar::new("Rate", ()).with_channel_knob(1),
             }
         }
     }
 
     impl NonAnimatedFixture for SwarmolonStrobe {
         fn render(&self, group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
-            self.strobe
-                .render(group_controls, std::iter::empty(), dmx_buf);
-            if dmx_buf[BUF_OFFSET] > 0 {
-                // compute pattern select index and offset
-                let pattern = unipolar_to_range(0, 9, self.pattern_select.control.val());
-                dmx_buf[BUF_OFFSET] += pattern * 10;
+            let strobe_on =
+                group_controls.strobe_enabled && group_controls.strobe_clock().strobe_on();
+            if !strobe_on {
+                dmx_buf[BUF_OFFSET] = 0;
+                return;
             }
+            // compute pattern select index and offset
+            let pattern = unipolar_to_range(1, 10, self.pattern_select.control.val());
+            let rate = unipolar_to_range(9, 0, self.rate.control.val());
+
+            dmx_buf[BUF_OFFSET] = rate + pattern * 10;
         }
     }
 }
