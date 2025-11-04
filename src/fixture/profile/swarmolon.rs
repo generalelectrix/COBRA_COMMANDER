@@ -29,6 +29,7 @@ mod derby {
                 shutter: Bool::new_off("Shutter", ()).with_channel_level(),
                 color: UnipolarChannel::channel("Color", 1, 10, 164).with_channel_knob(0),
                 rotation: Bipolar::split_channel("R", 7, 5, 127, 134, 255, 0)
+                    .with_detent()
                     .with_mirroring(true)
                     .with_channel_knob(1),
             }
