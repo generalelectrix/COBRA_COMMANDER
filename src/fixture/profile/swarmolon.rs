@@ -44,7 +44,7 @@ mod derby {
             animation_vals: &TargetedAnimationValues<Self::Target>,
             dmx_buf: &mut [u8],
         ) {
-            dmx_buf[0] = 0; // automatic programs
+            dmx_buf[0] = 255; // DMX mode
             let shutter_open = group_controls
                 .strobe_shutter()
                 .unwrap_or(self.shutter.control.val());
@@ -54,8 +54,8 @@ mod derby {
             } else {
                 dmx_buf[1] = 0;
             }
-            dmx_buf[2] = 0; // automatic speed
-            dmx_buf[3] = 0; // internal derby strobe
+            dmx_buf[2] = 0; // automatic speed off
+            dmx_buf[3] = 0; // internal derby strobe off
             self.rotation.render(
                 group_controls,
                 animation_vals.filter(&AnimationTarget::Rotation),
@@ -158,6 +158,7 @@ mod lasers {
             } else {
                 0
             };
+            dmx_buf[6] = 0; // internal strobe
             self.rotation.render(
                 group_controls,
                 animation_vals.filter(&AnimationTarget::Rotation),
