@@ -1,18 +1,15 @@
-- fixture: Color
+- fixture: SwarmolonDerby
   patches:
     - addr: 1
-- fixture: Color
-  group: Test
-  patches:
-    - addr: 100
-- fixture: Color
-  group: Test1
-  patches:
-    - addr: 107
-- fixture: Color
-  group: Test2
-  patches:
-    - addr: 117
-- fixture: FreqStrobe
-  patches:
     - addr: 10
+      mirror: true
+- fixture: SwarmolonStrobe
+  patches:
+    - addr: 1
+    - addr: 10
+      mirror: true
+- fixture: SwarmolonLasers
+  patches:
+    - addr: 1
+    - addr: 10
+      mirror: true

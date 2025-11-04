@@ -317,6 +317,10 @@ impl UsedAddrs {
     /// Attempt to allocate requested addresses for the provided fixture type.
     ///
     /// The addresses will only be allocated if there are no conflicts.
+    ///
+    /// Fixture types with "mutual affinity" are allowed to patch over each other;
+    /// this is a hack to allow representing a single fixture type as multiple
+    /// independent groups. Take care not to fuck this up.
     pub fn allocate(
         &mut self,
         fixture_type: FixtureType,
@@ -337,6 +341,9 @@ impl UsedAddrs {
         );
         for this_index in start_dmx_index..start_dmx_index + channel_count {
             if let Some((existing_fixture, patched_at)) = self.0.get(&(universe, this_index)) {
+                if Self::have_mutual_affinity(fixture_type, *existing_fixture) {
+                    continue;
+                }
                 bail!(
                     "{fixture_type} at {} overlaps at DMX address {} in universe {} with {} at {}",
                     start_dmx_index + 1,
@@ -352,10 +359,19 @@ impl UsedAddrs {
             let existing = self
                 .0
                 .insert((universe, this_index), (fixture_type, start_dmx_index));
-            debug_assert!(existing.is_none());
+            debug_assert!(match existing {
+                None => true,
+                Some((existing, _)) => Self::have_mutual_affinity(existing, fixture_type),
+            });
         }
 
         Ok(())
+    }
+
+    fn have_mutual_affinity(f0: FixtureType, f1: FixtureType) -> bool {
+        // TODO: destroy this or generalize it.
+        let swarm = crate::fixture::swarmolon::affinity();
+        swarm.contains(&f0) && swarm.contains(&f1)
     }
 }
 
