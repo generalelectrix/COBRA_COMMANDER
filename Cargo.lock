@@ -292,6 +292,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "artnet_protocol"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "686b971a57c02682e07fdb0866b09aad7df7054d9f3c3bb62a5eaa2092621367"
+dependencies = [
+ "bitflags 2.9.1",
+ "byteorder",
+]
+
+[[package]]
 name = "as-raw-xcb-connection"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4225,12 +4235,12 @@ dependencies = [
 
 [[package]]
 name = "rust_dmx"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "345f1319cbeba33a758ad72dfceb4baef3474138f0a2fd1ec5e46dbcf55f9348"
+checksum = "6e7c709c7b727049232b0324ce44d2975ec584b62e640d854e162c46133b8008"
 dependencies = [
  "anyhow",
- "derive_more 0.99.20",
+ "artnet_protocol",
  "log 0.4.27",
  "serde",
  "serialport",
