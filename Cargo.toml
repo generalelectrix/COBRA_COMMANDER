@@ -35,7 +35,7 @@ hsluv = "0.3"
 clap = { version = "4", features = ["derive"] }
 num-derive = "0.4"
 ordered-float = "5"
-ordermap = "0.5.7"
+ordermap = "1"
 ansi-escapes = "0.2.0"
 egui_plot = "0.33.0"
 eframe = "0.32.3"
