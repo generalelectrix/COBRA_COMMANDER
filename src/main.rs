@@ -8,10 +8,11 @@ use local_ip_address::local_ip;
 use log::LevelFilter;
 use midi::Device;
 use osc::prompt_osc_config;
-use rust_dmx::{available_ports, select_port, DmxPort, OfflineDmxPort};
+use rust_dmx::{available_ports, select_port_from, DmxPort, OfflineDmxPort};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
 use std::path::PathBuf;
+use std::time::Duration;
 use strum_macros::Display;
 use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
@@ -85,6 +86,10 @@ struct RunArgs {
     #[arg(long)]
     quickstart: bool,
 
+    /// If true, poll for artnet interfaces as possible DMX ports.
+    #[arg(long)]
+    artnet: bool,
+
     /// Check that the provided patch file is valid and quit.
     #[arg(long)]
     check_patch: bool,
@@ -139,6 +144,8 @@ fn main() -> Result<()> {
     }
 }
 
+const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
+
 fn quickstart(args: RunArgs) -> Result<()> {
     let patch = Patch::from_file(&args.patch_file)?;
 
@@ -167,7 +174,10 @@ fn quickstart(args: RunArgs) -> Result<()> {
 
     let mut dmx_ports = Vec::new();
 
-    let available_ports = available_ports()?;
+    if args.artnet {
+        println!("Searching for artnet ports...");
+    }
+    let available_ports = available_ports(args.artnet.then_some(ARTNET_POLL_TIMEOUT))?;
 
     for (i, port) in (0..universe_count).zip(available_ports.into_iter().rev().chain(
         std::iter::repeat_with(|| Box::new(OfflineDmxPort) as Box<dyn DmxPort>),
@@ -253,9 +263,13 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     let mut dmx_ports = Vec::new();
 
+    if args.artnet {
+        println!("Searching for artnet ports...");
+    }
+    let mut available_ports = available_ports(args.artnet.then_some(ARTNET_POLL_TIMEOUT))?;
     for i in 0..universe_count {
         println!("Assign port to universe {i}:");
-        dmx_ports.push(select_port()?);
+        dmx_ports.push(select_port_from(&mut available_ports)?);
     }
 
     if animation_service.is_some() {

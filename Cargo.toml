@@ -10,7 +10,7 @@ serde = { version = "1", features = ["derive", "rc"] }
 log = "0.4"
 simplelog = "0.12"
 rosc = "0.11"
-rust_dmx = "0.5"
+rust_dmx = "0.6"
 serde_yaml = "0.9"
 local-ip-address = "0.6"
 number = { git = "https://github.com/generalelectrix/number", branch = "main" }
