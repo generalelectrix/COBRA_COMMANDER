@@ -2,3 +2,21 @@
   paired: true
   patches:
     - addr: 1
+- fixture: RotosphereQ3
+  patches:
+    - addr: 11
+    - addr: 20
+      mirror: true
+- fixture: Wizlet
+  patches:
+    - addr: 30
+    - addr: 42
+      mirror: true
+    - addr: 54
+      mirror: true
+    - addr: 66
+- fixture: Starlight
+  patches:
+    - addr: 78
+    - addr: 82
+      mirror: true
