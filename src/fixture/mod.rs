@@ -46,11 +46,15 @@ impl<'a> FixtureGroupControls<'a> {
         if !self.strobe_enabled {
             return None;
         }
-        Some(if self.flash_on {
-            self.strobe_clock().intensity()
+        if self.flash_on {
+            // If we're rendering a flash, always show it.
+            Some(self.strobe_clock().intensity())
+        } else if self.master_controls.strobe().strobe_on() {
+            // Otherwise, if global strobing is enabled, show black.
+            Some(UnipolarFloat::ZERO)
         } else {
-            UnipolarFloat::ZERO
-        })
+            None
+        }
     }
 
     /// Return Some containing a strobe state if strobe override is active.
@@ -62,6 +66,7 @@ impl<'a> FixtureGroupControls<'a> {
 }
 
 pub mod prelude {
+    pub use super::FixtureGroupControls;
     pub use super::fixture::EnumRenderModel;
     pub use super::fixture::{
         AnimatedFixture, FixtureGroupUpdate, FixtureType, NonAnimatedFixture, Update,
@@ -70,7 +75,6 @@ pub mod prelude {
         AsPatchOption, CreateAnimatedGroup, CreateNonAnimatedGroup, NoOptions, PatchConfig,
         PatchFixture,
     };
-    pub use super::FixtureGroupControls;
     pub use crate::channel::ChannelStateEmitter;
 
     pub use crate::control::EmitControlMessage;
@@ -80,7 +84,7 @@ pub mod prelude {
     pub use crate::strobe::StrobeResponse;
     pub use anyhow::bail;
     pub use fixture_macros::{
-        register_patcher, Control, EmitState, OptionsMenu, PatchFixture, Update,
+        Control, EmitState, OptionsMenu, PatchFixture, Update, register_patcher,
     };
     pub use number::{BipolarFloat, Phase, UnipolarFloat};
     pub use serde::Deserialize;
