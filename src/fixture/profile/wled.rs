@@ -28,8 +28,8 @@ pub struct Wled {
 #[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
 pub struct GroupOptions {
-    url: Url,
-    preset_count: usize,
+    pub url: Url,
+    pub preset_count: usize,
 }
 
 impl PatchFixture for Wled {
@@ -127,10 +127,25 @@ fn get_seg(state: &mut State) -> &mut Seg {
 mod rug_doctor {
     //! Composite fixture, controlling both a WLED node and an Astera controller.
     use log::error;
+    use serde::Serialize;
 
     use crate::color::ColorRgb;
 
     use super::*;
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct GroupOptions {
+        #[serde(flatten)]
+        pub wled: super::GroupOptions,
+        pub presets: Vec<AsteraPreset>,
+    }
+
+    impl crate::fixture::patch::OptionsMenu for GroupOptions {
+        fn menu() -> Vec<(String, crate::fixture::patch::PatchOption)> {
+            super::GroupOptions::menu()
+        }
+    }
 
     #[derive(Debug, EmitState, Control, Update)]
     pub struct RugDoctor {
@@ -148,9 +163,16 @@ mod rug_doctor {
         type PatchOptions = NoOptions;
 
         fn new(options: Self::GroupOptions) -> Self {
+            if options.presets.len() != options.wled.preset_count {
+                error!(
+                    "WLED has {} presets but only {} are defined for astera",
+                    options.wled.preset_count,
+                    options.presets.len(),
+                );
+            }
             Self {
-                presets: get_presets(options.preset_count),
-                wled: Wled::new(options),
+                presets: options.presets,
+                wled: Wled::new(options.wled),
             }
         }
 
@@ -164,8 +186,6 @@ mod rug_doctor {
 
     register_patcher!(RugDoctor);
 
-    const LEVEL_SCALE: UnipolarFloat = UnipolarFloat::ONE;
-    const SPEED_SCALE: UnipolarFloat = UnipolarFloat::ONE;
     const FADE: u8 = 100;
 
     impl NonAnimatedFixture for RugDoctor {
@@ -175,12 +195,20 @@ mod rug_doctor {
                 error!(
                     "selected WLED preset {preset_index} out of range for astera, using default"
                 );
-                &DEFAULT_PRESET
+                &MISSING_PRESET
             });
-            dmx_buf[0] = unipolar_to_range(0, 255, self.wled.level.control.val() * LEVEL_SCALE);
+            dmx_buf[0] = unipolar_to_range(
+                0,
+                255,
+                UnipolarFloat::new(self.wled.level.control.val().val() * preset.level_scale),
+            );
             dmx_buf[1] = 0; // strobe off
             dmx_buf[2] = preset.program_dmx_val;
-            dmx_buf[3] = unipolar_to_range(0, 255, self.wled.speed.control.val() * SPEED_SCALE);
+            dmx_buf[3] = unipolar_to_range(
+                0,
+                255,
+                UnipolarFloat::new(self.wled.speed.control.val().val() * preset.speed_scale),
+            );
             dmx_buf[4] = FADE;
             dmx_buf[5] = 0; // pattern forward, pattern loops
             dmx_buf[6] = 0;
@@ -195,25 +223,25 @@ mod rug_doctor {
         }
     }
 
-    #[derive(Debug, Default)]
-    struct AsteraPreset {
-        program_dmx_val: u8,
-        colors: [ColorRgb; 4],
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct AsteraPreset {
+        pub program_dmx_val: u8,
+        pub level_scale: f64,
+        pub speed_scale: f64,
+        pub colors: [ColorRgb; 4],
     }
 
-    static DEFAULT_PRESET: AsteraPreset = AsteraPreset {
+    // FIXME workaround
+    impl AsPatchOption for Vec<AsteraPreset> {
+        fn as_patch_option() -> crate::fixture::patch::PatchOption {
+            crate::fixture::patch::PatchOption::Bool
+        }
+    }
+
+    static MISSING_PRESET: AsteraPreset = AsteraPreset {
         program_dmx_val: 0,
+        level_scale: 1.0,
+        speed_scale: 1.0,
         colors: [[0, 0, 0]; 4],
     };
-
-    fn get_presets(count: usize) -> Vec<AsteraPreset> {
-        let presets = vec![];
-        if presets.len() < count {
-            panic!(
-                "WLED has {count} presets but only {} are defined for astera",
-                presets.len()
-            );
-        }
-        presets
-    }
 }
