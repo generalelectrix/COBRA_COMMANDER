@@ -123,3 +123,97 @@ fn get_seg(state: &mut State) -> &mut Seg {
     }
     &mut seg[0]
 }
+
+mod rug_doctor {
+    //! Composite fixture, controlling both a WLED node and an Astera controller.
+    use log::error;
+
+    use crate::color::ColorRgb;
+
+    use super::*;
+
+    #[derive(Debug, EmitState, Control, Update)]
+    pub struct RugDoctor {
+        #[channel_control]
+        wled: Wled,
+
+        #[skip_emit]
+        #[skip_control]
+        presets: Vec<AsteraPreset>,
+    }
+
+    impl PatchFixture for RugDoctor {
+        const NAME: FixtureType = FixtureType("RugDoctor");
+        type GroupOptions = GroupOptions;
+        type PatchOptions = NoOptions;
+
+        fn new(options: Self::GroupOptions) -> Self {
+            Self {
+                presets: get_presets(options.preset_count),
+                wled: Wled::new(options),
+            }
+        }
+
+        fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
+            PatchConfig {
+                channel_count: 20,
+                render_mode: None,
+            }
+        }
+    }
+
+    register_patcher!(RugDoctor);
+
+    const LEVEL_SCALE: UnipolarFloat = UnipolarFloat::ONE;
+    const SPEED_SCALE: UnipolarFloat = UnipolarFloat::ONE;
+    const FADE: u8 = 100;
+
+    impl NonAnimatedFixture for RugDoctor {
+        fn render(&self, _: &FixtureGroupControls, dmx_buf: &mut [u8]) {
+            let preset_index = self.wled.preset.selected();
+            let preset = self.presets.get(preset_index).unwrap_or_else(|| {
+                error!(
+                    "selected WLED preset {preset_index} out of range for astera, using default"
+                );
+                &DEFAULT_PRESET
+            });
+            dmx_buf[0] = unipolar_to_range(0, 255, self.wled.level.control.val() * LEVEL_SCALE);
+            dmx_buf[1] = 0; // strobe off
+            dmx_buf[2] = preset.program_dmx_val;
+            dmx_buf[3] = unipolar_to_range(0, 255, self.wled.speed.control.val() * SPEED_SCALE);
+            dmx_buf[4] = FADE;
+            dmx_buf[5] = 0; // pattern forward, pattern loops
+            dmx_buf[6] = 0;
+            dmx_buf[7] = 0; // send on modify
+            // write palette
+            for (i, color) in preset.colors.iter().enumerate() {
+                let start = 8 + i * 3;
+                dmx_buf[start] = color[0];
+                dmx_buf[start + 1] = color[1];
+                dmx_buf[start + 2] = color[2];
+            }
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct AsteraPreset {
+        program_dmx_val: u8,
+        colors: [ColorRgb; 4],
+    }
+
+    static DEFAULT_PRESET: AsteraPreset = AsteraPreset {
+        program_dmx_val: 0,
+        colors: [[0, 0, 0]; 4],
+    };
+
+    fn get_presets(count: usize) -> Vec<AsteraPreset> {
+        let presets = vec![];
+        if presets.len() < count {
+            panic!(
+                "WLED has {count} presets but only {} are defined for astera",
+                presets.len()
+            );
+        }
+        presets
+    }
+}
