@@ -1,10 +1,12 @@
 //! Control profile for Astera LEDs running in RC Wireless mode.
+use std::{io::stdout, time::Duration};
+
 use crate::{
-    color::ColorSpace,
+    color::{ColorRgb, ColorSpace},
     fixture::{color::Color, prelude::*},
 };
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, PatchFixture)]
 #[channel_count = 20]
 pub struct Astera {
     #[channel_control]
@@ -21,6 +23,9 @@ pub struct Astera {
     color2: Color,
     color3: Color,
     color4: Color,
+    #[skip_emit]
+    #[skip_control]
+    update_age: Duration,
 }
 
 impl Default for Astera {
@@ -60,6 +65,31 @@ impl Default for Astera {
             color2: Color::for_subcontrol(Some(2), ColorSpace::Hsv),
             color3: Color::for_subcontrol(Some(3), ColorSpace::Hsv),
             color4: Color::for_subcontrol(Some(4), ColorSpace::Hsv),
+            update_age: Duration::ZERO,
+        }
+    }
+}
+
+impl Update for Astera {
+    fn update(&mut self, _: FixtureGroupUpdate, dt: std::time::Duration) {
+        self.update_age += dt;
+        if self.update_age > Duration::from_secs(1) {
+            self.update_age = Duration::ZERO;
+            let mut colors: [ColorRgb; 4] = Default::default();
+            self.color1.render_without_animations(
+                &Default::default(),
+                super::color::Model::Rgb,
+                &mut colors[0],
+            );
+            let _ = serde_yaml::to_writer(
+                stdout(),
+                &super::wled::rug_doctor::AsteraPreset {
+                    program_dmx_val: self.program.dmx_val(),
+                    level_scale: 1.0,
+                    speed_scale: 1.0,
+                    colors,
+                },
+            );
         }
     }
 }

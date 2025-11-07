@@ -124,7 +124,7 @@ fn get_seg(state: &mut State) -> &mut Seg {
     &mut seg[0]
 }
 
-mod rug_doctor {
+pub mod rug_doctor {
     //! Composite fixture, controlling both a WLED node and an Astera controller.
     use log::error;
     use serde::Serialize;

@@ -56,6 +56,17 @@ impl LabeledSelect {
     pub fn labels(&self) -> impl Iterator<Item = &str> {
         self.options.iter().map(|(l, _)| *l)
     }
+
+    /// Return the currently-selected DMX value.
+    pub fn dmx_val(&self) -> u8 {
+        let mut val = self.options[self.selected].1;
+        if let Some(split) = &self.split {
+            if split.split_on.val() {
+                val += split.offset;
+            }
+        }
+        val
+    }
 }
 
 impl OscControl<&str> for LabeledSelect {
@@ -136,13 +147,7 @@ impl RenderToDmxWithAnimations for LabeledSelect {
         _animations: impl Iterator<Item = f64>,
         dmx_buf: &mut [u8],
     ) {
-        let mut val = self.options[self.selected].1;
-        if let Some(split) = &self.split {
-            if split.split_on.val() {
-                val += split.offset;
-            }
-        }
-        dmx_buf[self.dmx_buf_offset] = val;
+        dmx_buf[self.dmx_buf_offset] = self.dmx_val();
     }
 }
 
