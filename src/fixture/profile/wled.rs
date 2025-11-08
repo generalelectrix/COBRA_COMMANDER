@@ -28,8 +28,8 @@ pub struct Wled {
 #[derive(Deserialize, OptionsMenu)]
 #[serde(deny_unknown_fields)]
 pub struct GroupOptions {
-    url: Url,
-    preset_count: usize,
+    pub url: Url,
+    pub preset_count: usize,
 }
 
 impl PatchFixture for Wled {
@@ -122,4 +122,126 @@ fn get_seg(state: &mut State) -> &mut Seg {
         seg.push(Default::default());
     }
     &mut seg[0]
+}
+
+pub mod rug_doctor {
+    //! Composite fixture, controlling both a WLED node and an Astera controller.
+    use log::error;
+    use serde::Serialize;
+
+    use crate::color::ColorRgb;
+
+    use super::*;
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct GroupOptions {
+        #[serde(flatten)]
+        pub wled: super::GroupOptions,
+        pub presets: Vec<AsteraPreset>,
+    }
+
+    impl crate::fixture::patch::OptionsMenu for GroupOptions {
+        fn menu() -> Vec<(String, crate::fixture::patch::PatchOption)> {
+            super::GroupOptions::menu()
+        }
+    }
+
+    #[derive(Debug, EmitState, Control, Update)]
+    pub struct RugDoctor {
+        #[channel_control]
+        wled: Wled,
+
+        #[skip_emit]
+        #[skip_control]
+        presets: Vec<AsteraPreset>,
+    }
+
+    impl PatchFixture for RugDoctor {
+        const NAME: FixtureType = FixtureType("RugDoctor");
+        type GroupOptions = GroupOptions;
+        type PatchOptions = NoOptions;
+
+        fn new(options: Self::GroupOptions) -> Self {
+            if options.presets.len() != options.wled.preset_count {
+                error!(
+                    "WLED has {} presets but only {} are defined for astera",
+                    options.wled.preset_count,
+                    options.presets.len(),
+                );
+            }
+            Self {
+                presets: options.presets,
+                wled: Wled::new(options.wled),
+            }
+        }
+
+        fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
+            PatchConfig {
+                channel_count: 20,
+                render_mode: None,
+            }
+        }
+    }
+
+    register_patcher!(RugDoctor);
+
+    const FADE: u8 = 100;
+
+    impl NonAnimatedFixture for RugDoctor {
+        fn render(&self, _: &FixtureGroupControls, dmx_buf: &mut [u8]) {
+            let preset_index = self.wled.preset.selected();
+            let preset = self.presets.get(preset_index).unwrap_or_else(|| {
+                error!(
+                    "selected WLED preset {preset_index} out of range for astera, using default"
+                );
+                &MISSING_PRESET
+            });
+            dmx_buf[0] = unipolar_to_range(
+                0,
+                255,
+                UnipolarFloat::new(self.wled.level.control.val().val() * preset.level_scale),
+            );
+            dmx_buf[1] = 0; // strobe off
+            dmx_buf[2] = preset.program_dmx_val;
+            dmx_buf[3] = unipolar_to_range(
+                0,
+                255,
+                UnipolarFloat::new(self.wled.speed.control.val().val() * preset.speed_scale),
+            );
+            dmx_buf[4] = FADE;
+            dmx_buf[5] = 0; // pattern forward, pattern loops
+            dmx_buf[6] = 0;
+            dmx_buf[7] = 0; // send on modify
+            // write palette
+            for (i, color) in preset.colors.iter().enumerate() {
+                let start = 8 + i * 3;
+                dmx_buf[start] = color[0];
+                dmx_buf[start + 1] = color[1];
+                dmx_buf[start + 2] = color[2];
+            }
+        }
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct AsteraPreset {
+        pub program_dmx_val: u8,
+        pub level_scale: f64,
+        pub speed_scale: f64,
+        pub colors: [ColorRgb; 4],
+    }
+
+    // FIXME workaround
+    impl AsPatchOption for Vec<AsteraPreset> {
+        fn as_patch_option() -> crate::fixture::patch::PatchOption {
+            crate::fixture::patch::PatchOption::Bool
+        }
+    }
+
+    static MISSING_PRESET: AsteraPreset = AsteraPreset {
+        program_dmx_val: 0,
+        level_scale: 1.0,
+        speed_scale: 1.0,
+        colors: [[0, 0, 0]; 4],
+    };
 }

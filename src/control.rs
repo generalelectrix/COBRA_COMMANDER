@@ -1,11 +1,11 @@
 //! Top-level traits and types for control events.
 
 use std::{
-    sync::mpsc::{channel, Receiver, RecvTimeoutError},
+    sync::mpsc::{Receiver, RecvTimeoutError, channel},
     time::Duration,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use rosc::OscMessage;
 use tunnels::midi::{CreateControlEvent, DeviceSpec};
 
@@ -171,10 +171,13 @@ impl CreateControlEvent<Device> for ControlMessage {
     }
 }
 
-#[cfg(test)]
 pub mod mock {
     use super::*;
 
+    /// An emitter that does nothing.
+    ///
+    /// Useful for tests, as well as occasional use as a shim when creating
+    /// composite fixture types.
     pub struct NoOpEmitter;
 
     impl EmitOscMessage for NoOpEmitter {
@@ -191,5 +194,10 @@ pub mod mock {
 
     impl EmitMidiMasterMessage for NoOpEmitter {
         fn emit_midi_master_message(&self, _: &crate::master::StateChange) {}
+    }
+
+    impl EmitScopedOscMessage for NoOpEmitter {
+        fn emit_float(&self, _: &str, _: f64) {}
+        fn emit_osc(&self, _: crate::osc::ScopedOscMessage) {}
     }
 }
