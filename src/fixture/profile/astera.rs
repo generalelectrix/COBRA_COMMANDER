@@ -81,6 +81,21 @@ impl Update for Astera {
                 super::color::Model::Rgb,
                 &mut colors[0],
             );
+            self.color2.render_without_animations(
+                &Default::default(),
+                super::color::Model::Rgb,
+                &mut colors[1],
+            );
+            self.color3.render_without_animations(
+                &Default::default(),
+                super::color::Model::Rgb,
+                &mut colors[2],
+            );
+            self.color4.render_without_animations(
+                &Default::default(),
+                super::color::Model::Rgb,
+                &mut colors[3],
+            );
             let _ = serde_yaml::to_writer(
                 stdout(),
                 &super::wled::rug_doctor::AsteraPreset {
