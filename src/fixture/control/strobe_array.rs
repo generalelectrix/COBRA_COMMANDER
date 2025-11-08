@@ -1,6 +1,8 @@
 //! Some stateful controls for arrays of things that can strobe.
 //!
 //! Provides flash patterns, including sequences and true randomness.
+use std::iter::zip;
+
 use anyhow::{Result, anyhow, bail, ensure};
 use log::error;
 use rand::prelude::*;
@@ -282,7 +284,6 @@ impl<const N: usize> Chases<N> {
         }
     }
 
-    #[expect(dead_code)]
     /// Add a chase directly into a multiplier's collection.
     ///
     /// Use caution - we should always maintain the same number of chases for
@@ -335,6 +336,16 @@ impl<const N: usize> Chases<N> {
             .get_mut(i)
             .ok_or_else(|| anyhow!("chase index {i} out of range (> {n_chase})"))
     }
+}
+
+pub fn two_flash_spread(
+    cell_count: usize,
+) -> Result<impl DoubleEndedIterator<Item = (CellIndex, CellIndex)>> {
+    ensure!(
+        cell_count % 2 == 0,
+        "two-flash spread cell count must be an even number"
+    );
+    Ok(zip((0..cell_count / 2).rev(), cell_count / 2..cell_count))
 }
 
 /// A determinisitc sequence of cells.

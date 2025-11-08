@@ -2,7 +2,6 @@
 //!
 //! TODO: merge this and the profile for Flash Bang.
 use anyhow::Result;
-use std::iter::zip;
 
 use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
@@ -83,10 +82,6 @@ impl AnimatedFixture for FreqStrobe {
     }
 }
 
-fn two_flash_spread() -> impl DoubleEndedIterator<Item = (CellIndex, CellIndex)> {
-    zip((0..CELL_COUNT / 2).rev(), CELL_COUNT / 2..CELL_COUNT)
-}
-
 fn create_chases() -> Result<Chases<CELL_COUNT>> {
     let mut p = Chases::new(&[1, 2, 4])?;
     // single pulse 1-16
@@ -96,10 +91,10 @@ fn create_chases() -> Result<Chases<CELL_COUNT>> {
         (0..CELL_COUNT).chain((1..CELL_COUNT - 1).rev()),
     ))?;
     // two flash spread from middle
-    p.add_auto_mult(PatternArray::doubles(two_flash_spread()))?;
+    p.add_auto_mult(PatternArray::doubles(two_flash_spread(CELL_COUNT)?))?;
     // two flash bounce, starting out
     p.add_auto_mult(PatternArray::doubles(
-        two_flash_spread().chain(two_flash_spread().rev().skip(1).take(6)),
+        two_flash_spread(CELL_COUNT)?.chain(two_flash_spread(CELL_COUNT)?.rev().skip(1).take(6)),
     ))?;
 
     p.add_auto_random();

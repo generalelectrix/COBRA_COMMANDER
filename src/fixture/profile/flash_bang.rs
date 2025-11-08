@@ -132,11 +132,21 @@ fn chases_for_paired() -> Result<Chases<10>> {
     // single pulse
     c.add_auto_mult(PatternArray::singles(0..CELLS))?;
     // single pulse bounce
-    c.add_auto_mult(PatternArray::singles(
-        (0..CELLS).chain((1..CELLS - 1).rev()),
-    ))?;
+    c.add_for_mult(
+        0,
+        PatternArray::singles((0..CELLS).chain((1..CELLS - 1).rev())),
+    )?;
+    c.add_for_mult(
+        1,
+        PatternArray::doubles(
+            two_flash_spread(CELLS)?.chain(two_flash_spread(CELLS)?.rev().skip(1).take(3)),
+        ),
+    )?;
+
     c.add_auto_random();
-    c.add_all();
+    // "all" that alternates fixtures
+    c.add_for_mult(0, PatternArray::new(vec![[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]))?;
+    c.add_for_mult(1, PatternArray::all())?;
     Ok(c)
 }
 
