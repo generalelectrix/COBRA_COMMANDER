@@ -24,12 +24,12 @@ pub struct FreqStrobe {
     reverse: Bool<()>,
     #[skip_emit]
     #[skip_control]
-    flasher: Flasher,
+    flasher: Flasher<CELL_COUNT>,
 }
 
 impl Default for FreqStrobe {
     fn default() -> Self {
-        let flasher = Flasher::new(create_chases().unwrap());
+        let flasher = Flasher::new(create_chases().unwrap(), true);
         Self {
             intensity: Unipolar::new("Intensity", ())
                 .at_full()
@@ -90,7 +90,7 @@ fn two_flash_spread() -> impl DoubleEndedIterator<Item = (CellIndex, CellIndex)>
     zip((0..CELL_COUNT / 2).rev(), CELL_COUNT / 2..CELL_COUNT)
 }
 
-fn create_chases() -> Result<Chases> {
+fn create_chases() -> Result<Chases<CELL_COUNT>> {
     let mut p = Chases::new(&[1, 2, 4])?;
     // single pulse 1-16
     p.add_auto_mult(PatternArray::singles(0..CELL_COUNT))?;
@@ -109,19 +109,23 @@ fn create_chases() -> Result<Chases> {
     Ok(p)
 }
 
-struct Flasher {
-    state: FlashState<CELL_COUNT>,
+pub struct Flasher<const N: usize> {
+    state: FlashState<N>,
     selected_chase: ChaseIndex,
     selected_multiplier: usize,
-    chases: Chases,
+    /// If true, patches of this strobe array can handle mirroring - in other
+    /// words, they do not physically have complete radial symmetry.
+    can_mirror: bool,
+    chases: Chases<N>,
 }
 
-impl Flasher {
-    pub fn new(chases: Chases) -> Self {
+impl<const N: usize> Flasher<N> {
+    pub fn new(chases: Chases<N>, can_mirror: bool) -> Self {
         Self {
             state: Default::default(),
             selected_chase: Default::default(),
             selected_multiplier: 0,
+            can_mirror,
             chases,
         }
     }
@@ -137,13 +141,13 @@ fn render_state_iter<'a>(
     }
 }
 
-impl Flasher {
+impl<const N: usize> Flasher<N> {
     pub fn len(&self) -> usize {
         self.chases.chase_count()
     }
 
     pub fn render(&self, group_controls: &FixtureGroupControls, intensity: u8, dmx_buf: &mut [u8]) {
-        if group_controls.mirror {
+        if self.can_mirror && group_controls.mirror {
             render_state_iter(self.state.cells().iter().rev(), intensity, dmx_buf);
         } else {
             render_state_iter(self.state.cells().iter(), intensity, dmx_buf);
@@ -182,14 +186,14 @@ impl Flasher {
     }
 }
 
-pub struct Chases(Vec<ChaseSet>);
+pub struct Chases<const N: usize>(Vec<ChaseSet<N>>);
 
-struct ChaseSet {
+struct ChaseSet<const N: usize> {
     pub multiplier: u8,
-    pub chases: Vec<Box<dyn Chase<CELL_COUNT>>>,
+    pub chases: Vec<Box<dyn Chase<N>>>,
 }
 
-impl ChaseSet {
+impl<const N: usize> ChaseSet<N> {
     pub fn new(multiplier: u8) -> Self {
         Self {
             multiplier,
@@ -202,11 +206,8 @@ impl ChaseSet {
     }
 
     /// Add a chase, using even offsets to apply this set's multiplier.
-    pub fn add_with_mult_auto(
-        &mut self,
-        chase: impl Chase<CELL_COUNT> + 'static + Clone,
-    ) -> Result<()> {
-        let stride = CELL_COUNT / self.multiplier as usize;
+    pub fn add_with_mult_auto(&mut self, chase: impl Chase<N> + 'static + Clone) -> Result<()> {
+        let stride = N / self.multiplier as usize;
         match self.multiplier {
             1 => self.chases.push(Box::new(chase)),
             2 => self.chases.push(Box::new(Lockstep::new(
@@ -232,18 +233,18 @@ impl ChaseSet {
     /// Add non-repeating random, taking multiplier segments per flash.
     pub fn add_random(&mut self) {
         self.chases
-            .push(Box::new(RandomPattern::<CELL_COUNT>::take(self.multiplier)));
+            .push(Box::new(RandomPattern::<N>::take(self.multiplier)));
     }
 }
 
-impl Chases {
+impl<const N: usize> Chases<N> {
     pub fn new(multipliers: &[u8]) -> Result<Self> {
         ensure!(multipliers[0] == 1);
         for &m in multipliers {
             ensure!(m > 0, "cannot use a strobe array chase multiplier of 0");
             ensure!(
-                CELL_COUNT % m as usize == 0,
-                "strobe array with cell count {CELL_COUNT} cannot divide evenly by multiplier {m}"
+                N % m as usize == 0,
+                "strobe array with cell count {N} cannot divide evenly by multiplier {m}"
             );
         }
         Ok(Self(
@@ -256,7 +257,7 @@ impl Chases {
     }
 
     /// Add a chase, automatically creating all multipliers using Lockstep.
-    pub fn add_auto_mult(&mut self, chase: impl Chase<CELL_COUNT> + 'static + Clone) -> Result<()> {
+    pub fn add_auto_mult(&mut self, chase: impl Chase<N> + 'static + Clone) -> Result<()> {
         for chase_set in &mut self.0 {
             chase_set.add_with_mult_auto(chase.clone())?;
         }
@@ -284,7 +285,7 @@ impl Chases {
     pub fn add_for_mult(
         &mut self,
         multiplier_index: usize,
-        chase: impl Chase<CELL_COUNT> + 'static,
+        chase: impl Chase<N> + 'static,
     ) -> Result<()> {
         self.chase_set_mut(multiplier_index)?
             .chases
@@ -298,7 +299,7 @@ impl Chases {
         i: ChaseIndex,
         multiplier_index: usize,
         reverse: bool,
-        state: &mut FlashState<CELL_COUNT>,
+        state: &mut FlashState<N>,
     ) -> Result<()> {
         self.chase_mut(multiplier_index, i)?
             .set_next(reverse, state);
@@ -311,7 +312,7 @@ impl Chases {
         Ok(())
     }
 
-    fn chase_set_mut(&mut self, multiplier_index: usize) -> Result<&mut ChaseSet> {
+    fn chase_set_mut(&mut self, multiplier_index: usize) -> Result<&mut ChaseSet<N>> {
         let n_mult = self.0.len();
         self.0
             .get_mut(multiplier_index)
@@ -322,7 +323,7 @@ impl Chases {
         &mut self,
         multiplier_index: usize,
         i: ChaseIndex,
-    ) -> Result<&mut Box<dyn Chase<CELL_COUNT>>> {
+    ) -> Result<&mut Box<dyn Chase<N>>> {
         let set = self.chase_set_mut(multiplier_index)?;
         let n_chase = set.len();
         set.chases
