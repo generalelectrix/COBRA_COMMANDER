@@ -15,6 +15,7 @@ pub struct FlashBang {
     #[animate]
     intensity: ChannelKnobUnipolar<Unipolar<()>>,
     chase: IndexedSelect<()>,
+    double: Bool<()>,
     reverse: Bool<()>,
     #[skip_emit]
     #[skip_control]
@@ -45,6 +46,7 @@ impl PatchFixture for FlashBang {
                 .at(UnipolarFloat::new(0.1))
                 .with_channel_knob(0),
             chase: IndexedSelect::new("Chase", flasher.len(), false, ()),
+            double: Bool::new_off("Double", ()),
             reverse: Bool::new_off("Reverse", ()),
             flasher,
         }
@@ -64,8 +66,12 @@ impl PatchFixture for FlashBang {
 
 impl Update for FlashBang {
     fn update(&mut self, update: FixtureGroupUpdate, _dt: std::time::Duration) {
-        self.flasher
-            .update(update.flash_now, self.chase.selected(), self.reverse.val());
+        self.flasher.update(
+            update.flash_now,
+            self.chase.selected(),
+            self.double.val(),
+            self.reverse.val(),
+        );
     }
 }
 
@@ -108,14 +114,19 @@ register_patcher!(FlashBang);
 trait UnsizedFlasher {
     fn len(&self) -> usize;
     fn cells(&self) -> &[Option<Flash>];
-    fn update(&mut self, trigger_flash: bool, selected_chase: ChaseIndex, reverse: bool);
+    fn update(
+        &mut self,
+        trigger_flash: bool,
+        selected_chase: ChaseIndex,
+        double: bool,
+        reverse: bool,
+    );
 }
 
 fn single_flasher() -> Flasher<5> {
     const CELLS: usize = 5;
     let mut f: Flasher<CELLS> = Default::default();
-    // all
-    f.add_chase(PatternArray::all());
+
     // single pulse
     f.add_chase(PatternArray::singles(0..CELLS));
     // single pulse bounce
@@ -124,14 +135,15 @@ fn single_flasher() -> Flasher<5> {
     ));
     // random
     f.add_chase(RandomPattern::<CELLS>::take(1));
+    // all
+    f.add_chase(PatternArray::all());
     f
 }
 
 fn paired_flasher() -> Flasher<10> {
     const CELLS: usize = 10;
     let mut f: Flasher<CELLS> = Default::default();
-    // all
-    f.add_chase(PatternArray::all());
+
     // single pulse
     f.add_chase(PatternArray::singles(0..CELLS));
     // single pulse bounce
@@ -140,25 +152,35 @@ fn paired_flasher() -> Flasher<10> {
     ));
     // random
     f.add_chase(RandomPattern::<CELLS>::take(1));
+    // all
+    f.add_chase(PatternArray::all());
     f
 }
 #[derive(Default)]
 struct Flasher<const N: usize> {
     state: FlashState<N>,
     selected_chase: ChaseIndex,
-    chases: Vec<Box<dyn Chase<N>>>,
+    double: bool,
+    singles: Vec<Box<dyn Chase<N>>>,
+    doubles: Vec<Box<dyn Chase<N>>>,
 }
 
 impl<const N: usize> UnsizedFlasher for Flasher<N> {
     fn len(&self) -> usize {
-        self.chases.len()
+        self.singles.len()
     }
 
     fn cells(&self) -> &[Option<Flash>] {
         &self.state.cells()[..]
     }
 
-    fn update(&mut self, trigger_flash: bool, selected_chase: ChaseIndex, reverse: bool) {
+    fn update(
+        &mut self,
+        trigger_flash: bool,
+        selected_chase: ChaseIndex,
+        double: bool,
+        reverse: bool,
+    ) {
         self.state.update(1);
 
         let reset = selected_chase != self.selected_chase;
@@ -175,11 +197,11 @@ impl<const N: usize> UnsizedFlasher for Flasher<N> {
 
 impl<const N: usize> Flasher<N> {
     pub fn add_chase(&mut self, c: impl Chase<N> + 'static) {
-        self.chases.push(Box::new(c));
+        self.singles.push(Box::new(c));
     }
 
     fn reset(&mut self) {
-        let Some(chase) = self.chases.get_mut(self.selected_chase) else {
+        let Some(chase) = self.singles.get_mut(self.selected_chase) else {
             error!(
                 "Selected Flash Bang chase {} out of range.",
                 self.selected_chase
@@ -190,7 +212,7 @@ impl<const N: usize> Flasher<N> {
     }
 
     fn flash_next(&mut self, reverse: bool) {
-        let Some(chase) = self.chases.get_mut(self.selected_chase) else {
+        let Some(chase) = self.singles.get_mut(self.selected_chase) else {
             error!(
                 "Selected Flash Bang chase {} out of range.",
                 self.selected_chase

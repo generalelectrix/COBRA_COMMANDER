@@ -1,9 +1,11 @@
 //! Profile for the Big Bar, the American DJ Freq Strobe 16.
 //!
 //! TODO: merge this and the profile for Flash Bang.
-use std::iter::zip;
-
+use anyhow::Result;
+use anyhow::anyhow;
+use anyhow::ensure;
 use log::error;
+use std::iter::zip;
 
 use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
@@ -27,7 +29,7 @@ pub struct FreqStrobe {
 
 impl Default for FreqStrobe {
     fn default() -> Self {
-        let flasher = Flasher::default();
+        let flasher = Flasher::new(create_chases().unwrap());
         Self {
             intensity: Unipolar::new("Intensity", ())
                 .at_full()
@@ -84,12 +86,45 @@ impl AnimatedFixture for FreqStrobe {
     }
 }
 
-#[derive(Default)]
+fn two_flash_spread() -> impl DoubleEndedIterator<Item = (CellIndex, CellIndex)> {
+    zip((0..CELL_COUNT / 2).rev(), CELL_COUNT / 2..CELL_COUNT)
+}
+
+fn create_chases() -> Result<Chases> {
+    let mut p = Chases::new(&[1, 2, 4])?;
+    // single pulse 1-16
+    p.add_auto_mult(PatternArray::singles(0..CELL_COUNT))?;
+    // single pulse bounce
+    p.add_auto_mult(PatternArray::singles(
+        (0..CELL_COUNT).chain((1..CELL_COUNT - 1).rev()),
+    ))?;
+    // two flash spread from middle
+    p.add_auto_mult(PatternArray::doubles(two_flash_spread()))?;
+    // two flash bounce, starting out
+    p.add_auto_mult(PatternArray::doubles(
+        two_flash_spread().chain(two_flash_spread().rev().skip(1).take(6)),
+    ))?;
+
+    p.add_auto_random();
+    Ok(p)
+}
+
 struct Flasher {
     state: FlashState<CELL_COUNT>,
     selected_chase: ChaseIndex,
     selected_multiplier: usize,
     chases: Chases,
+}
+
+impl Flasher {
+    pub fn new(chases: Chases) -> Self {
+        Self {
+            state: Default::default(),
+            selected_chase: Default::default(),
+            selected_multiplier: 0,
+            chases,
+        }
+    }
 }
 
 fn render_state_iter<'a>(
@@ -104,7 +139,7 @@ fn render_state_iter<'a>(
 
 impl Flasher {
     pub fn len(&self) -> usize {
-        self.chases.len()
+        self.chases.chase_count()
     }
 
     pub fn render(&self, group_controls: &FixtureGroupControls, intensity: u8, dmx_buf: &mut [u8]) {
@@ -129,129 +164,177 @@ impl Flasher {
         if reset {
             self.selected_chase = selected_chase;
             self.selected_multiplier = selected_multiplier;
-            self.chases.reset(selected_chase, selected_multiplier);
+            if let Err(err) = self.chases.reset(selected_chase, selected_multiplier) {
+                error!("{err}");
+            };
         }
 
         if trigger_flash {
-            self.chases.next(
+            if let Err(err) = self.chases.next(
                 self.selected_chase,
                 self.selected_multiplier,
                 reverse,
                 &mut self.state,
-            );
+            ) {
+                error!("{err}");
+            };
         }
     }
 }
 
-struct Chases {
-    singles: Vec<Box<dyn Chase<CELL_COUNT>>>,
-    doubles: Vec<Box<dyn Chase<CELL_COUNT>>>,
-    quads: Vec<Box<dyn Chase<CELL_COUNT>>>,
+pub struct Chases(Vec<ChaseSet>);
+
+struct ChaseSet {
+    pub multiplier: u8,
+    pub chases: Vec<Box<dyn Chase<CELL_COUNT>>>,
 }
 
-fn two_flash_spread() -> impl DoubleEndedIterator<Item = (CellIndex, CellIndex)> {
-    zip((0..CELL_COUNT / 2).rev(), CELL_COUNT / 2..CELL_COUNT)
-}
+impl ChaseSet {
+    pub fn new(multiplier: u8) -> Self {
+        Self {
+            multiplier,
+            chases: vec![],
+        }
+    }
 
-impl Default for Chases {
-    fn default() -> Self {
-        let mut p = Self {
-            singles: vec![],
-            doubles: vec![],
-            quads: vec![],
-        };
-        // single pulse 1-16
-        p.add_auto_mult(PatternArray::singles(0..CELL_COUNT));
-        // single pulse bounce
-        p.add_auto_mult(PatternArray::singles(
-            (0..CELL_COUNT).chain((1..CELL_COUNT - 1).rev()),
-        ));
-        // two flash spread from middle
-        p.add_auto_mult(PatternArray::doubles(two_flash_spread()));
-        // two flash bounce, starting out
-        p.add_auto_mult(PatternArray::doubles(
-            two_flash_spread().chain(two_flash_spread().rev().skip(1).take(6)),
-        ));
+    pub fn len(&self) -> usize {
+        self.chases.len()
+    }
 
-        // random single pulses, non-repeating until all cells flash
-        // added manually to always strobe the right number of patterns
-        p.add_single(RandomPattern::<CELL_COUNT>::take(1));
-        // random pairs, non-repeating until all cells flash
-        p.add_double(RandomPattern::<CELL_COUNT>::take(2));
-        // random quads, non-repeating until all cells flash
-        p.add_quad(RandomPattern::<CELL_COUNT>::take(4));
-        p
+    /// Add a chase, using even offsets to apply this set's multiplier.
+    pub fn add_with_mult_auto(
+        &mut self,
+        chase: impl Chase<CELL_COUNT> + 'static + Clone,
+    ) -> Result<()> {
+        let stride = CELL_COUNT / self.multiplier as usize;
+        match self.multiplier {
+            1 => self.chases.push(Box::new(chase)),
+            2 => self.chases.push(Box::new(Lockstep::new(
+                chase.clone(),
+                chase.clone(),
+                stride,
+            ))),
+            3 => {
+                let pair = Lockstep::new(chase.clone(), chase.clone(), stride);
+                self.chases
+                    .push(Box::new(Lockstep::new(pair, chase.clone(), stride * 2)));
+            }
+            4 => {
+                let pair = Lockstep::new(chase.clone(), chase.clone(), stride);
+                self.chases
+                    .push(Box::new(Lockstep::new(pair.clone(), pair, stride * 2)));
+            }
+            bad => bail!("unsupported chase set multipler {bad}"),
+        }
+        Ok(())
+    }
+
+    /// Add non-repeating random, taking multiplier segments per flash.
+    pub fn add_random(&mut self) {
+        self.chases
+            .push(Box::new(RandomPattern::<CELL_COUNT>::take(self.multiplier)));
     }
 }
 
 impl Chases {
-    pub fn len(&self) -> usize {
-        self.singles.len()
+    pub fn new(multipliers: &[u8]) -> Result<Self> {
+        ensure!(multipliers[0] == 1);
+        for &m in multipliers {
+            ensure!(m > 0, "cannot use a strobe array chase multiplier of 0");
+            ensure!(
+                CELL_COUNT % m as usize == 0,
+                "strobe array with cell count {CELL_COUNT} cannot divide evenly by multiplier {m}"
+            );
+        }
+        Ok(Self(
+            multipliers.iter().copied().map(ChaseSet::new).collect(),
+        ))
     }
 
-    /// Add a chase, automatically creating multipliers using Lockstep.
-    pub fn add_auto_mult(&mut self, chase: impl Chase<CELL_COUNT> + 'static + Clone) {
-        self.add_single(chase.clone());
-        let double = Lockstep::new(chase.clone(), chase.clone(), 8);
-        self.add_double(double.clone());
-        self.add_quad(Lockstep::new(double.clone(), double.clone(), 4));
+    pub fn chase_count(&self) -> usize {
+        self.0.first().map(ChaseSet::len).unwrap_or_default()
     }
 
-    /// Add a single-flash chase.
-    fn add_single(&mut self, chase: impl Chase<CELL_COUNT> + 'static) {
-        self.singles
-            .push(Box::new(chase) as Box<dyn Chase<CELL_COUNT>>);
+    /// Add a chase, automatically creating all multipliers using Lockstep.
+    pub fn add_auto_mult(&mut self, chase: impl Chase<CELL_COUNT> + 'static + Clone) -> Result<()> {
+        for chase_set in &mut self.0 {
+            chase_set.add_with_mult_auto(chase.clone())?;
+        }
+        Ok(())
     }
 
-    /// Add a double-flash (2x mult) chase.
-    fn add_double(&mut self, chase: impl Chase<CELL_COUNT> + 'static) {
-        self.doubles
-            .push(Box::new(chase) as Box<dyn Chase<CELL_COUNT>>);
+    /// Add a random chase, automatically creating all multipliers.
+    pub fn add_auto_random(&mut self) {
+        for chase_set in &mut self.0 {
+            chase_set.add_random();
+        }
     }
 
-    /// Add a quad-flash (4x mult) chase.
-    fn add_quad(&mut self, chase: impl Chase<CELL_COUNT> + 'static) {
-        self.quads
-            .push(Box::new(chase) as Box<dyn Chase<CELL_COUNT>>);
+    /// Add a "flash all" at all multipliers.
+    pub fn add_all(&mut self) {
+        for chase_set in &mut self.0 {
+            chase_set.chases.push(Box::new(PatternArray::all()));
+        }
     }
 
+    /// Add a chase directly into a multiplier's collection.
+    ///
+    /// Use caution - we should always maintain the same number of chases for
+    /// all multipliers.
+    pub fn add_for_mult(
+        &mut self,
+        multiplier_index: usize,
+        chase: impl Chase<CELL_COUNT> + 'static,
+    ) -> Result<()> {
+        self.chase_set_mut(multiplier_index)?
+            .chases
+            .push(Box::new(chase));
+        Ok(())
+    }
+
+    /// Advance the chase, and apply the next step to the provided state.
     pub fn next(
         &mut self,
         i: ChaseIndex,
-        multiplier: usize,
+        multiplier_index: usize,
         reverse: bool,
         state: &mut FlashState<CELL_COUNT>,
-    ) {
-        let collection = match multiplier {
-            0 => &mut self.singles,
-            1 => &mut self.doubles,
-            2 => &mut self.quads,
-            _ => {
-                error!("Selected FreqStrobe multiplier {multiplier} out of range.");
-                return;
-            }
-        };
-        let Some(chase) = collection.get_mut(i) else {
-            error!("Selected FreqStrobe chase {i} out of range.");
-            return;
-        };
-        chase.set_next(reverse, state);
+    ) -> Result<()> {
+        self.chase_mut(multiplier_index, i)?
+            .set_next(reverse, state);
+        Ok(())
     }
 
-    pub fn reset(&mut self, i: ChaseIndex, multiplier: usize) {
-        let collection = match multiplier {
-            0 => &mut self.singles,
-            1 => &mut self.doubles,
-            2 => &mut self.quads,
-            _ => {
-                error!("Selected FreqStrobe multiplier {multiplier} out of range.");
-                return;
-            }
-        };
-        let Some(chase) = collection.get_mut(i) else {
-            error!("Selected FreqStrobe chase {i} out of range.");
-            return;
-        };
-        chase.reset();
+    /// Reset the specified chase.
+    pub fn reset(&mut self, i: ChaseIndex, multiplier_index: usize) -> Result<()> {
+        self.chase_mut(multiplier_index, i)?.reset();
+        Ok(())
+    }
+
+    fn chase_set_mut(&mut self, multiplier_index: usize) -> Result<&mut ChaseSet> {
+        let n_mult = self.0.len();
+        self.0
+            .get_mut(multiplier_index)
+            .ok_or_else(|| anyhow!("multiplier index {multiplier_index} out of range (> {n_mult})"))
+    }
+
+    fn chase_mut(
+        &mut self,
+        multiplier_index: usize,
+        i: ChaseIndex,
+    ) -> Result<&mut Box<dyn Chase<CELL_COUNT>>> {
+        let set = self.chase_set_mut(multiplier_index)?;
+        let n_chase = set.len();
+        set.chases
+            .get_mut(i)
+            .ok_or_else(|| anyhow!("chase index {i} out of range (> {n_chase})"))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_chases() {
+        super::create_chases().unwrap();
     }
 }
