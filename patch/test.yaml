@@ -1,3 +1,7 @@
-- fixture: Color
+- fixture: FreqStrobe
   patches:
     - addr: 1
+- fixture: FlashBang
+  paired: true
+  patches:
+    - addr: 20

@@ -1,7 +1,9 @@
 //! Some stateful controls for arrays of things that can strobe.
 //!
 //! Provides flash patterns, including sequences and true randomness.
+use std::iter::zip;
 
+use anyhow::{Result, anyhow, bail, ensure};
 use log::error;
 use rand::prelude::*;
 
@@ -67,6 +69,283 @@ pub trait Chase<const N: usize> {
 
     /// Reset this chase to the beginning.
     fn reset(&mut self);
+}
+
+/// Handle flash state and maintain chases.
+pub struct Flasher<const N: usize> {
+    state: FlashState<N>,
+    selected_chase: ChaseIndex,
+    selected_multiplier: usize,
+    /// If true, patches of this strobe array can handle mirroring - in other
+    /// words, they do not physically have complete radial symmetry.
+    can_mirror: bool,
+    chases: Chases<N>,
+}
+
+impl<const N: usize> Flasher<N> {
+    pub fn new(chases: Chases<N>, can_mirror: bool) -> Self {
+        Self {
+            state: Default::default(),
+            selected_chase: Default::default(),
+            selected_multiplier: 0,
+            can_mirror,
+            chases,
+        }
+    }
+}
+
+fn render_state_iter<'a>(
+    iter: impl Iterator<Item = &'a Option<Flash>>,
+    intensity: u8,
+    dmx_buf: &mut [u8],
+) {
+    for (state, chan) in iter.zip(dmx_buf.iter_mut()) {
+        *chan = if state.is_some() { intensity } else { 0 };
+    }
+}
+
+impl<const N: usize> Flasher<N> {
+    pub fn len(&self) -> usize {
+        self.chases.chase_count()
+    }
+
+    pub fn render(
+        &self,
+        group_controls: &crate::fixture::FixtureGroupControls,
+        intensity: u8,
+        dmx_buf: &mut [u8],
+    ) {
+        if self.can_mirror && group_controls.mirror {
+            render_state_iter(self.state.cells().iter().rev(), intensity, dmx_buf);
+        } else {
+            render_state_iter(self.state.cells().iter(), intensity, dmx_buf);
+        }
+    }
+
+    pub fn update(
+        &mut self,
+        trigger_flash: bool,
+        selected_chase: ChaseIndex,
+        selected_multiplier: usize,
+        reverse: bool,
+    ) {
+        self.state.update(1);
+
+        let reset = selected_chase != self.selected_chase
+            || selected_multiplier != self.selected_multiplier;
+        if reset {
+            self.selected_chase = selected_chase;
+            self.selected_multiplier = selected_multiplier;
+            if let Err(err) = self.chases.reset(selected_chase, selected_multiplier) {
+                error!("{err}");
+            };
+        }
+
+        if trigger_flash {
+            if let Err(err) = self.chases.next(
+                self.selected_chase,
+                self.selected_multiplier,
+                reverse,
+                &mut self.state,
+            ) {
+                error!("{err}");
+            };
+        }
+    }
+}
+
+/// Abstract over differently-sized flashers.
+pub trait UnsizedFlasher {
+    fn len(&self) -> usize;
+    fn cells(&self) -> &[Option<Flash>];
+    fn update(
+        &mut self,
+        trigger_flash: bool,
+        selected_chase: ChaseIndex,
+        selected_multiplier_index: usize,
+        reverse: bool,
+    );
+}
+
+impl<const N: usize> UnsizedFlasher for Flasher<N> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn cells(&self) -> &[Option<Flash>] {
+        &self.state.cells()[..]
+    }
+
+    fn update(
+        &mut self,
+        trigger_flash: bool,
+        selected_chase: ChaseIndex,
+        selected_multiplier_index: usize,
+        reverse: bool,
+    ) {
+        self.update(
+            trigger_flash,
+            selected_chase,
+            selected_multiplier_index,
+            reverse,
+        );
+    }
+}
+
+pub struct Chases<const N: usize>(Vec<ChaseSet<N>>);
+
+struct ChaseSet<const N: usize> {
+    pub multiplier: u8,
+    pub chases: Vec<Box<dyn Chase<N>>>,
+}
+
+impl<const N: usize> ChaseSet<N> {
+    pub fn new(multiplier: u8) -> Self {
+        Self {
+            multiplier,
+            chases: vec![],
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.chases.len()
+    }
+
+    /// Add a chase, using even offsets to apply this set's multiplier.
+    pub fn add_with_mult_auto(&mut self, chase: impl Chase<N> + 'static + Clone) -> Result<()> {
+        let stride = N / self.multiplier as usize;
+        match self.multiplier {
+            1 => self.chases.push(Box::new(chase)),
+            2 => self.chases.push(Box::new(Lockstep::new(
+                chase.clone(),
+                chase.clone(),
+                stride,
+            ))),
+            3 => {
+                let pair = Lockstep::new(chase.clone(), chase.clone(), stride);
+                self.chases
+                    .push(Box::new(Lockstep::new(pair, chase.clone(), stride * 2)));
+            }
+            4 => {
+                let pair = Lockstep::new(chase.clone(), chase.clone(), stride);
+                self.chases
+                    .push(Box::new(Lockstep::new(pair.clone(), pair, stride * 2)));
+            }
+            bad => bail!("unsupported chase set multipler {bad}"),
+        }
+        Ok(())
+    }
+
+    /// Add non-repeating random, taking multiplier segments per flash.
+    pub fn add_random(&mut self) {
+        self.chases
+            .push(Box::new(RandomPattern::<N>::take(self.multiplier)));
+    }
+}
+
+impl<const N: usize> Chases<N> {
+    pub fn new(multipliers: &[u8]) -> Result<Self> {
+        ensure!(multipliers[0] == 1);
+        for &m in multipliers {
+            ensure!(m > 0, "cannot use a strobe array chase multiplier of 0");
+            ensure!(
+                N % m as usize == 0,
+                "strobe array with cell count {N} cannot divide evenly by multiplier {m}"
+            );
+        }
+        Ok(Self(
+            multipliers.iter().copied().map(ChaseSet::new).collect(),
+        ))
+    }
+
+    pub fn chase_count(&self) -> usize {
+        self.0.first().map(ChaseSet::len).unwrap_or_default()
+    }
+
+    /// Add a chase, automatically creating all multipliers using Lockstep.
+    pub fn add_auto_mult(&mut self, chase: impl Chase<N> + 'static + Clone) -> Result<()> {
+        for chase_set in &mut self.0 {
+            chase_set.add_with_mult_auto(chase.clone())?;
+        }
+        Ok(())
+    }
+
+    /// Add a random chase, automatically creating all multipliers.
+    pub fn add_auto_random(&mut self) {
+        for chase_set in &mut self.0 {
+            chase_set.add_random();
+        }
+    }
+
+    /// Add a "flash all" at all multipliers.
+    pub fn add_all(&mut self) {
+        for chase_set in &mut self.0 {
+            chase_set.chases.push(Box::new(PatternArray::all()));
+        }
+    }
+
+    /// Add a chase directly into a multiplier's collection.
+    ///
+    /// Use caution - we should always maintain the same number of chases for
+    /// all multipliers.
+    pub fn add_for_mult(
+        &mut self,
+        multiplier_index: usize,
+        chase: impl Chase<N> + 'static,
+    ) -> Result<()> {
+        self.chase_set_mut(multiplier_index)?
+            .chases
+            .push(Box::new(chase));
+        Ok(())
+    }
+
+    /// Advance the chase, and apply the next step to the provided state.
+    pub fn next(
+        &mut self,
+        i: ChaseIndex,
+        multiplier_index: usize,
+        reverse: bool,
+        state: &mut FlashState<N>,
+    ) -> Result<()> {
+        self.chase_mut(multiplier_index, i)?
+            .set_next(reverse, state);
+        Ok(())
+    }
+
+    /// Reset the specified chase.
+    pub fn reset(&mut self, i: ChaseIndex, multiplier_index: usize) -> Result<()> {
+        self.chase_mut(multiplier_index, i)?.reset();
+        Ok(())
+    }
+
+    fn chase_set_mut(&mut self, multiplier_index: usize) -> Result<&mut ChaseSet<N>> {
+        let n_mult = self.0.len();
+        self.0
+            .get_mut(multiplier_index)
+            .ok_or_else(|| anyhow!("multiplier index {multiplier_index} out of range (> {n_mult})"))
+    }
+
+    fn chase_mut(
+        &mut self,
+        multiplier_index: usize,
+        i: ChaseIndex,
+    ) -> Result<&mut Box<dyn Chase<N>>> {
+        let set = self.chase_set_mut(multiplier_index)?;
+        let n_chase = set.len();
+        set.chases
+            .get_mut(i)
+            .ok_or_else(|| anyhow!("chase index {i} out of range (> {n_chase})"))
+    }
+}
+
+pub fn two_flash_spread(
+    cell_count: usize,
+) -> Result<impl DoubleEndedIterator<Item = (CellIndex, CellIndex)>> {
+    ensure!(
+        cell_count % 2 == 0,
+        "two-flash spread cell count must be an even number"
+    );
+    Ok(zip((0..cell_count / 2).rev(), cell_count / 2..cell_count))
 }
 
 /// A determinisitc sequence of cells.

@@ -4,7 +4,7 @@
 //! the brightness of each LED ring is directly controlled. There is also a
 //! special 10-channel mode provided for using a pair of these fixtures where
 //! the patterns can be extended over both arrays for additional effects.
-use log::error;
+use anyhow::Result;
 
 use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
@@ -15,6 +15,7 @@ pub struct FlashBang {
     #[animate]
     intensity: ChannelKnobUnipolar<Unipolar<()>>,
     chase: IndexedSelect<()>,
+    multiplier: IndexedSelect<()>,
     reverse: Bool<()>,
     #[skip_emit]
     #[skip_control]
@@ -35,9 +36,9 @@ impl PatchFixture for FlashBang {
 
     fn new(options: Self::GroupOptions) -> Self {
         let flasher = if options.paired {
-            Box::new(paired_flasher()) as Box<dyn UnsizedFlasher>
+            Box::new(Flasher::new(chases_for_paired().unwrap(), false)) as Box<dyn UnsizedFlasher>
         } else {
-            Box::new(single_flasher())
+            Box::new(Flasher::new(chases_for_single().unwrap(), false))
         };
 
         Self {
@@ -45,6 +46,7 @@ impl PatchFixture for FlashBang {
                 .at(UnipolarFloat::new(0.1))
                 .with_channel_knob(0),
             chase: IndexedSelect::new("Chase", flasher.len(), false, ()),
+            multiplier: IndexedSelect::new("Multiplier", 2, false, ()),
             reverse: Bool::new_off("Reverse", ()),
             flasher,
         }
@@ -64,8 +66,12 @@ impl PatchFixture for FlashBang {
 
 impl Update for FlashBang {
     fn update(&mut self, update: FixtureGroupUpdate, _dt: std::time::Duration) {
-        self.flasher
-            .update(update.flash_now, self.chase.selected(), self.reverse.val());
+        self.flasher.update(
+            update.flash_now,
+            self.chase.selected(),
+            self.multiplier.selected(),
+            self.reverse.val(),
+        );
     }
 }
 
@@ -104,99 +110,51 @@ impl AnimatedFixture for FlashBang {
 
 register_patcher!(FlashBang);
 
-/// Abstract over 5-cell vs 10-cell flashers for different render modes.
-trait UnsizedFlasher {
-    fn len(&self) -> usize;
-    fn cells(&self) -> &[Option<Flash>];
-    fn update(&mut self, trigger_flash: bool, selected_chase: ChaseIndex, reverse: bool);
-}
-
-fn single_flasher() -> Flasher<5> {
+fn chases_for_single() -> Result<Chases<5>> {
     const CELLS: usize = 5;
-    let mut f: Flasher<CELLS> = Default::default();
-    // all
-    f.add_chase(PatternArray::all());
+    let mut c: Chases<CELLS> = Chases::new(&[1])?;
+
     // single pulse
-    f.add_chase(PatternArray::singles(0..CELLS));
+    c.add_auto_mult(PatternArray::singles(0..CELLS))?;
     // single pulse bounce
-    f.add_chase(PatternArray::singles(
+    c.add_auto_mult(PatternArray::singles(
         (0..CELLS).chain((1..CELLS - 1).rev()),
-    ));
-    // random
-    f.add_chase(RandomPattern::<CELLS>::take(1));
-    f
+    ))?;
+    c.add_auto_random();
+    c.add_all();
+    Ok(c)
 }
 
-fn paired_flasher() -> Flasher<10> {
+fn chases_for_paired() -> Result<Chases<10>> {
     const CELLS: usize = 10;
-    let mut f: Flasher<CELLS> = Default::default();
-    // all
-    f.add_chase(PatternArray::all());
+    let mut c: Chases<CELLS> = Chases::new(&[1, 2])?;
+
     // single pulse
-    f.add_chase(PatternArray::singles(0..CELLS));
+    c.add_auto_mult(PatternArray::singles(0..CELLS))?;
     // single pulse bounce
-    f.add_chase(PatternArray::singles(
-        (0..CELLS).chain((1..CELLS - 1).rev()),
-    ));
-    // random
-    f.add_chase(RandomPattern::<CELLS>::take(1));
-    f
-}
-#[derive(Default)]
-struct Flasher<const N: usize> {
-    state: FlashState<N>,
-    selected_chase: ChaseIndex,
-    chases: Vec<Box<dyn Chase<N>>>,
-}
+    c.add_for_mult(
+        0,
+        PatternArray::singles((0..CELLS).chain((1..CELLS - 1).rev())),
+    )?;
+    c.add_for_mult(
+        1,
+        PatternArray::doubles(
+            two_flash_spread(CELLS)?.chain(two_flash_spread(CELLS)?.rev().skip(1).take(3)),
+        ),
+    )?;
 
-impl<const N: usize> UnsizedFlasher for Flasher<N> {
-    fn len(&self) -> usize {
-        self.chases.len()
-    }
-
-    fn cells(&self) -> &[Option<Flash>] {
-        &self.state.cells()[..]
-    }
-
-    fn update(&mut self, trigger_flash: bool, selected_chase: ChaseIndex, reverse: bool) {
-        self.state.update(1);
-
-        let reset = selected_chase != self.selected_chase;
-        if reset {
-            self.selected_chase = selected_chase;
-            self.reset();
-        }
-
-        if trigger_flash {
-            self.flash_next(reverse);
-        }
-    }
+    c.add_auto_random();
+    // "all" that alternates fixtures
+    c.add_for_mult(0, PatternArray::new(vec![[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]))?;
+    c.add_for_mult(1, PatternArray::all())?;
+    Ok(c)
 }
 
-impl<const N: usize> Flasher<N> {
-    pub fn add_chase(&mut self, c: impl Chase<N> + 'static) {
-        self.chases.push(Box::new(c));
-    }
-
-    fn reset(&mut self) {
-        let Some(chase) = self.chases.get_mut(self.selected_chase) else {
-            error!(
-                "Selected Flash Bang chase {} out of range.",
-                self.selected_chase
-            );
-            return;
-        };
-        chase.reset();
-    }
-
-    fn flash_next(&mut self, reverse: bool) {
-        let Some(chase) = self.chases.get_mut(self.selected_chase) else {
-            error!(
-                "Selected Flash Bang chase {} out of range.",
-                self.selected_chase
-            );
-            return;
-        };
-        chase.set_next(reverse, &mut self.state);
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_chases() {
+        super::chases_for_single().unwrap();
+        super::chases_for_paired().unwrap();
     }
 }
