@@ -60,10 +60,10 @@ impl LabeledSelect {
     /// Return the currently-selected DMX value.
     pub fn dmx_val(&self) -> u8 {
         let mut val = self.options[self.selected].1;
-        if let Some(split) = &self.split {
-            if split.split_on.val() {
-                val += split.offset;
-            }
+        if let Some(split) = &self.split
+            && split.split_on.val()
+        {
+            val += split.offset;
         }
         val
     }
@@ -101,10 +101,10 @@ impl OscControl<&str> for LabeledSelect {
         msg: &crate::osc::OscControlMessage,
         emitter: &dyn crate::osc::EmitScopedOscMessage,
     ) -> anyhow::Result<bool> {
-        if let Some(split) = &mut self.split {
-            if split.split_on.control(msg, emitter)? {
-                return Ok(true);
-            }
+        if let Some(split) = &mut self.split
+            && split.split_on.control(msg, emitter)?
+        {
+            return Ok(true);
         }
         if msg.control() != self.name {
             return Ok(false);

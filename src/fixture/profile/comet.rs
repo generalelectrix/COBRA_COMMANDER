@@ -153,9 +153,9 @@ impl TriggerState {
         if self.music_trigger.val() {
             Self::DMX_VAL_MUSIC_TRIG
         } else if self.auto_step.val() {
-            return unipolar_to_range(151, 255, self.auto_step_rate.val());
+            unipolar_to_range(151, 255, self.auto_step_rate.val())
         } else {
-            return Self::DMX_VAL_STOP;
+            Self::DMX_VAL_STOP
         }
     }
 

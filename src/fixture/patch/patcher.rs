@@ -37,17 +37,17 @@ impl Display for Patcher {
         // If a fixture doesn't take options, we should be able to get a channel count.
         // TODO: we should make it possible to generate patch configs for all
         // enumerable options
-        if patch_opts.is_empty() && group_opts.is_empty() {
-            if let Ok(fix) = (self.create_patch)(Default::default(), Default::default()) {
-                if fix.channel_count > 0 {
-                    write!(
-                        f,
-                        " ({} channel{})",
-                        fix.channel_count,
-                        if fix.channel_count > 1 { "s" } else { "" }
-                    )?;
-                }
-            }
+        if patch_opts.is_empty()
+            && group_opts.is_empty()
+            && let Ok(fix) = (self.create_patch)(Default::default(), Default::default())
+            && fix.channel_count > 0
+        {
+            write!(
+                f,
+                " ({} channel{})",
+                fix.channel_count,
+                if fix.channel_count > 1 { "s" } else { "" }
+            )?;
         }
 
         if patch_opts.is_empty() && group_opts.is_empty() {

@@ -141,16 +141,16 @@ impl<const N: usize> Flasher<N> {
             };
         }
 
-        if trigger_flash {
-            if let Err(err) = self.chases.next(
+        if trigger_flash
+            && let Err(err) = self.chases.next(
                 self.selected_chase,
                 self.selected_multiplier,
                 reverse,
                 &mut self.state,
-            ) {
-                error!("{err}");
-            };
-        }
+            )
+        {
+            error!("{err}");
+        };
     }
 }
 
@@ -249,7 +249,7 @@ impl<const N: usize> Chases<N> {
         for &m in multipliers {
             ensure!(m > 0, "cannot use a strobe array chase multiplier of 0");
             ensure!(
-                N % m as usize == 0,
+                N.is_multiple_of(m as usize),
                 "strobe array with cell count {N} cannot divide evenly by multiplier {m}"
             );
         }
@@ -342,7 +342,7 @@ pub fn two_flash_spread(
     cell_count: usize,
 ) -> Result<impl DoubleEndedIterator<Item = (CellIndex, CellIndex)>> {
     ensure!(
-        cell_count % 2 == 0,
+        cell_count.is_multiple_of(2),
         "two-flash spread cell count must be an even number"
     );
     Ok(zip((0..cell_count / 2).rev(), cell_count / 2..cell_count))

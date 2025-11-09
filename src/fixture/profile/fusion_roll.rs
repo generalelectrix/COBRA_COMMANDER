@@ -71,11 +71,12 @@ impl FusionRoll {
         animation_vals: &TargetedAnimationValues<AnimationTarget>,
         dmx_buf: &mut [u8],
     ) {
-        if self.led_strobe_on.val() && group_controls.strobe_enabled {
-            if let Some(strobe_override) = group_controls.strobe_intensity() {
-                dmx_buf[4] = unipolar_to_range(0, 255, strobe_override);
-                return;
-            }
+        if self.led_strobe_on.val()
+            && group_controls.strobe_enabled
+            && let Some(strobe_override) = group_controls.strobe_intensity()
+        {
+            dmx_buf[4] = unipolar_to_range(0, 255, strobe_override);
+            return;
         }
         self.dimmer.render(
             group_controls,
@@ -85,11 +86,12 @@ impl FusionRoll {
     }
 
     fn render_laser_state(&self, group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
-        if self.laser_strobe_on.val() && group_controls.strobe_enabled {
-            if let Some(flash_on) = group_controls.strobe_shutter() {
-                dmx_buf[6] = if flash_on { 8 } else { 0 };
-                return;
-            }
+        if self.laser_strobe_on.val()
+            && group_controls.strobe_enabled
+            && let Some(flash_on) = group_controls.strobe_shutter()
+        {
+            dmx_buf[6] = if flash_on { 8 } else { 0 };
+            return;
         }
         self.laser_on
             .render(group_controls, std::iter::empty(), dmx_buf);

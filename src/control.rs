@@ -171,6 +171,7 @@ impl CreateControlEvent<Device> for ControlMessage {
     }
 }
 
+#[cfg(test)]
 pub mod mock {
     use super::*;
 
