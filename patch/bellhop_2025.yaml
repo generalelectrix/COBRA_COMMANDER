@@ -20,3 +20,21 @@
     - addr: 78
     - addr: 82
       mirror: true
+- fixture: Aquarius
+  channel: false
+  patches:
+    - addr: 128
+    - addr: 130
+      mirror: true
+- fixture: Color
+  group: MirrorBall
+  control_color_space: Hsi
+  patches:
+    - addr: 86
+      kind: Rgbw
+    - addr: 90
+      kind: Rgbw
+- fixture: Relay
+  channel: false
+  patches:
+    - addr: 100

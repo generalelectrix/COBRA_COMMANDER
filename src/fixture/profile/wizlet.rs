@@ -93,7 +93,7 @@ impl AnimatedFixture for Wizlet {
             animation_vals.filter(&AnimationTarget::ReflectorRotation),
             dmx_buf,
         );
-        dmx_buf[4] = 0; // internal strobing
+        dmx_buf[4] = 32; // shutter control - leave open, use dimmer channel
         self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
