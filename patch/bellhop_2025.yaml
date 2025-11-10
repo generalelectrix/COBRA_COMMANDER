@@ -33,11 +33,11 @@
   paired: true
   patches:
     - addr: 1
-- fixture: RugDoctor
-  url: "http://192.168.1.1"
-  preset_count: 6
-  patches:
-    - addr: 300
+# - fixture: RugDoctor
+#   url: "http://192.168.1.1"
+#   preset_count: 6
+#   patches:
+#     - addr: 300
 
 - fixture: Relay
   channel: false
