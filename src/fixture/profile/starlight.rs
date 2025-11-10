@@ -19,7 +19,7 @@ impl Default for Starlight {
                 .strobed()
                 .with_channel_level(),
             // strobe: Strobe::channel("Strobe", 2, 10, 255, 0),
-            rotation: Bipolar::split_channel("Rotation", 3, 191, 128, 192, 255, 0)
+            rotation: Bipolar::split_channel("Rotation", 3, 1, 127, 255, 128, 0)
                 .with_detent()
                 .with_mirroring(true)
                 .with_channel_knob(0),
