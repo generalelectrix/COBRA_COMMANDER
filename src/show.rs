@@ -6,7 +6,7 @@ use std::{
 use crate::{
     animation::AnimationUIState,
     animation_visualizer::{AnimationPublisher, AnimationServiceState},
-    channel::{ChannelStateEmitter, Channels},
+    channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
     clocks::Clocks,
     color::Hsluv,
     control::{ControlMessage, Controller},
@@ -38,6 +38,7 @@ pub struct Show {
     clocks: Clocks,
     animation_service: Option<AnimationPublisher>,
     preview: Previewer,
+    master_strobe_channel: bool,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -48,6 +49,7 @@ const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
 pub const UPDATE_INTERVAL: Duration = Duration::from_micros(25300);
 
 impl Show {
+    #[expect(clippy::too_many_arguments)]
     pub fn new(
         patch: Patch,
         patch_file_path: PathBuf,
@@ -56,8 +58,15 @@ impl Show {
         clocks: Clocks,
         animation_service: Option<AnimationPublisher>,
         preview: Previewer,
+        master_strobe_channel: bool,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
+
+        if master_strobe_channel && channels.validate_channel(STROBE_CONTROL_CHANNEL).is_ok() {
+            bail!(
+                "cannot use a master strobe channel since the channel is already in use for a fixture group"
+            );
+        }
 
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
@@ -74,6 +83,7 @@ impl Show {
             clocks,
             animation_service,
             preview,
+            master_strobe_channel,
         };
         show.refresh_ui();
         Ok(show)
@@ -151,13 +161,24 @@ impl Show {
         };
         match show_ctrl_msg {
             ShowControlMessage::Channel(msg) => {
-                self.channels
-                    .control(&msg, &mut self.patch, &self.animation_ui_state, &sender)?;
+                if self.master_strobe_channel
+                    && let crate::channel::ControlMessage::Control { channel_id, msg } = &msg
+                    && *channel_id == Some(STROBE_CONTROL_CHANNEL)
+                {
+                    self.master_controls.handle_strobe_channel(msg, &sender);
+                } else {
+                    self.channels.control(
+                        &msg,
+                        &mut self.patch,
+                        &self.animation_ui_state,
+                        &sender,
+                    )?;
+                }
             }
             ShowControlMessage::Clock(msg) => self.clocks.control_clock(msg, sender.controller),
             ShowControlMessage::Audio(msg) => self.clocks.control_audio(msg, &mut self.controller),
             ShowControlMessage::Master(msg) => {
-                self.master_controls.control(&msg, &sender)?;
+                self.master_controls.control(&msg, &sender);
             }
             ShowControlMessage::Animation(msg) => {
                 let Some(channel) = self.channels.current_channel() else {

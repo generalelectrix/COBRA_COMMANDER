@@ -34,11 +34,7 @@ impl MasterControls {
         self.strobe_clock.emit_state(emitter);
     }
 
-    pub fn control(
-        &mut self,
-        msg: &ControlMessage,
-        emitter: &dyn EmitControlMessage,
-    ) -> anyhow::Result<()> {
+    pub fn control(&mut self, msg: &ControlMessage, emitter: &dyn EmitControlMessage) {
         let emitter = &ScopedControlEmitter {
             entity: GROUP,
             emitter,
@@ -49,8 +45,24 @@ impl MasterControls {
                 self.strobe_clock.control(sc, emitter);
             }
         }
+    }
 
-        Ok(())
+    pub fn handle_strobe_channel(
+        &mut self,
+        msg: &crate::channel::ChannelControlMessage,
+        emitter: &dyn EmitControlMessage,
+    ) {
+        use crate::channel::ChannelControlMessage::*;
+        use crate::strobe::ControlMessage::*;
+        use crate::strobe::StateChange::*;
+        let strobe_msg = match msg {
+            Level(v) => Set(Intensity(*v)),
+            Knob { index, value } if *index == 0 => Set(Rate(value.as_unipolar())),
+            _ => {
+                return;
+            }
+        };
+        self.control(&ControlMessage::Strobe(strobe_msg), emitter);
     }
 
     pub fn control_osc(
