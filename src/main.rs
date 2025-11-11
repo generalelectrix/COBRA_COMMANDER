@@ -90,9 +90,9 @@ struct RunArgs {
     #[arg(long)]
     artnet: bool,
 
-    /// Check that the provided patch file is valid and quit.
+    /// If true, use the last channel fader as a master strobe control.
     #[arg(long)]
-    check_patch: bool,
+    master_strobe_channel: bool,
 
     /// The port on which to listen for OSC messages.
     #[arg(long, default_value_t = 8000)]
@@ -196,6 +196,7 @@ fn quickstart(args: RunArgs) -> Result<()> {
         args.cli_preview
             .then(Previewer::terminal)
             .unwrap_or_default(),
+        args.master_strobe_channel,
     )?;
 
     println!("Running show.");
@@ -286,6 +287,7 @@ fn run_show(args: RunArgs) -> Result<()> {
         args.cli_preview
             .then(Previewer::terminal)
             .unwrap_or_default(),
+        args.master_strobe_channel,
     )?;
 
     println!("Running show.");

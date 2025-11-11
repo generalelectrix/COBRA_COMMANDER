@@ -265,6 +265,9 @@ impl Channels {
     }
 }
 
+/// Use this channel for master strobe control when the show option is set.
+pub const STROBE_CONTROL_CHANNEL: usize = 7;
+
 /// Provide methods to emit channel control state changes for a specific channel.
 /// If no channel is set, no state change events will be emitted.
 pub struct ChannelStateEmitter<'a> {
