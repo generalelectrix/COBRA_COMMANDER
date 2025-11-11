@@ -1,0 +1,31 @@
+- fixture: Color
+  group: Front
+  control_color_space: Hsluv
+  patches:
+    - addr:
+        start: 1
+        count: 6
+- fixture: Color
+  group: Top
+  control_color_space: Hsluv
+  patches:
+    - addr:
+        start: 19
+        count: 6
+- fixture: Color
+  group: Back
+  control_color_space: Hsluv
+  patches:
+    - addr:
+        start: 400
+        count: 18
+- fixture: WizardExtreme
+  patches:
+    - addr: 128
+    - addr: 144
+      mirror: true
+- fixture: Wled
+  url: http://192.168.1.1
+  preset_count: 6
+  patches:
+    -
