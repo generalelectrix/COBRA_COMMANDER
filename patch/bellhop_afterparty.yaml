@@ -31,6 +31,7 @@
       kind: Rgbw
 - fixture: FlashBang
   paired: true
+  max_intensity: 4
   patches:
     - addr: 1
 - fixture: Relay

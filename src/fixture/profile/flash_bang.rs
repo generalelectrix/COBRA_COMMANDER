@@ -11,9 +11,17 @@ use crate::fixture::prelude::*;
 
 #[derive(EmitState, Control)]
 pub struct FlashBang {
+    /// Intensity scale.
+    ///
+    /// These things are BRIGHT - be careful with this control!
+    /// An optional max intensity can be set as a group option.
+    /// This control is clipped at 1, so a minimum value is "as dim as we can get".
     #[channel_control]
     #[animate]
     intensity: ChannelKnobUnipolar<Unipolar<()>>,
+    #[skip_control]
+    #[skip_emit]
+    max_intensity: u8,
     chase: IndexedSelect<()>,
     multiplier: IndexedSelect<()>,
     reverse: Bool<()>,
@@ -27,6 +35,8 @@ pub struct FlashBang {
 pub struct GroupOptions {
     #[serde(default)]
     paired: bool,
+    #[serde(default)]
+    max_intensity: Option<u8>,
 }
 
 impl PatchFixture for FlashBang {
@@ -43,8 +53,9 @@ impl PatchFixture for FlashBang {
 
         Self {
             intensity: Unipolar::new("Intensity", ())
-                .at(UnipolarFloat::new(0.1))
+                .at(UnipolarFloat::new(0.0))
                 .with_channel_knob(0),
+            max_intensity: options.max_intensity.unwrap_or(255),
             chase: IndexedSelect::new("Chase", flasher.len(), false, ()),
             multiplier: IndexedSelect::new("Multiplier", 2, false, ()),
             reverse: Bool::new_off("Reverse", ()),
@@ -94,8 +105,8 @@ impl AnimatedFixture for FlashBang {
         }
         // Scale the intensity by the master strobe intensity.
         let intensity = unipolar_to_range(
-            0,
-            255,
+            1,
+            self.max_intensity,
             self.intensity
                 .control
                 .val_with_anim(animation_vals.filter(&AnimationTarget::Intensity))

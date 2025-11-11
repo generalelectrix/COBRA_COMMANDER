@@ -44,6 +44,12 @@ impl AsPatchOption for usize {
     }
 }
 
+impl AsPatchOption for u8 {
+    fn as_patch_option() -> PatchOption {
+        PatchOption::Int
+    }
+}
+
 impl AsPatchOption for SocketAddr {
     fn as_patch_option() -> PatchOption {
         PatchOption::SocketAddr
