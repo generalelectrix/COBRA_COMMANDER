@@ -19,12 +19,12 @@
     - addr: 100
     - addr: 110
       mirror: true
-- fixture: SwarmolonStrobe
+- fixture: SwarmolonLasers
   patches:
     - addr: 100
     - addr: 110
       mirror: true
-- fixture: SwarmolonLasers
+- fixture: SwarmolonStrobe
   patches:
     - addr: 100
     - addr: 110
