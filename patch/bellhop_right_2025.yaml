@@ -1,0 +1,39 @@
+- fixture: Wizlet
+  patches:
+    - addr: 54
+      mirror: true
+    - addr: 66
+- fixture: RotosphereQ3
+  patches:
+    - addr: 20
+      mirror: true
+- fixture: Starlight
+  patches:
+    - addr: 82
+      mirror: true
+- fixture: Aquarius
+  patches:
+    - addr: 130
+      mirror: true
+- fixture: Color
+  group: MirrorBall
+  control_color_space: Hsi
+  patches:
+    - addr: 86
+      kind: Rgbw
+    - addr: 90
+      kind: Rgbw
+- fixture: FlashBang
+  paired: true
+  patches:
+    - addr: 1
+# - fixture: RugDoctor
+#   url: "http://192.168.1.1"
+#   preset_count: 6
+#   patches:
+#     - addr: 300
+
+- fixture: Relay
+  channel: false
+  patches:
+    - addr: 100
