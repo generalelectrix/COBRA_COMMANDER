@@ -197,19 +197,21 @@ fn start_service(
         ..Default::default()
     }));
     let storage_handle = storage.clone();
-    thread::spawn(move || loop {
-        let msg = match receiver.receive_msg(true) {
-            Err(e) => {
-                error!("animation receive error: {e}");
-                continue;
-            }
-            Ok(None) => {
-                continue;
-            }
-            Ok(Some(msg)) => msg,
-        };
-        *storage_handle.lock().unwrap() = msg;
-        on_update();
+    thread::spawn(move || {
+        loop {
+            let msg = match receiver.receive_msg(true) {
+                Err(e) => {
+                    error!("animation receive error: {e}");
+                    continue;
+                }
+                Ok(None) => {
+                    continue;
+                }
+                Ok(Some(msg)) => msg,
+            };
+            *storage_handle.lock().unwrap() = msg;
+            on_update();
+        }
     });
     println!("Connected to {provider}.");
     Ok(storage)

@@ -30,11 +30,7 @@ impl Button {
         event_factory: impl Fn() -> T + 'static,
     ) {
         map.add_fetch_process(self.control, OscControlMessage::get_bool, move |v| {
-            if v {
-                Some(event_factory())
-            } else {
-                None
-            }
+            if v { Some(event_factory()) } else { None }
         })
     }
 

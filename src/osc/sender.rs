@@ -2,11 +2,11 @@
 use anyhow::Result;
 use std::{
     net::UdpSocket,
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{Receiver, Sender, channel},
 };
 
 use log::{error, info};
-use rosc::{encoder, OscPacket};
+use rosc::{OscPacket, encoder};
 
 use crate::osc::{OscClientId, OscControlResponse, TalkbackMode};
 

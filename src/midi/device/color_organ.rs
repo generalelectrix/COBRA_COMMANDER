@@ -1,15 +1,15 @@
 //! A generic midi device for representing a MIDI keyboard.
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use number::{Phase, UnipolarFloat};
 
 use color_organ::{ControlMessage, ReleaseId};
 use tunnels::{
     midi::{Event, EventType},
-    midi_controls::{unipolar_from_midi, MidiDevice},
+    midi_controls::{MidiDevice, unipolar_from_midi},
 };
 
 use crate::{
-    color::{Hsluv, HSLUV_LIGHTNESS_OFFSET},
+    color::{HSLUV_LIGHTNESS_OFFSET, Hsluv},
     midi::MidiHandler,
     show::ShowControlMessage,
 };

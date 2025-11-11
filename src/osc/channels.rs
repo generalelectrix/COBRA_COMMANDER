@@ -5,8 +5,8 @@ use crate::osc::prelude::ButtonArray;
 use crate::osc::{GroupControlMap, RadioButton};
 
 use super::label_array::LabelArray;
-use super::unipolar_array::{unipolar_array, UnipolarArray};
-use anyhow::{anyhow, Context};
+use super::unipolar_array::{UnipolarArray, unipolar_array};
+use anyhow::{Context, anyhow};
 
 const N_CHANNELS: usize = 8;
 

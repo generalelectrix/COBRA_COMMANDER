@@ -2,8 +2,8 @@
 use log::{debug, error, info, warn};
 use std::{
     sync::{
-        mpsc::{channel, Sender},
         Arc, Mutex,
+        mpsc::{Sender, channel},
     },
     time::Duration,
 };

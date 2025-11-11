@@ -3,6 +3,7 @@
 use tunnels::{midi::Output, midi_controls::unipolar_from_midi};
 
 use super::{
+    MidiHandler,
     device::{
         apc20::{
             AkaiApc20, Apc20ChannelButtonType, Apc20ChannelControlEvent, Apc20ControlEvent,
@@ -14,7 +15,6 @@ use super::{
             LaunchControlXLStateChange, LedState, NovationLaunchControlXL,
         },
     },
-    MidiHandler,
 };
 use crate::{
     channel::{

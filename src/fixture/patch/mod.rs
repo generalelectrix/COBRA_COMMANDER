@@ -1,5 +1,5 @@
 //! Types and traits related to patching fixtures.
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{Context, Result, anyhow, ensure};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::HashMap;
@@ -19,10 +19,10 @@ mod option;
 mod patcher;
 
 pub use patcher::{
-    CreateAnimatedGroup, CreateNonAnimatedGroup, PatchConfig, PatchFixture, Patcher, PATCHERS,
+    CreateAnimatedGroup, CreateNonAnimatedGroup, PATCHERS, PatchConfig, PatchFixture, Patcher,
 };
 
-pub use option::{enum_patch_option, AsPatchOption, NoOptions, OptionsMenu, PatchOption};
+pub use option::{AsPatchOption, NoOptions, OptionsMenu, PatchOption, enum_patch_option};
 
 /// Factory for fixture instances.
 ///

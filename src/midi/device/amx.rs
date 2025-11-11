@@ -12,8 +12,8 @@ use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
-    midi::{cc, event, note_on, Event, EventType, Output},
-    midi_controls::{bipolar_from_midi, unipolar_from_midi, MidiDevice},
+    midi::{Event, EventType, Output, cc, event, note_on},
+    midi_controls::{MidiDevice, bipolar_from_midi, unipolar_from_midi},
 };
 
 use tunnels::clock::{ControlMessage as ClockControlMessage, StateChange as ClockStateChange};

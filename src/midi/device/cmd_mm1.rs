@@ -4,10 +4,11 @@ use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
-    midi::{cc, event, note_on, Event, EventType, Output},
+    midi::{Event, EventType, Output, cc, event, note_on},
     midi_controls::{
+        MidiDevice,
         audio::{envelope_edge_from_midi, filter_from_midi, gain_from_midi},
-        bipolar_from_midi, unipolar_from_midi, MidiDevice,
+        bipolar_from_midi, unipolar_from_midi,
     },
 };
 

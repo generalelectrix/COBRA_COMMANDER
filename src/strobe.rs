@@ -10,7 +10,7 @@
 //!
 //! The advantage vs. using any given onboard strobe control is that we can
 //! easily synchronize the strobing of multiple fixture types across the rig.
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::time::Duration;
 use strum::VariantArray;
 use strum_macros::VariantArray;
@@ -23,7 +23,7 @@ use tunnels::{
 
 use crate::{
     midi::EmitMidiMasterMessage,
-    osc::{prelude::*, ScopedControlEmitter},
+    osc::{ScopedControlEmitter, prelude::*},
     show::UPDATE_INTERVAL,
 };
 

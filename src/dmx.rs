@@ -1,6 +1,6 @@
 use std::{fmt::Display, ops::Add};
 
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
 /// A DMX address, indexed from 1.

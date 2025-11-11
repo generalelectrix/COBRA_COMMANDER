@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, fmt::Display};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use log::{debug, error};
 use number::{BipolarFloat, UnipolarFloat};
 use serde::Deserialize;
@@ -239,9 +239,11 @@ impl Channels {
                 let channel_id = if let Some(id) = channel_id {
                     self.validate_channel(*id)?
                 } else {
-                    self.current_channel.ok_or_else(||
-                            anyhow!("no channel ID provided or selected for channel control message {msg:?}")
-                        )?
+                    self.current_channel.ok_or_else(|| {
+                        anyhow!(
+                            "no channel ID provided or selected for channel control message {msg:?}"
+                        )
+                    })?
                 };
                 let handled = self
                     .group_by_channel_mut(patch, channel_id)?
@@ -253,7 +255,9 @@ impl Channels {
                         },
                     )?;
                 if !handled {
-                    debug!("Fixture in channel {channel_id} did not handle channel control message {msg:?}.");
+                    debug!(
+                        "Fixture in channel {channel_id} did not handle channel control message {msg:?}."
+                    );
                 }
             }
         }

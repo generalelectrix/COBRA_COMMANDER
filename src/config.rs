@@ -1,7 +1,7 @@
 use crate::dmx::DmxAddr;
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use itertools::Itertools;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{Deserialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, fmt::Display, ops::Deref};
 

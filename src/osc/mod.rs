@@ -6,13 +6,13 @@ use crate::midi::{EmitMidiAnimationMessage, EmitMidiMasterMessage};
 use crate::osc::listener::OscListener;
 use crate::osc::sender::{OscSender, OscSenderCommand};
 use anyhow::Result;
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use log::error;
 use number::{BipolarFloat, Phase, UnipolarFloat};
 use rosc::{OscMessage, OscType};
 use serde::Deserialize;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt::Display;
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -341,13 +341,13 @@ impl OscControlMessage {
 }
 
 pub mod prelude {
-    pub use super::basic_controls::{button, unipolar, Button, UnipolarOsc};
-    pub use super::bipolar_array::{bipolar_array, BipolarArray};
-    pub use super::button_array::{button_array, ButtonArray};
+    pub use super::FixtureStateEmitter;
+    pub use super::basic_controls::{Button, UnipolarOsc, button, unipolar};
+    pub use super::bipolar_array::{BipolarArray, bipolar_array};
+    pub use super::button_array::{ButtonArray, button_array};
     pub use super::label_array::LabelArray;
     pub use super::radio_button::RadioButton;
-    pub use super::unipolar_array::{unipolar_array, UnipolarArray};
-    pub use super::FixtureStateEmitter;
+    pub use super::unipolar_array::{UnipolarArray, unipolar_array};
     pub use super::{GroupControlMap, OscControlMessage};
     pub use crate::util::*;
 }

@@ -1,5 +1,5 @@
 use anyhow::Context as _;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use clock_service::prompt_start_clock_service;
 use clocks::Clocks;
@@ -8,21 +8,21 @@ use local_ip_address::local_ip;
 use log::LevelFilter;
 use midi::Device;
 use osc::prompt_osc_config;
-use rust_dmx::{available_ports, select_port_from, DmxPort, OfflineDmxPort};
+use rust_dmx::{DmxPort, OfflineDmxPort, available_ports, select_port_from};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
 use std::path::PathBuf;
 use std::time::Duration;
 use strum_macros::Display;
-use tunnels::audio::prompt_audio;
 use tunnels::audio::AudioInput;
+use tunnels::audio::prompt_audio;
 use tunnels::midi::prompt_midi;
-use tunnels::midi::{list_ports, DeviceSpec};
+use tunnels::midi::{DeviceSpec, list_ports};
 use tunnels_lib::prompt::{prompt_bool, prompt_indexed_value};
 use zmq::Context;
 
 use crate::animation_visualizer::{
-    animation_publisher, run_animation_visualizer, AnimationPublisher,
+    AnimationPublisher, animation_publisher, run_animation_visualizer,
 };
 use crate::control::Controller;
 use crate::midi::ColorOrgan;

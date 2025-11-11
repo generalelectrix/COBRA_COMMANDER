@@ -1,6 +1,6 @@
 //! Define groups of fixtures, sharing a common fixture
 
-use anyhow::{ensure, Context};
+use anyhow::{Context, ensure};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
 use log::error;
@@ -18,8 +18,8 @@ use crate::color::Hsluv;
 use crate::config::FixtureGroupKey;
 use crate::config::Options;
 use crate::dmx::DmxBuffer;
-use crate::fixture::fixture::FixtureGroupUpdate;
 use crate::fixture::FixtureGroupControls;
+use crate::fixture::fixture::FixtureGroupUpdate;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 use crate::preview::Previewer;

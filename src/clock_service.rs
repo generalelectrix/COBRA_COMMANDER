@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 use log::error;
-use tunnels::clock_server::{clock_subscriber, SharedClockData};
+use tunnels::clock_server::{SharedClockData, clock_subscriber};
 use tunnels_lib::prompt::{prompt_bool, prompt_parse};
 use zmq::Context;
 
@@ -49,19 +49,21 @@ pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> 
     let mut receiver = service.subscribe(&provider, None)?;
     let storage = Arc::new(Mutex::new(SharedClockData::default()));
     let storage_handle = storage.clone();
-    thread::spawn(move || loop {
-        let msg = match receiver.receive_msg(true) {
-            Err(e) => {
-                error!("clock receive error: {e}");
-                continue;
-            }
-            Ok(None) => {
-                continue;
-            }
-            Ok(Some(msg)) => msg,
-        };
-        let mut clock_state = storage_handle.lock().unwrap();
-        *clock_state = msg;
+    thread::spawn(move || {
+        loop {
+            let msg = match receiver.receive_msg(true) {
+                Err(e) => {
+                    error!("clock receive error: {e}");
+                    continue;
+                }
+                Ok(None) => {
+                    continue;
+                }
+                Ok(Some(msg)) => msg,
+            };
+            let mut clock_state = storage_handle.lock().unwrap();
+            *clock_state = msg;
+        }
     });
     println!("Connected to {provider}.");
     Ok(Some(ClockService(storage)))

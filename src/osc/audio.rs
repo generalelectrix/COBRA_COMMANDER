@@ -6,8 +6,8 @@ use number::UnipolarFloat;
 use tunnels::audio::{ControlMessage, StateChange};
 
 use super::{
-    prelude::{button, Button},
     GroupControlMap,
+    prelude::{Button, button},
 };
 
 pub const GROUP: &str = "Audio";

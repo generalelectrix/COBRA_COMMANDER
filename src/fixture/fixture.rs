@@ -4,15 +4,15 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use number::Phase;
 use serde::{Deserialize, Serialize};
 use strum::VariantArray;
 
-use super::animation_target::{
-    ControllableTargetedAnimation, TargetedAnimationValues, TargetedAnimations, N_ANIM,
-};
 use super::FixtureGroupControls;
+use super::animation_target::{
+    ControllableTargetedAnimation, N_ANIM, TargetedAnimationValues, TargetedAnimations,
+};
 use crate::channel::ChannelControlMessage;
 use crate::fixture::animation_target::AnimationTarget;
 use crate::master::MasterControls;
@@ -164,7 +164,7 @@ pub trait Fixture: Update + EmitState + Control {
 
     /// Get the animation with the provided index, mutably.
     fn get_animation_mut(&mut self, index: usize)
-        -> Option<&mut dyn ControllableTargetedAnimation>;
+    -> Option<&mut dyn ControllableTargetedAnimation>;
 
     /// Reset all of the animations associated with this fixture.
     fn reset_animations(&mut self);

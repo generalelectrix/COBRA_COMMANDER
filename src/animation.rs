@@ -7,8 +7,8 @@ use tunnels::animation::{Animation, EmitStateChange as EmitAnimationStateChange}
 use crate::{
     control::EmitScopedControlMessage,
     fixture::{
-        animation_target::{AnimationTargetIndex, ControllableTargetedAnimation, N_ANIM},
         FixtureGroup,
+        animation_target::{AnimationTargetIndex, ControllableTargetedAnimation, N_ANIM},
     },
     osc::{GroupControlMap, OscControlMessage},
     show::ChannelId,

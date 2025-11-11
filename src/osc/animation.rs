@@ -9,9 +9,9 @@ use crate::osc::RadioButton;
 
 use tunnels::animation::{ControlMessage, StateChange, Waveform::*};
 
-use super::basic_controls::{button, Button};
-use super::label_array::LabelArray;
 use super::GroupControlMap;
+use super::basic_controls::{Button, button};
+use super::label_array::LabelArray;
 
 pub(crate) const GROUP: &str = "Animation";
 

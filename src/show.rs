@@ -12,7 +12,7 @@ use crate::{
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
     fixture::{
-        animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate, Patch,
+        Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub use crate::channel::ChannelId;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use rust_dmx::DmxPort;
@@ -161,7 +161,9 @@ impl Show {
             }
             ShowControlMessage::Animation(msg) => {
                 let Some(channel) = self.channels.current_channel() else {
-                    bail!("cannot handle animation control message because no channel is selected\n{msg:?}");
+                    bail!(
+                        "cannot handle animation control message because no channel is selected\n{msg:?}"
+                    );
                 };
                 self.animation_ui_state.control(
                     msg,
@@ -239,7 +241,9 @@ impl Show {
             }
             crate::osc::animation::GROUP => {
                 let Some(channel) = self.channels.current_channel() else {
-                    bail!("cannot handle animation control message because no channel is selected\n{msg:?}");
+                    bail!(
+                        "cannot handle animation control message because no channel is selected\n{msg:?}"
+                    );
                 };
                 self.animation_ui_state.control_osc(
                     msg,
@@ -327,7 +331,9 @@ impl Show {
                     },
                 );
             } else {
-                error!("Refreshing UI: could not get fixture group for current channel {current_channel}.");
+                error!(
+                    "Refreshing UI: could not get fixture group for current channel {current_channel}."
+                );
             }
         }
 

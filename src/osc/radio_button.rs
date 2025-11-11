@@ -1,7 +1,7 @@
 use log::error;
 use rosc::OscType;
 
-use super::{control_message::OscControlMessage, GroupControlMap, OscError, ScopedOscMessage};
+use super::{GroupControlMap, OscError, ScopedOscMessage, control_message::OscControlMessage};
 use anyhow::Result;
 
 /// Model a 1D button grid with radio-select behavior.

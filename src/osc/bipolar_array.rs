@@ -3,9 +3,9 @@ use number::BipolarFloat;
 use rosc::OscType;
 
 use super::{GroupControlMap, ScopedOscMessage};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 
 /// Model a bipolar control array.
 #[derive(Clone)]

@@ -5,7 +5,7 @@
 use std::{
     cell::{Cell, RefCell},
     fmt::Display,
-    io::{stdout, Stdout, StdoutLock, Write},
+    io::{Stdout, StdoutLock, Write, stdout},
 };
 
 use owo_colors::OwoColorize;

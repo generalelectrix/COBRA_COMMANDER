@@ -8,9 +8,9 @@ use rosc::OscType;
 use crate::osc::OscControlMessage;
 
 use super::{GroupControlMap, ScopedOscMessage};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 
 /// Model a button array.
 #[derive(Clone)]

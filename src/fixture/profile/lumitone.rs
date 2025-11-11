@@ -2,7 +2,7 @@
 use std::{
     io::Write,
     net::{SocketAddr, TcpStream},
-    sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender},
+    sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel},
     time::{Duration, Instant},
 };
 

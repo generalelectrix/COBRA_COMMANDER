@@ -14,7 +14,7 @@
 use log::error;
 use number::{BipolarFloat, UnipolarFloat};
 use tunnels::{
-    midi::{cc, event, note_on, Event, EventType, Output},
+    midi::{Event, EventType, Output, cc, event, note_on},
     midi_controls::MidiDevice,
 };
 
