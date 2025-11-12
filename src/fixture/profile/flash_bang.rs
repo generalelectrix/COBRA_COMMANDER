@@ -142,7 +142,31 @@ fn chases_for_paired() -> Result<Chases<10>> {
 
     // single pulse
     c.add_auto_mult(PatternArray::singles(0..CELLS))?;
-    // single pulse bounce
+
+    let bounce_out_in = (0..5).chain((0..4).rev()).chain(5..10).chain((5..9).rev());
+
+    c.add_for_mult(0, PatternArray::singles(bounce_out_in.clone()))?;
+    c.add_for_mult(
+        1,
+        Lockstep::new(
+            PatternArray::singles(bounce_out_in.clone()),
+            PatternArray::singles(bounce_out_in.clone()),
+            9,
+        ),
+    )?;
+
+    let bounce_in_out = (0..5).rev().chain(1..5).chain((5..10).rev()).chain(6..10);
+
+    c.add_for_mult(0, PatternArray::singles(bounce_in_out.clone()))?;
+    c.add_for_mult(
+        1,
+        Lockstep::new(
+            PatternArray::singles(bounce_in_out.clone()),
+            PatternArray::singles(bounce_in_out.clone()),
+            9,
+        ),
+    )?;
+    // single pulse bounce asymmetric
     c.add_for_mult(
         0,
         PatternArray::singles((0..CELLS).chain((1..CELLS - 1).rev())),
