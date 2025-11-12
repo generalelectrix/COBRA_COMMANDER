@@ -131,13 +131,7 @@ fn main() -> Result<()> {
     SimpleLogger::init(log_level, LogConfig::default())?;
 
     match args.command {
-        Command::Run(args) => {
-            if args.quickstart {
-                quickstart(args)
-            } else {
-                run_show(args)
-            }
-        }
+        Command::Run(args) => run_show(args),
         Command::Check(args) => check_patch(args),
         Command::Viz => run_animation_visualizer(),
         Command::Fix(args) => fixture_help(args),
@@ -146,72 +140,14 @@ fn main() -> Result<()> {
 
 const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 
-fn quickstart(args: RunArgs) -> Result<()> {
-    let patch = Patch::from_file(&args.patch_file)?;
-
-    let clocks = Clocks::internal(None);
-
-    match local_ip() {
-        Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
-        Err(e) => println!("Unable to fetch local IP address: {e}."),
-    }
-
-    let (midi_inputs, midi_outputs) = list_ports()?;
-    let midi_devices = Device::auto_configure(true, &midi_inputs, &midi_outputs);
-    if midi_devices.is_empty() {
-        println!("No known MIDI devices were automatically discovered.");
-    } else {
-        println!("These known MIDI devices were found:");
-        for d in &midi_devices {
-            println!("  - {}", d.device);
-        }
-    }
-
-    let controller = Controller::new(args.osc_receive_port, vec![], midi_devices)?;
-
-    let universe_count = patch.universe_count();
-    println!("This show requires {universe_count} universe(s).");
-
-    let mut dmx_ports = Vec::new();
-
-    if args.artnet {
-        println!("Searching for artnet ports...");
-    }
-    let available_ports = available_ports(args.artnet.then_some(ARTNET_POLL_TIMEOUT))?;
-
-    for (i, port) in (0..universe_count).zip(available_ports.into_iter().rev().chain(
-        std::iter::repeat_with(|| Box::new(OfflineDmxPort) as Box<dyn DmxPort>),
-    )) {
-        println!("Assigning universe {i} to port {port}.");
-        dmx_ports.push(port);
-    }
-
-    let mut show = Show::new(
-        patch,
-        args.patch_file,
-        controller,
-        dmx_ports,
-        clocks,
-        None,
-        args.cli_preview
-            .then(Previewer::terminal)
-            .unwrap_or_default(),
-        args.master_strobe_channel,
-    )?;
-
-    println!("Running show.");
-
-    show.run();
-
-    Ok(())
-}
-
 fn run_show(args: RunArgs) -> Result<()> {
     let patch = Patch::from_file(&args.patch_file)?;
 
     let zmq_ctx = Context::new();
 
-    let clocks = if let Some(clock_service) = prompt_start_clock_service(zmq_ctx.clone())? {
+    let clocks = if args.quickstart {
+        Clocks::internal(None)
+    } else if let Some(clock_service) = prompt_start_clock_service(zmq_ctx.clone())? {
         Clocks::Service(clock_service)
     } else {
         let audio_device = prompt_audio()?
@@ -223,14 +159,22 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     let internal_clocks = matches!(clocks, Clocks::Internal { .. });
 
-    let animation_service = prompt_start_animation_service(&zmq_ctx)?;
+    let animation_service = if args.quickstart {
+        None
+    } else {
+        prompt_start_animation_service(&zmq_ctx)?
+    };
 
     match local_ip() {
         Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
         Err(e) => println!("Unable to fetch local IP address: {e}."),
     }
 
-    let osc_controllers = prompt_osc_config(args.osc_receive_port)?.unwrap_or_default();
+    let osc_controllers = if args.quickstart {
+        vec![]
+    } else {
+        prompt_osc_config(args.osc_receive_port)?.unwrap_or_default()
+    };
 
     let (midi_inputs, midi_outputs) = list_ports()?;
     let mut midi_devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
@@ -242,7 +186,7 @@ fn run_show(args: RunArgs) -> Result<()> {
             println!("  - {}", d.device);
         }
     }
-    if !prompt_bool("Does this look correct?")? {
+    if !args.quickstart && !prompt_bool("Does this look correct?")? {
         midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all(internal_clocks))?;
     }
 
@@ -268,9 +212,18 @@ fn run_show(args: RunArgs) -> Result<()> {
         println!("Searching for artnet ports...");
     }
     let mut available_ports = available_ports(args.artnet.then_some(ARTNET_POLL_TIMEOUT))?;
-    for i in 0..universe_count {
-        println!("Assign port to universe {i}:");
-        dmx_ports.push(select_port_from(&mut available_ports)?);
+    if args.quickstart {
+        for (i, port) in (0..universe_count).zip(available_ports.into_iter().rev().chain(
+            std::iter::repeat_with(|| Box::new(OfflineDmxPort) as Box<dyn DmxPort>),
+        )) {
+            println!("Assigning universe {i} to port {port}.");
+            dmx_ports.push(port);
+        }
+    } else {
+        for i in 0..universe_count {
+            println!("Assign port to universe {i}:");
+            dmx_ports.push(select_port_from(&mut available_ports)?);
+        }
     }
 
     if animation_service.is_some() {
