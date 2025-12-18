@@ -201,7 +201,11 @@ fn run_show(args: RunArgs) -> Result<()> {
         })
     }
 
-    let controller = Controller::new(args.osc_receive_port, osc_controllers, midi_devices)?;
+    let mut controller = Controller::new(args.osc_receive_port, osc_controllers)?;
+
+    for d in midi_devices {
+        controller.add_midi_device(d)?;
+    }
 
     let universe_count = patch.universe_count();
     println!("This show requires {universe_count} universe(s).");

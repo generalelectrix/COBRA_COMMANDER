@@ -1,9 +1,10 @@
 //! Define midi devices and handle midi controls.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 pub use device::color_organ::ColorOrgan;
 use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use enum_dispatch::enum_dispatch;
+use log::error;
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{
@@ -140,53 +141,76 @@ pub struct MidiControlMessage {
 /// Writing to a midi ouput requires a unique reference; we can safely wrap
 /// this using RefCell since we only need a reference to the outputs to write,
 /// and we can only be making one write call at a time.
+///
+/// I don't think it's really possible to screw this up, but just in case,
+/// we log an error and continue rather than panicking.
+#[derive(Default)]
 pub struct MidiController(RefCell<Manager<Device>>);
 
 impl MidiController {
-    pub fn new(devices: Vec<DeviceSpec<Device>>, send: Sender<ControlMessage>) -> Result<Self> {
-        let mut controller = Manager::default();
-        for d in devices {
-            controller.add_device(d, send.clone())?;
-        }
-        Ok(Self(RefCell::new(controller)))
+    /// Add a new MIDI device.
+    pub fn add_device(
+        &mut self,
+        spec: DeviceSpec<Device>,
+        send: Sender<ControlMessage>,
+    ) -> Result<()> {
+        self.0
+            .try_borrow_mut()
+            .context("MIDI controller was unexpectedly unable to be borrowed")?
+            .add_device(spec, send)
     }
 
     /// Handle a channel state change message.
     pub fn emit_channel_control(&self, msg: &ChannelStateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        let Ok(mut guard) = self.0.try_borrow_mut() else {
+            error!("MIDI controller was unexpectedly unable to be borrowed");
+            return;
+        };
+        for (device, output) in guard.outputs() {
             device.emit_channel_control(msg, output);
         }
     }
 
     /// Handle a clock state change message.
     pub fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        let Ok(mut guard) = self.0.try_borrow_mut() else {
+            error!("MIDI controller was unexpectedly unable to be borrowed");
+            return;
+        };
+        for (device, output) in guard.outputs() {
             device.emit_clock_control(msg, output);
         }
     }
 
     /// Handle a audio state change message.
     pub fn emit_audio_control(&self, msg: &tunnels::audio::StateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        let Ok(mut guard) = self.0.try_borrow_mut() else {
+            error!("MIDI controller was unexpectedly unable to be borrowed");
+            return;
+        };
+        for (device, output) in guard.outputs() {
             device.emit_audio_control(msg, output);
         }
     }
 
     /// Handle a animation state change message.
     pub fn emit_animation_control(&self, msg: &AnimationStateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        let Ok(mut guard) = self.0.try_borrow_mut() else {
+            error!("MIDI controller was unexpectedly unable to be borrowed");
+            return;
+        };
+        for (device, output) in guard.outputs() {
             device.emit_animation_control(msg, output);
         }
     }
 
     /// Handle a master state change message.
     pub fn emit_master_control(&self, msg: &crate::master::StateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        let Ok(mut guard) = self.0.try_borrow_mut() else {
+            error!("MIDI controller was unexpectedly unable to be borrowed");
+            return;
+        };
+        for (device, output) in guard.outputs() {
             device.emit_master_control(msg, output);
         }
     }

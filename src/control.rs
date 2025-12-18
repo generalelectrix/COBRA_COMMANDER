@@ -1,7 +1,7 @@
 //! Top-level traits and types for control events.
 
 use std::{
-    sync::mpsc::{Receiver, RecvTimeoutError, channel},
+    sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel},
     time::Duration,
 };
 
@@ -43,19 +43,17 @@ pub struct Controller {
     osc: OscController,
     midi: MidiController,
     recv: Receiver<ControlMessage>,
+    send: Sender<ControlMessage>,
 }
 
 impl Controller {
-    pub fn new(
-        receive_port: u16,
-        osc_controllers: Vec<OscClientId>,
-        midi_devices: Vec<DeviceSpec<Device>>,
-    ) -> Result<Self> {
+    pub fn new(receive_port: u16, osc_controllers: Vec<OscClientId>) -> Result<Self> {
         let (send, recv) = channel();
         Ok(Self {
             osc: OscController::new(receive_port, osc_controllers, send.clone())?,
-            midi: MidiController::new(midi_devices, send)?,
+            midi: Default::default(),
             recv,
+            send,
         })
     }
 
@@ -67,6 +65,11 @@ impl Controller {
                 bail!("control receiver disconnected");
             }
         }
+    }
+
+    /// Add a MIDI device.
+    pub fn add_midi_device(&mut self, device: DeviceSpec<Device>) -> Result<()> {
+        self.midi.add_device(device, self.send.clone())
     }
 
     /// Register a new OSC client.
