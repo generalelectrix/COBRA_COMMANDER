@@ -148,6 +148,10 @@ impl Show {
                 self.controller.deregister_osc_client(client_id);
                 Ok(())
             }
+            ControlMessage::AddMidiDevice(device) => {
+                println!("Adding new MIDI device: {}.", device.device);
+                self.controller.add_midi_device(device)
+            }
             ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
         }

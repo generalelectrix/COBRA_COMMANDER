@@ -164,6 +164,8 @@ impl<'a> EmitMidiMasterMessage for ControlMessageWithMetadataSender<'a> {
 pub enum ControlMessage {
     RegisterClient(OscClientId),
     DeregisterClient(OscClientId),
+    #[expect(dead_code)]
+    AddMidiDevice(DeviceSpec<Device>),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
 }
