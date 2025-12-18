@@ -9,7 +9,7 @@ use crate::fixture::{
 };
 
 #[derive(Debug, EmitState, Control, Update, PatchFixture)]
-#[channel_count = 14]
+#[channel_count = 16]
 #[strobe(Short)]
 pub struct Ufo {
     #[channel_control]
@@ -19,21 +19,21 @@ pub struct Ufo {
     #[animate]
     rotation: ChannelKnobBipolar<BipolarSplitChannelMirror>,
     #[animate]
-    pan: BipolarChannelMirror,
+    pan: Mirrored<RenderBipolarToCoarseAndFine>,
     #[animate]
-    tilt: BipolarChannelMirror,
+    tilt: Mirrored<RenderBipolarToCoarseAndFine>,
 }
 
 impl Default for Ufo {
     fn default() -> Self {
         Self {
             color: Color::for_subcontrol(None, crate::color::ColorSpace::Hsi),
-            rotation: Bipolar::split_channel("Rotation", 3, 191, 128, 192, 255, 0)
+            rotation: Bipolar::split_channel("Rotation", 5, 191, 128, 192, 255, 0)
                 .with_detent()
                 .with_mirroring(true)
                 .with_channel_knob(2),
-            pan: Bipolar::channel("Pan", 0, 0, 255).with_mirroring(true),
-            tilt: Bipolar::channel("Tilt", 1, 0, 255).with_mirroring(true),
+            pan: Bipolar::coarse_fine("Pan", 0).with_mirroring(true),
+            tilt: Bipolar::coarse_fine("Tilt", 2).with_mirroring(true),
         }
     }
 }
@@ -57,30 +57,30 @@ impl AnimatedFixture for Ufo {
             animation_vals.filter(&AnimationTarget::Tilt),
             dmx_buf,
         );
-        dmx_buf[2] = 0; // pan and tilt movement speed
+        dmx_buf[4] = 0; // pan and tilt movement speed
         self.rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Rotation),
             dmx_buf,
         );
-        dmx_buf[4] = 255; // dimmer always at full, brightness set via color control
-        dmx_buf[5] = 0; // TODO: strobe control
+        dmx_buf[6] = 255; // dimmer always at full, brightness set via color control
+        dmx_buf[7] = 0; // TODO: strobe control
 
         self.color.render_for_model(
             ColorRenderModel::Rgbw,
             group_controls,
             &animation_vals.subtarget(),
-            &mut dmx_buf[6..10],
+            &mut dmx_buf[8..12],
         );
 
         // horrible macro channels
-        dmx_buf[10] = 0;
-        dmx_buf[11] = 0;
         dmx_buf[12] = 0;
+        dmx_buf[13] = 0;
+        dmx_buf[14] = 0;
 
         // Remote fixture reset - resets if held at 255 for 5 seconds.
         // TODO: this might be a useful feature to implement if their motion
         // tends to run out of calibration
-        dmx_buf[13] = 0;
+        dmx_buf[15] = 0;
     }
 }
