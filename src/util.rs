@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::{
     ops::{AddAssign, Sub},
     time::Duration,
@@ -74,6 +75,23 @@ impl<P: Copy + Sub<Output = P> + Into<f64> + AddAssign<f64>> RampingParameter<P>
 
     pub fn current(&self) -> P {
         self.current
+    }
+}
+
+/// Retry a fallible operation at most N times.
+///
+/// Return the final error if we don't succeed.
+pub fn retry<F, T>(n: usize, mut f: F) -> Result<T>
+where
+    F: FnMut() -> Result<T>,
+{
+    let mut count = 0;
+    loop {
+        count += 1;
+        let r = f();
+        if r.is_ok() || count >= n {
+            break r;
+        }
     }
 }
 

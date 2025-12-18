@@ -28,6 +28,7 @@ use crate::control::Controller;
 use crate::midi::ColorOrgan;
 use crate::preview::Previewer;
 use crate::show::Show;
+use crate::util::retry;
 
 mod animation;
 mod animation_visualizer;
@@ -204,7 +205,8 @@ fn run_show(args: RunArgs) -> Result<()> {
     let mut controller = Controller::new(args.osc_receive_port, osc_controllers)?;
 
     for d in midi_devices {
-        controller.add_midi_device(d)?;
+        // Retry adding devices a few times if it fails to init for some reason.
+        retry(3, || controller.add_midi_device(d.clone()))?;
     }
 
     let universe_count = patch.universe_count();
