@@ -172,6 +172,15 @@ impl CreateControlEvent<Device> for ControlMessage {
 }
 
 #[cfg(test)]
+mod send_check {
+    use super::Controller;
+    fn _assert_send<T: Send>() {}
+    fn _check() {
+        _assert_send::<Controller>();
+    }
+}
+
+#[cfg(test)]
 pub mod mock {
     use super::*;
 

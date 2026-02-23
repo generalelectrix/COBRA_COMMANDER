@@ -24,6 +24,8 @@ use zmq::Context;
 use crate::animation_visualizer::{
     AnimationPublisher, animation_publisher, run_animation_visualizer,
 };
+use crate::console::{create_console_handles, run_console};
+use crate::console::state::ConsoleState;
 use crate::control::Controller;
 use crate::midi::ColorOrgan;
 use crate::preview::Previewer;
@@ -36,6 +38,7 @@ mod clock_service;
 mod clocks;
 mod color;
 mod config;
+mod console;
 mod control;
 mod dmx;
 mod fixture;
@@ -101,6 +104,10 @@ struct RunArgs {
     /// If true, render fixture preview into the CLI.
     #[arg(long)]
     cli_preview: bool,
+
+    /// If true, launch the egui console GUI for live show management.
+    #[arg(long)]
+    console: bool,
 }
 
 #[derive(Args)]
@@ -141,6 +148,40 @@ fn main() -> Result<()> {
 const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn run_show(args: RunArgs) -> Result<()> {
+    if args.console {
+        // Console mode: egui must run on the main thread (macOS requirement).
+        // Show is not Send, so we build and run it entirely on the worker thread.
+        let initial_state = ConsoleState {
+            fixture_types: vec![],
+            groups: vec![],
+            osc_clients: vec![],
+            midi_inputs: vec![],
+            last_error: None,
+        };
+        let (show_handle, app_handle) = create_console_handles(initial_state);
+
+        // Spawn worker thread for all show setup (prompts, construction, run loop).
+        // ConsoleHandle is Send (Arc<Mutex<>> + mpsc::Receiver).
+        // RunArgs fields are all Send (PathBuf, bool, u16).
+        std::thread::spawn(move || {
+            if let Err(err) = run_show_inner(args, Some(show_handle)) {
+                eprintln!("Show error: {err:#}");
+            }
+        });
+
+        // Main thread runs egui.
+        run_console(app_handle)
+    } else {
+        run_show_inner(args, None)
+    }
+}
+
+/// Initialize and run the show. Called either on the main thread (no console)
+/// or on a worker thread (console mode, so egui can have the main thread).
+fn run_show_inner(
+    args: RunArgs,
+    console: Option<crate::console::ConsoleHandle>,
+) -> Result<()> {
     let patch = Patch::from_file(&args.patch_file)?;
 
     let zmq_ctx = Context::new();
@@ -241,6 +282,7 @@ fn run_show(args: RunArgs) -> Result<()> {
             .then(Previewer::terminal)
             .unwrap_or_default(),
         args.master_strobe_channel,
+        console,
     )?;
 
     println!("Running show.");

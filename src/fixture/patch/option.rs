@@ -88,6 +88,7 @@ impl<T: EnumRenderModel + IntoEnumIterator + Display> AsPatchOption for T {
 }
 
 /// The kinds of patch options that fixtures can specify.
+#[derive(Clone)]
 pub enum PatchOption {
     /// An integer.
     Int,

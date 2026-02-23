@@ -182,7 +182,7 @@ pub struct ScopedOscMessage<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Deserialize)]
-pub struct OscClientId(SocketAddr);
+pub struct OscClientId(pub SocketAddr);
 
 impl OscClientId {
     pub fn addr(&self) -> &SocketAddr {

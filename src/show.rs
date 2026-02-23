@@ -9,6 +9,8 @@ use crate::{
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
     clocks::Clocks,
     color::Hsluv,
+    console::{ConsoleHandle, console_state_snapshot},
+    console::command::ConsoleCommand,
     control::{ControlMessage, Controller},
     dmx::DmxBuffer,
     fixture::{
@@ -39,6 +41,7 @@ pub struct Show {
     animation_service: Option<AnimationPublisher>,
     preview: Previewer,
     master_strobe_channel: bool,
+    console: Option<ConsoleHandle>,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -59,6 +62,7 @@ impl Show {
         animation_service: Option<AnimationPublisher>,
         preview: Previewer,
         master_strobe_channel: bool,
+        console: Option<ConsoleHandle>,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
@@ -84,6 +88,7 @@ impl Show {
             animation_service,
             preview,
             master_strobe_channel,
+            console,
         };
         show.refresh_ui();
         Ok(show)
@@ -113,6 +118,9 @@ impl Show {
                 time_since_last_update = now - last_update;
             }
 
+            // Handle any pending console commands.
+            self.handle_console_commands();
+
             // Render the state of the show.
             if should_render {
                 self.render();
@@ -121,6 +129,8 @@ impl Show {
                         error!("DMX write error: {e:#}.");
                     }
                 }
+                // Push state to console after rendering.
+                self.push_console_state();
             }
         }
     }
@@ -359,6 +369,71 @@ impl Show {
         }
 
         self.clocks.emit_state(&mut self.controller);
+    }
+
+    /// Push a state snapshot to the console GUI, if connected.
+    fn push_console_state(&self) {
+        let Some(console) = &self.console else {
+            return;
+        };
+        let snapshot = console_state_snapshot(&self.patch, &self.controller);
+        if let Ok(mut state) = console.state.lock() {
+            *state = snapshot;
+        }
+    }
+
+    /// Handle pending commands from the console GUI.
+    fn handle_console_commands(&mut self) {
+        // Drain all pending commands into a local vec to avoid borrow conflicts.
+        let commands: Vec<ConsoleCommand> = match &self.console {
+            Some(console) => console.commands.try_iter().collect(),
+            None => return,
+        };
+
+        for cmd in commands {
+            match cmd {
+                ConsoleCommand::Repatch(groups) => {
+                    if let Err(err) = self.patch.repatch(&groups) {
+                        log::error!("Console repatch failed: {err:#}.");
+                        if let Some(console) = &self.console
+                            && let Ok(mut state) = console.state.lock()
+                        {
+                            state.last_error = Some(format!("{err:#}"));
+                        }
+                    } else {
+                        // Re-initialize channels to match the new patch.
+                        let sender = self.controller.sender_with_metadata(None);
+                        sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
+                        Channels::emit_osc_state_change(
+                            crate::channel::StateChange::Clear,
+                            &ScopedControlEmitter {
+                                entity: crate::osc::channels::GROUP,
+                                emitter: &sender,
+                            },
+                        );
+                        self.channels = Channels::from_iter(self.patch.channels().cloned());
+                        self.refresh_ui();
+                        for buf in &mut self.dmx_buffers {
+                            buf.fill(0);
+                        }
+                    }
+                }
+                ConsoleCommand::AddOscClient(addr) => {
+                    use crate::osc::OscClientId;
+                    println!("Console: adding OSC client at {addr}.");
+                    self.controller.register_osc_client(OscClientId(addr));
+                    self.refresh_ui();
+                }
+                ConsoleCommand::RemoveOscClient(addr) => {
+                    use crate::osc::OscClientId;
+                    println!("Console: removing OSC client at {addr}.");
+                    self.controller.deregister_osc_client(OscClientId(addr));
+                }
+                ConsoleCommand::RescanMidi => {
+                    log::warn!("MIDI rescan not yet implemented.");
+                }
+            }
+        }
     }
 
     /// If we have a animation publisher configured, send current state.
