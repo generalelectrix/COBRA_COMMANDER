@@ -4,7 +4,11 @@ use anyhow::Result;
 pub use device::color_organ::ColorOrgan;
 use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use enum_dispatch::enum_dispatch;
-use midi_harness::{DeviceManager, InitMidiDevice, MidiPortSpec, Output};
+use log::error;
+use midi_harness::{
+    DeviceChange, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice, MidiPortSpec,
+    Output,
+};
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{
@@ -143,8 +147,9 @@ pub struct MidiControlMessage {
     pub event: Event,
 }
 
+/// Interface MIDI events into a control message channel.
 #[derive(Clone)]
-struct ControlHandler(Sender<ControlMessage>);
+pub struct ControlHandler(pub Sender<ControlMessage>);
 
 impl midi_harness::MidiHandler<Device> for ControlHandler {
     fn handle(&self, event: Event, device: &Device) {
@@ -154,6 +159,23 @@ impl midi_harness::MidiHandler<Device> for ControlHandler {
                 event,
             }))
             .unwrap();
+    }
+}
+
+impl HandleDeviceChange for ControlHandler {
+    fn on_device_change(&self, change: Result<DeviceChange>) {
+        match change {
+            Ok(change) => {
+                self.0
+                    .send(ControlMessage::MidiDeviceChange(change))
+                    .unwrap();
+            }
+            Err(err) => {
+                error!(
+                    "An error occurred while processing a MIDI device change notification: {err}."
+                );
+            }
+        }
     }
 }
 
@@ -170,6 +192,16 @@ impl MidiController {
             controller.add_from_spec(spec.device, spec.input_id, spec.output_id)?;
         }
         Ok(Self(RefCell::new(controller)))
+    }
+
+    /// Handle a device appearing or disappearing.
+    ///
+    /// Return true if we should trigger a UI refresh due to a device reconnecting.
+    pub fn handle_device_change(&mut self, change: DeviceChange) -> Result<bool> {
+        let Some(reconnected_kind) = self.0.borrow_mut().handle_device_change(change)? else {
+            return Ok(false);
+        };
+        Ok(reconnected_kind == DeviceKind::Output)
     }
 
     /// Handle a channel state change message.

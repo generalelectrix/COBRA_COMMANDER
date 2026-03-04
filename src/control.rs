@@ -1,11 +1,12 @@
 //! Top-level traits and types for control events.
 
 use std::{
-    sync::mpsc::{Receiver, RecvTimeoutError, channel},
+    sync::mpsc::{Receiver, RecvTimeoutError, Sender},
     time::Duration,
 };
 
 use anyhow::{Result, bail};
+use midi_harness::DeviceChange;
 use rosc::OscMessage;
 use tunnels::midi::DeviceSpec;
 
@@ -50,8 +51,9 @@ impl Controller {
         receive_port: u16,
         osc_controllers: Vec<OscClientId>,
         midi_devices: Vec<DeviceSpec<Device>>,
+        send: Sender<ControlMessage>,
+        recv: Receiver<ControlMessage>,
     ) -> Result<Self> {
-        let (send, recv) = channel();
         Ok(Self {
             osc: OscController::new(receive_port, osc_controllers, send.clone())?,
             midi: MidiController::new(midi_devices, send)?,
@@ -77,6 +79,11 @@ impl Controller {
     /// Deregister an OSC client.
     pub fn deregister_osc_client(&mut self, client_id: OscClientId) {
         self.osc.deregister(client_id);
+    }
+
+    /// Handle a MIDI device change.
+    pub fn handle_device_change(&mut self, change: DeviceChange) -> Result<bool> {
+        self.midi.handle_device_change(change)
     }
 
     /// Return a decorated version of self that will include the provided
@@ -161,6 +168,7 @@ impl<'a> EmitMidiMasterMessage for ControlMessageWithMetadataSender<'a> {
 pub enum ControlMessage {
     RegisterClient(OscClientId),
     DeregisterClient(OscClientId),
+    MidiDeviceChange(DeviceChange),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
 }

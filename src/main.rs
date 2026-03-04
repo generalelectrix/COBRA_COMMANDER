@@ -7,11 +7,13 @@ use fixture::Patch;
 use local_ip_address::local_ip;
 use log::LevelFilter;
 use midi::Device;
+use midi_harness::install_midi_device_change_handler;
 use osc::prompt_osc_config;
 use rust_dmx::{DmxPort, OfflineDmxPort, available_ports, select_port_from};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
 use std::path::PathBuf;
+use std::sync::mpsc::channel;
 use std::time::Duration;
 use strum_macros::Display;
 use tunnels::audio::AudioInput;
@@ -25,7 +27,7 @@ use crate::animation_visualizer::{
     AnimationPublisher, animation_publisher, run_animation_visualizer,
 };
 use crate::control::Controller;
-use crate::midi::ColorOrgan;
+use crate::midi::{ColorOrgan, ControlHandler};
 use crate::preview::Previewer;
 use crate::show::Show;
 
@@ -176,6 +178,11 @@ fn run_show(args: RunArgs) -> Result<()> {
         prompt_osc_config(args.osc_receive_port)?.unwrap_or_default()
     };
 
+    let (send_control_msg, recv_control_msg) = channel();
+
+    // NOTE: this MUST be called before any other MIDI functions.
+    install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
+
     let (midi_inputs, midi_outputs) = list_ports()?;
     let mut midi_devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
     if midi_devices.is_empty() {
@@ -201,7 +208,13 @@ fn run_show(args: RunArgs) -> Result<()> {
         })
     }
 
-    let controller = Controller::new(args.osc_receive_port, osc_controllers, midi_devices)?;
+    let controller = Controller::new(
+        args.osc_receive_port,
+        osc_controllers,
+        midi_devices,
+        send_control_msg,
+        recv_control_msg,
+    )?;
 
     let universe_count = patch.universe_count();
     println!("This show requires {universe_count} universe(s).");

@@ -148,6 +148,13 @@ impl Show {
                 self.controller.deregister_osc_client(client_id);
                 Ok(())
             }
+            ControlMessage::MidiDeviceChange(change) => {
+                let needs_ui_refresh = self.controller.handle_device_change(change)?;
+                if needs_ui_refresh {
+                    self.refresh_ui();
+                }
+                Ok(())
+            }
             ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
         }
