@@ -1,7 +1,8 @@
 //! Device model for the Novation Launch Control XL.
 use log::{debug, error};
+use midi_harness::{InitMidiDevice, Output};
 use tunnels::{
-    midi::{Event, EventType, Output},
+    midi::{Event, EventType},
     midi_controls::MidiDevice,
 };
 
@@ -24,7 +25,7 @@ const TRACK_CONTROL: u8 = 2;
 
 const TEMPLATE_ID: u8 = 0x00;
 
-fn set_led(index: u8, state: LedState, out: &mut Output) {
+fn set_led(index: u8, state: LedState, out: &mut dyn Output) {
     if let Err(err) = out.send_raw(&[
         0xF0,
         0x00,
@@ -50,9 +51,11 @@ impl MidiDevice for NovationLaunchControlXL {
             "Launch Control XL"
         }
     }
+}
 
+impl InitMidiDevice for NovationLaunchControlXL {
     /// Select factory template 0.
-    fn init_midi(&self, out: &mut Output) -> anyhow::Result<()> {
+    fn init_midi(&self, out: &mut dyn Output) -> anyhow::Result<()> {
         debug!("Sending Launch Control XL sysex template select command (User 1).");
         out.send_raw(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x11, 0x77, TEMPLATE_ID, 0xF7])?;
         debug!("Clearing all Launch Control XL LEDs.");
@@ -132,7 +135,7 @@ impl NovationLaunchControlXL {
     }
 
     /// Process a state change and emit midi.
-    pub fn emit(&self, sc: LaunchControlXLStateChange, output: &mut Output) {
+    pub fn emit(&self, sc: LaunchControlXLStateChange, output: &mut dyn Output) {
         use LaunchControlXLChannelStateChange::*;
         use LaunchControlXLSideButton::*;
         use LaunchControlXLStateChange::*;
@@ -198,7 +201,7 @@ impl NovationLaunchControlXL {
         &self,
         button: LaunchControlXLSideButton,
         on: bool,
-        output: &mut Output,
+        output: &mut dyn Output,
     ) {
         self.emit(
             LaunchControlXLStateChange::SideButton {
@@ -211,7 +214,7 @@ impl NovationLaunchControlXL {
     }
 
     /// Clear all controller indicators.
-    pub fn clear(&self, output: &mut Output) {
+    pub fn clear(&self, output: &mut dyn Output) {
         for channel in 0..Self::CHANNEL_COUNT {
             for row in 0..3 {
                 self.emit(

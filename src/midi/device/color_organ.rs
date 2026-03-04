@@ -1,5 +1,6 @@
 //! A generic midi device for representing a MIDI keyboard.
 use anyhow::{Result, ensure};
+use midi_harness::InitMidiDevice;
 use number::{Phase, UnipolarFloat};
 
 use color_organ::{ControlMessage, ReleaseId};
@@ -35,6 +36,8 @@ impl MidiDevice for ColorOrgan {
         "Generic MIDI Keyboard"
     }
 }
+
+impl InitMidiDevice for ColorOrgan {}
 
 impl ColorOrgan {
     pub fn new(note_low: u8, note_high: u8, channel: u8) -> Result<Self> {

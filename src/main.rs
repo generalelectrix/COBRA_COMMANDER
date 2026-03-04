@@ -192,12 +192,12 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     // if prompt_bool("Use a color organ?")? {
     if false {
-        let input_port_name = prompt_indexed_value("Input port:", &midi_inputs)?;
-        let output_port_name = prompt_indexed_value("Output port:", &midi_outputs)?;
+        let input_id = prompt_indexed_value("Input port:", &midi_inputs)?.id;
+        let output_id = prompt_indexed_value("Output port:", &midi_outputs)?.id;
         midi_devices.push(DeviceSpec {
             device: Device::ColorOrgan(ColorOrgan::new(0, 60, 0)?),
-            input_port_name,
-            output_port_name,
+            input_id,
+            output_id,
         })
     }
 

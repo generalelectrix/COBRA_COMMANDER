@@ -1,6 +1,7 @@
 use log::{debug, error};
+use midi_harness::{InitMidiDevice, Output};
 use tunnels::{
-    midi::{Event, EventType, Mapping, Output},
+    midi::{Event, EventType, Mapping},
     midi_controls::MidiDevice,
 };
 
@@ -19,9 +20,11 @@ impl MidiDevice for AkaiApc20 {
     fn device_name(&self) -> &str {
         "Akai APC20"
     }
+}
 
+impl InitMidiDevice for AkaiApc20 {
     /// Put into ableton (full control) mode.
-    fn init_midi(&self, out: &mut Output) -> anyhow::Result<()> {
+    fn init_midi(&self, out: &mut dyn Output) -> anyhow::Result<()> {
         debug!("Sending APC20 sysex mode command.");
         out.send_raw(&[
             0xF0, 0x47, 0x7F, 0x7B, 0x60, 0x00, 0x04, 0x42, 0x08, 0x02, 0x01, 0xF7,
@@ -58,7 +61,7 @@ impl AkaiApc20 {
     }
 
     /// Process a state change and emit midi.
-    pub fn emit(&self, sc: Apc20StateChange, output: &mut Output) {
+    pub fn emit(&self, sc: Apc20StateChange, output: &mut dyn Output) {
         use Apc20ChannelButtonType::*;
         use Apc20StateChange::*;
         match sc {

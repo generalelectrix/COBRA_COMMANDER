@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use rosc::OscMessage;
-use tunnels::midi::{CreateControlEvent, DeviceSpec};
+use tunnels::midi::DeviceSpec;
 
 use crate::{
     midi::{
@@ -163,12 +163,6 @@ pub enum ControlMessage {
     DeregisterClient(OscClientId),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
-}
-
-impl CreateControlEvent<Device> for ControlMessage {
-    fn from_event(event: tunnels::midi::Event, device: Device) -> Self {
-        Self::Midi(MidiControlMessage { device, event })
-    }
 }
 
 #[cfg(test)]

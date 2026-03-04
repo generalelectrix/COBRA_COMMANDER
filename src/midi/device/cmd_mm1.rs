@@ -1,10 +1,11 @@
 //! Device model for the Behringer CMD MM-1 fader wing.
 use log::{debug, error};
+use midi_harness::{InitMidiDevice, Output};
 use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
-    midi::{Event, EventType, Output, cc, event, note_on},
+    midi::{Event, EventType, cc, event, note_on},
     midi_controls::{
         MidiDevice,
         audio::{envelope_edge_from_midi, filter_from_midi, gain_from_midi},
@@ -31,6 +32,8 @@ impl MidiDevice for BehringerCmdMM1 {
         "CMD MM-1"
     }
 }
+
+impl InitMidiDevice for BehringerCmdMM1 {}
 
 impl BehringerCmdMM1 {
     pub const CHANNEL_COUNT: u8 = 4;
@@ -122,7 +125,7 @@ impl BehringerCmdMM1 {
         channel: usize,
         button: CmdMM1ChannelButton,
         state: bool,
-        output: &mut Output,
+        output: &mut dyn Output,
     ) {
         if channel >= Self::CHANNEL_COUNT as usize {
             debug!("CMD MM-1 channel {channel} out of range for LED state update");
@@ -141,7 +144,7 @@ impl BehringerCmdMM1 {
     /// Set one of the VU meters.
     ///
     /// which: pass false for left, true for right
-    pub fn set_vu_meter(&self, which: bool, value: UnipolarFloat, output: &mut Output) {
+    pub fn set_vu_meter(&self, which: bool, value: UnipolarFloat, output: &mut dyn Output) {
         let control = if which { 81 } else { 80 };
         // Why they chose to scale the VU meters from 48 to 63... shrug.
         let scaled_val = unipolar_to_range(48, 63, value);
@@ -255,7 +258,7 @@ impl MidiHandler for BehringerCmdMM1 {
         })
     }
 
-    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output) {
+    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut dyn Output) {
         let channel: usize = msg.channel.into();
         match msg.change {
             ClockStateChange::OneShot(v) => {
@@ -272,7 +275,7 @@ impl MidiHandler for BehringerCmdMM1 {
         }
     }
 
-    fn emit_audio_control(&self, msg: &AudioStateChange, output: &mut Output) {
+    fn emit_audio_control(&self, msg: &AudioStateChange, output: &mut dyn Output) {
         if let Err(err) = match msg {
             AudioStateChange::Monitor(v) => output.send(event(note_on(MIDI_CHANNEL, 18), *v as u8)),
             AudioStateChange::EnvelopeValue(v) => {

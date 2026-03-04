@@ -934,6 +934,7 @@ dependencies = [
  "linkme",
  "local-ip-address",
  "log 0.4.28",
+ "midi_harness",
  "num-derive",
  "num-traits",
  "number",
@@ -1120,6 +1121,18 @@ dependencies = [
  "core-foundation 0.9.4",
  "core-foundation-sys",
  "coremidi-sys",
+]
+
+[[package]]
+name = "coremidi-hotplug-notification"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "984efc566f347197678096fa996f65cbf19a8ad6bf9308e8d5363b629234eb0b"
+dependencies = [
+ "core-foundation 0.9.4",
+ "coremidi",
+ "log 0.4.28",
+ "once_cell",
 ]
 
 [[package]]
@@ -2885,6 +2898,17 @@ dependencies = [
  "log 0.4.28",
  "objc",
  "paste",
+]
+
+[[package]]
+name = "midi_harness"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "coremidi-hotplug-notification",
+ "log 0.4.28",
+ "midir",
+ "serde",
 ]
 
 [[package]]
@@ -5571,7 +5595,6 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#e9481e68befbd5bc1e7e4c205e3d58dba33ef2f3"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -5583,6 +5606,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "log 0.4.28",
+ "midi_harness",
  "midir",
  "noise",
  "rmp-serde",
@@ -5598,7 +5622,6 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#e9481e68befbd5bc1e7e4c205e3d58dba33ef2f3"
 dependencies = [
  "anyhow",
  "derive_more 2.0.1",
@@ -7101,7 +7124,6 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#e9481e68befbd5bc1e7e4c205e3d58dba33ef2f3"
 dependencies = [
  "anyhow",
  "async-dnssd",
