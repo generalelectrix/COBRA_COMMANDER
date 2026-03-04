@@ -12,9 +12,10 @@
 //! have been nice to get those other 13 back...
 
 use log::error;
+use midi_harness::{InitMidiDevice, Output};
 use number::{BipolarFloat, UnipolarFloat};
 use tunnels::{
-    midi::{Event, EventType, Output, cc, event, note_on},
+    midi::{Event, EventType, cc, event, note_on},
     midi_controls::MidiDevice,
 };
 
@@ -31,6 +32,8 @@ impl MidiDevice for BehringerCmdDV1 {
         "CMD DV-1"
     }
 }
+
+impl InitMidiDevice for BehringerCmdDV1 {}
 
 impl BehringerCmdDV1 {
     /// Interpret a midi event as a typed control event.
@@ -83,7 +86,7 @@ impl BehringerCmdDV1 {
     }
 
     /// Set a button LED on or off.
-    pub fn set_led(&self, index: u8, state: bool, output: &mut Output) {
+    pub fn set_led(&self, index: u8, state: bool, output: &mut dyn Output) {
         if index >= 28 {
             error!("CMD DV-1 button {index} out of range for LED state update.");
             return;
@@ -108,7 +111,7 @@ impl BehringerCmdDV1 {
     /// Note that the encoder rings have 15 LEDs, and acccept a value between 1 and 16.
     /// Need to debug this once the device is here. No checking is done that value
     /// is in range.
-    pub fn set_encoder_raw(&self, index: u8, value: u8, output: &mut Output) {
+    pub fn set_encoder_raw(&self, index: u8, value: u8, output: &mut dyn Output) {
         if index >= 12 {
             error!("CMD DV-1 encoder {index} out of range for LED state update.");
             return;
@@ -128,14 +131,14 @@ impl BehringerCmdDV1 {
     }
 
     /// Set an encoder ring from a unipolar value.
-    pub fn set_encoder_unipolar(&self, index: u8, value: UnipolarFloat, output: &mut Output) {
+    pub fn set_encoder_unipolar(&self, index: u8, value: UnipolarFloat, output: &mut dyn Output) {
         // FIXME: this range is probably wrong and likely includes the setting that
         // doesn't show a position.
         self.set_encoder_raw(index, unipolar_to_range(1, 16, value), output);
     }
 
     /// Set an encoder ring from a bipolar value.
-    pub fn set_encoder_bipolar(&self, index: u8, value: BipolarFloat, output: &mut Output) {
+    pub fn set_encoder_bipolar(&self, index: u8, value: BipolarFloat, output: &mut dyn Output) {
         // FIXME: this range is probably wrong; confirm that 0 is centered
         self.set_encoder_unipolar(index, value.rescale_as_unipolar(), output);
     }
@@ -236,7 +239,7 @@ impl MidiHandler for BehringerCmdDV1 {
         ))
     }
 
-    fn emit_animation_control(&self, msg: &crate::animation::StateChange, output: &mut Output) {
+    fn emit_animation_control(&self, msg: &crate::animation::StateChange, output: &mut dyn Output) {
         use crate::animation::StateChange;
         match msg {
             StateChange::SelectAnimation(i) => {

@@ -4,6 +4,11 @@ use anyhow::Result;
 pub use device::color_organ::ColorOrgan;
 use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use enum_dispatch::enum_dispatch;
+use log::error;
+use midi_harness::{
+    DeviceChange, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice, MidiPortSpec,
+    Output,
+};
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
 use crate::{
@@ -14,7 +19,7 @@ use crate::{
     show::ShowControlMessage,
 };
 use tunnels::{
-    midi::{DeviceSpec, Event, Manager, Output},
+    midi::{DeviceSpec, Event},
     midi_controls::MidiDevice,
 };
 
@@ -52,8 +57,10 @@ impl MidiDevice for Device {
             Device::ColorOrgan(d) => d.device_name(),
         }
     }
+}
 
-    fn init_midi(&self, out: &mut Output) -> Result<()> {
+impl InitMidiDevice for Device {
+    fn init_midi(&self, out: &mut dyn Output) -> Result<()> {
         match self {
             Device::Apc20(d) => d.init_midi(out),
             Device::LaunchControlXL(d) => d.init_midi(out),
@@ -84,21 +91,25 @@ impl Device {
     /// Attempt to identify connected devices to automatically configure MIDI.
     pub fn auto_configure(
         internal_clocks: bool,
-        input_ports: &[String],
-        output_ports: &[String],
+        input_ports: &[MidiPortSpec],
+        output_ports: &[MidiPortSpec],
     ) -> Vec<DeviceSpec<Self>> {
         // For all known devices, see if we have a matching input and output port.
         Self::all(internal_clocks)
             .into_iter()
             .filter_map(|device| {
                 let name = device.device_name().to_string();
-                (input_ports.contains(&name) && output_ports.contains(&name)).then_some(
-                    DeviceSpec {
+                if let Some(input) = input_ports.iter().find(|p| p.name == name)
+                    && let Some(output) = output_ports.iter().find(|p| p.name == name)
+                {
+                    Some(DeviceSpec {
                         device,
-                        input_port_name: name.clone(),
-                        output_port_name: name,
-                    },
-                )
+                        input_id: input.id.clone(),
+                        output_id: output.id.clone(),
+                    })
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -112,23 +123,23 @@ pub trait MidiHandler {
 
     /// Send MIDI state to handle the provided channel state change.
     #[allow(unused_variables)]
-    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output) {}
+    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut dyn Output) {}
 
     /// Send MIDI state to handle the provided clock state change.
     #[allow(unused_variables)]
-    fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut Output) {}
+    fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange, output: &mut dyn Output) {}
 
     /// Send MIDI state to handle the provided animation state change.
     #[allow(unused_variables)]
-    fn emit_animation_control(&self, msg: &AnimationStateChange, output: &mut Output) {}
+    fn emit_animation_control(&self, msg: &AnimationStateChange, output: &mut dyn Output) {}
 
     /// Send MIDI state to handle the provided audio state change.
     #[allow(unused_variables)]
-    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output) {}
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut dyn Output) {}
 
     /// Send MIDI state to handle the provided master state change.
     #[allow(unused_variables)]
-    fn emit_master_control(&self, msg: &MasterStateChange, output: &mut Output) {}
+    fn emit_master_control(&self, msg: &MasterStateChange, output: &mut dyn Output) {}
 }
 
 pub struct MidiControlMessage {
@@ -136,59 +147,96 @@ pub struct MidiControlMessage {
     pub event: Event,
 }
 
+/// Interface MIDI events into a control message channel.
+#[derive(Clone)]
+pub struct ControlHandler(pub Sender<ControlMessage>);
+
+impl midi_harness::MidiHandler<Device> for ControlHandler {
+    fn handle(&self, event: Event, device: &Device) {
+        self.0
+            .send(ControlMessage::Midi(MidiControlMessage {
+                device: *device,
+                event,
+            }))
+            .unwrap();
+    }
+}
+
+impl HandleDeviceChange for ControlHandler {
+    fn on_device_change(&self, change: Result<DeviceChange>) {
+        match change {
+            Ok(change) => {
+                self.0
+                    .send(ControlMessage::MidiDeviceChange(change))
+                    .unwrap();
+            }
+            Err(err) => {
+                error!(
+                    "An error occurred while processing a MIDI device change notification: {err}."
+                );
+            }
+        }
+    }
+}
+
 /// Immutable-compatible wrapper around the midi manager.
 /// Writing to a midi ouput requires a unique reference; we can safely wrap
 /// this using RefCell since we only need a reference to the outputs to write,
 /// and we can only be making one write call at a time.
-pub struct MidiController(RefCell<Manager<Device>>);
+pub struct MidiController(RefCell<DeviceManager<Device, ControlHandler>>);
 
 impl MidiController {
     pub fn new(devices: Vec<DeviceSpec<Device>>, send: Sender<ControlMessage>) -> Result<Self> {
-        let mut controller = Manager::default();
-        for d in devices {
-            controller.add_device(d, send.clone())?;
+        let mut controller = DeviceManager::new(ControlHandler(send));
+        for spec in devices {
+            controller.add_from_spec(spec.device, spec.input_id, spec.output_id)?;
         }
         Ok(Self(RefCell::new(controller)))
     }
 
+    /// Handle a device appearing or disappearing.
+    ///
+    /// Return true if we should trigger a UI refresh due to a device reconnecting.
+    pub fn handle_device_change(&mut self, change: DeviceChange) -> Result<bool> {
+        let Some(reconnected_kind) = self.0.borrow_mut().handle_device_change(change)? else {
+            return Ok(false);
+        };
+        Ok(reconnected_kind == DeviceKind::Output)
+    }
+
     /// Handle a channel state change message.
     pub fn emit_channel_control(&self, msg: &ChannelStateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        self.0.borrow_mut().visit_outputs(|device, output| {
             device.emit_channel_control(msg, output);
-        }
+        });
     }
 
     /// Handle a clock state change message.
     pub fn emit_clock_control(&self, msg: &tunnels::clock_bank::StateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        self.0.borrow_mut().visit_outputs(|device, output| {
             device.emit_clock_control(msg, output);
-        }
+        });
     }
 
     /// Handle a audio state change message.
     pub fn emit_audio_control(&self, msg: &tunnels::audio::StateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        self.0.borrow_mut().visit_outputs(|device, output| {
             device.emit_audio_control(msg, output);
-        }
+        });
     }
 
     /// Handle a animation state change message.
     pub fn emit_animation_control(&self, msg: &AnimationStateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        self.0.borrow_mut().visit_outputs(|device, output| {
             device.emit_animation_control(msg, output);
-        }
+        });
     }
 
     /// Handle a master state change message.
     pub fn emit_master_control(&self, msg: &crate::master::StateChange) {
-        for (device, output) in self.0.borrow_mut().outputs() {
-            // FIXME: tunnels devices are stateless
+        self.0.borrow_mut().visit_outputs(|device, output| {
             device.emit_master_control(msg, output);
-        }
+        });
     }
 }
 

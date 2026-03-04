@@ -1,6 +1,7 @@
 //! Mappings between show control events and midi device-specific actions.
 //!
-use tunnels::{midi::Output, midi_controls::unipolar_from_midi};
+use midi_harness::Output;
+use tunnels::midi_controls::unipolar_from_midi;
 
 use super::{
     MidiHandler,
@@ -44,7 +45,7 @@ impl MidiHandler for AkaiApc20 {
         }))
     }
 
-    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output) {
+    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut dyn Output) {
         if let ChannelStateChange::SelectChannel(channel) = msg {
             let midi_channel = channel.inner() as isize - self.channel_offset as isize;
             let midi_channel = (midi_channel >= 0 && midi_channel < Self::CHANNEL_COUNT as isize)
@@ -105,7 +106,7 @@ impl MidiHandler for NovationLaunchControlXL {
         })
     }
 
-    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut Output) {
+    fn emit_channel_control(&self, msg: &ChannelStateChange, output: &mut dyn Output) {
         match msg {
             ChannelStateChange::SelectChannel(channel) => {
                 let midi_channel = self.midi_channel_for_control_channel(*channel);
@@ -153,7 +154,7 @@ impl MidiHandler for NovationLaunchControlXL {
         }
     }
 
-    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut Output) {
+    fn emit_master_control(&self, msg: &crate::master::StateChange, output: &mut dyn Output) {
         use crate::strobe::StateChange::*;
         use LaunchControlXLSideButton::*;
         match msg {

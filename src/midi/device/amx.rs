@@ -8,11 +8,12 @@
 //! messages to allow delaying interpretation of the midi messages... we need
 //! to fix that original mistake to unwind this.
 use log::{debug, error};
+use midi_harness::{InitMidiDevice, Output};
 use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdxExt,
-    midi::{Event, EventType, Output, cc, event, note_on},
+    midi::{Event, EventType, cc, event, note_on},
     midi_controls::{MidiDevice, bipolar_from_midi, unipolar_from_midi},
 };
 
@@ -55,6 +56,8 @@ impl MidiDevice for AkaiAmx {
         "AMX"
     }
 }
+
+impl InitMidiDevice for AkaiAmx {}
 
 impl AkaiAmx {
     pub const CHANNEL_COUNT: u8 = 2;
@@ -121,7 +124,7 @@ impl AkaiAmx {
         channel: usize,
         button: AmxChannelButton,
         state: bool,
-        output: &mut Output,
+        output: &mut dyn Output,
     ) {
         use AmxChannelButton::*;
         if channel >= Self::CHANNEL_COUNT as usize {
@@ -142,7 +145,7 @@ impl AkaiAmx {
     }
 
     /// Set one of the VU meters.
-    pub fn set_vu_meter(&self, which: VuMeter, value: UnipolarFloat, output: &mut Output) {
+    pub fn set_vu_meter(&self, which: VuMeter, value: UnipolarFloat, output: &mut dyn Output) {
         use VuMeter::*;
         let control = match which {
             Channel1 => 0x40,
@@ -251,7 +254,7 @@ impl MidiHandler for AkaiAmx {
         }))
     }
 
-    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut Output) {
+    fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut dyn Output) {
         let channel: usize = msg.channel.into();
         match msg.change {
             ClockStateChange::OneShot(v) => self.set_led(channel, AmxChannelButton::Cue, v, output),
@@ -264,7 +267,7 @@ impl MidiHandler for AkaiAmx {
         }
     }
 
-    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut Output) {
+    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut dyn Output) {
         if let tunnels::audio::StateChange::EnvelopeValue(v) = msg {
             self.set_vu_meter(VuMeter::MasterRight, *v, output);
         }
