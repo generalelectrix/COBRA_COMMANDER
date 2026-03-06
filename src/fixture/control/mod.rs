@@ -113,6 +113,19 @@ pub enum OscControlType {
     Phase,
 }
 
+impl std::fmt::Display for OscControlType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unipolar => f.write_str("unipolar (0.0-1.0)"),
+            Self::Bipolar => f.write_str("bipolar (-1.0-1.0)"),
+            Self::Bool => f.write_str("bool"),
+            Self::LabeledSelect { labels } => write!(f, "select [{}]", labels.join(", ")),
+            Self::IndexedSelect { n, .. } => write!(f, "select (1-{n})"),
+            Self::Phase => f.write_str("phase (0.0-1.0)"),
+        }
+    }
+}
+
 /// A single OSC control: its name and its type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OscControlDescription {
