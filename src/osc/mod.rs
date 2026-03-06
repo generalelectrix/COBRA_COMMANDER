@@ -188,6 +188,11 @@ impl OscClientId {
     pub fn addr(&self) -> &SocketAddr {
         &self.0
     }
+
+    #[cfg(test)]
+    pub fn example() -> Self {
+        Self(SocketAddr::from_str("127.0.0.1:9999").unwrap())
+    }
 }
 
 impl Display for OscClientId {

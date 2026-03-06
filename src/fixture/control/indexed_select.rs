@@ -191,7 +191,10 @@ impl<R: RenderToDmx<usize>> super::DescribeOscControls for IndexedSelect<R> {
     fn describe_controls(&self) -> Vec<super::OscControlDescription> {
         vec![super::OscControlDescription {
             name: self.name.clone(),
-            control_type: super::OscControlType::IndexedSelect { n: self.n },
+            control_type: super::OscControlType::IndexedSelect {
+                n: self.n,
+                x_primary_coordinate: self.x_primary_coordinate,
+            },
         }]
     }
 }

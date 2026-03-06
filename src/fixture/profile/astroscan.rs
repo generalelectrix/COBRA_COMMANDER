@@ -153,7 +153,13 @@ mod test {
         ));
 
         let gobo = controls.iter().find(|c| c.name == "Gobo").unwrap();
-        assert_eq!(gobo.control_type, OscControlType::IndexedSelect { n: 5 });
+        assert_eq!(
+            gobo.control_type,
+            OscControlType::IndexedSelect {
+                n: 5,
+                x_primary_coordinate: false,
+            }
+        );
 
         let pan = controls.iter().find(|c| c.name == "Pan").unwrap();
         assert_eq!(pan.control_type, OscControlType::Bipolar);

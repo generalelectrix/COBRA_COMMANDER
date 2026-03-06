@@ -366,7 +366,11 @@ impl<R: RenderToDmx<BipolarFloat>> OscControl<BipolarFloat> for Mirrored<R> {
         emitter: &dyn EmitScopedOscMessage,
         callback: impl Fn(&BipolarFloat),
     ) -> anyhow::Result<bool> {
-        self.control.control_with_callback(msg, emitter, callback)
+        if self.control.control_with_callback(msg, emitter, callback)? {
+            return Ok(true);
+        }
+        // Mirror toggle doesn't use the bipolar callback.
+        self.mirror.control(msg, emitter)
     }
 }
 

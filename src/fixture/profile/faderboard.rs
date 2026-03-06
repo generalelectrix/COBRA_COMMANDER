@@ -40,6 +40,14 @@ impl Faderboard {
     }
 }
 
+impl crate::fixture::control::DescribeOscControls for Faderboard {
+    fn describe_controls(&self) -> Vec<crate::fixture::control::OscControlDescription> {
+        // Faderboard uses UnipolarArray which has a custom indexed addressing
+        // pattern that doesn't map to standard OscControlType variants.
+        vec![]
+    }
+}
+
 impl NonAnimatedFixture for Faderboard {
     fn render(&self, _group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
         for (i, v) in self.vals.iter().enumerate() {

@@ -11,6 +11,7 @@ use log::debug;
 use number::Phase;
 
 use super::animation_target::ControllableTargetedAnimation;
+use super::control::OscControlDescription;
 use super::fixture::{Fixture, FixtureType, RenderMode};
 use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
@@ -118,6 +119,11 @@ impl FixtureGroup {
             fixture_type: self.fixture_type,
             key: &self.key.0,
         }
+    }
+
+    /// Return descriptions of all OSC controls this fixture exposes.
+    pub fn describe_controls(&self) -> Vec<OscControlDescription> {
+        self.fixture.describe_controls()
     }
 
     pub fn strobe_enabled(&self) -> bool {

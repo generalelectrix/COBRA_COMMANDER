@@ -104,7 +104,11 @@ pub enum OscControlType {
     /// Select from a menu of labeled choices.
     LabeledSelect { labels: Vec<&'static str> },
     /// Select from a numeric index range (radio button grid).
-    IndexedSelect { n: usize },
+    IndexedSelect {
+        n: usize,
+        /// If true, the x coordinate is the primary (index) coordinate.
+        x_primary_coordinate: bool,
+    },
     /// Phase 0.0 to 1.0.
     Phase,
 }
