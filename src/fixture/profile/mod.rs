@@ -35,16 +35,17 @@ pub mod wled;
 
 #[cfg(test)]
 mod osc_control_test {
-    use std::net::SocketAddr;
-    use std::str::FromStr;
-
     use rosc::{OscMessage, OscType};
 
     use crate::channel::mock::no_op_emitter;
-    use crate::config::FixtureGroupKey;
+    use crate::config::{FixtureGroupKey, Options};
     use crate::fixture::control::{OscControlDescription, OscControlType};
     use crate::fixture::patch::PATCHERS;
     use crate::osc::{OscClientId, OscControlMessage};
+
+    /// Fixtures that cannot be constructed from their declared options menu alone.
+    /// These require complex option types not representable by PatchOption.
+    const EXCLUDED_FIXTURES: &[&str] = &["RugDoctor"];
 
     /// Generate fuzz (addr, arg) pairs for a control based on its type.
     fn fuzz_values(
@@ -101,11 +102,33 @@ mod osc_control_test {
         let client_id = OscClientId::example();
 
         for patcher in PATCHERS.iter() {
+            if EXCLUDED_FIXTURES.contains(&patcher.name.0) {
+                continue;
+            }
+
             let key = FixtureGroupKey(format!("test_{}", patcher.name));
 
-            // Skip fixtures that require options (can't default-construct).
-            let Ok(mut group) = (patcher.create_group)(key.clone(), Default::default()) else {
-                continue;
+            let mut group = match (patcher.create_group)(key.clone(), Default::default()) {
+                Ok(group) => group,
+                Err(_) => {
+                    // Try again with example values from the options menu.
+                    let menu = (patcher.group_options)();
+                    assert!(
+                        !menu.is_empty(),
+                        "{}: create_group failed with default options but declares no options",
+                        patcher.name
+                    );
+                    let options = Options::from_entries(
+                        menu.iter()
+                            .map(|(name, opt)| (name.clone(), opt.example_value())),
+                    );
+                    (patcher.create_group)(key.clone(), options).unwrap_or_else(|e| {
+                        panic!(
+                            "{}: create_group failed even with example options: {e}",
+                            patcher.name
+                        )
+                    })
+                }
             };
 
             let controls = group.describe_controls();

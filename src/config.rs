@@ -101,6 +101,16 @@ impl Options {
         Ok(serde_yaml::from_value(Value::Mapping(self.value))?)
     }
 
+    /// Build Options programmatically from key-value pairs.
+    #[cfg(test)]
+    pub fn from_entries(entries: impl IntoIterator<Item = (String, serde_yaml::Value)>) -> Self {
+        let mut mapping = serde_yaml::Mapping::new();
+        for (key, value) in entries {
+            mapping.insert(serde_yaml::Value::String(key), value);
+        }
+        Self { value: mapping }
+    }
+
     /// Return an error if the options are not empty.
     pub fn ensure_empty(&self) -> Result<()> {
         ensure!(
