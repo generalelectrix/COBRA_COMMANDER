@@ -155,6 +155,15 @@ impl<R: RenderToDmx<UnipolarFloat>> OscControl<UnipolarFloat> for Unipolar<R> {
     }
 }
 
+impl<R: RenderToDmx<UnipolarFloat>> super::DescribeOscControls for Unipolar<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        vec![super::OscControlDescription {
+            name: self.name.clone(),
+            control_type: super::OscControlType::Unipolar,
+        }]
+    }
+}
+
 impl<R: RenderToDmx<UnipolarFloat>> RenderToDmxWithAnimations for Unipolar<R> {
     fn render(
         &self,

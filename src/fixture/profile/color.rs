@@ -4,7 +4,7 @@ use strum_macros::{Display, EnumIter, VariantArray};
 
 use crate::{color::*, fixture::prelude::*, preview::FixturePreviewer};
 
-#[derive(Debug, Control, EmitState, Update)]
+#[derive(Debug, Control, DescribeControls, EmitState, Update)]
 pub struct Color {
     #[channel_control]
     #[animate]

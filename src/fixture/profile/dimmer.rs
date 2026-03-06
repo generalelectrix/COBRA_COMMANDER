@@ -1,7 +1,7 @@
 //! Control profile for a dimmer.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 1]
 #[strobe(Long)]
 pub struct Dimmer {
@@ -39,7 +39,7 @@ impl AnimatedFixture for Dimmer {
 mod relay {
     //! A profile for a relay that can be turned on or off.
     use super::*;
-    #[derive(Debug, EmitState, Control, Update, PatchFixture)]
+    #[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
     #[channel_count = 1]
     #[strobe(Short)]
     pub struct Relay {

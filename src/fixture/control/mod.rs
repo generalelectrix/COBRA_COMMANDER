@@ -91,3 +91,36 @@ pub trait RenderToDmx<T> {
 impl<T> RenderToDmx<T> for () {
     fn render(&self, _val: &T, _dmx_buf: &mut [u8]) {}
 }
+
+/// The kinds of OSC controls that fixtures can expose.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OscControlType {
+    /// Float 0.0 to 1.0.
+    Unipolar,
+    /// Float -1.0 to 1.0.
+    Bipolar,
+    /// On/off toggle.
+    Bool,
+    /// Select from a menu of labeled choices.
+    LabeledSelect { labels: Vec<&'static str> },
+    /// Select from a numeric index range (radio button grid).
+    IndexedSelect { n: usize },
+    /// Phase 0.0 to 1.0.
+    Phase,
+}
+
+/// A single OSC control: its name and its type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OscControlDescription {
+    pub name: String,
+    pub control_type: OscControlType,
+}
+
+/// Describe the OSC controls exposed by this type.
+///
+/// This is an instance method because control names are set at runtime
+/// (in Default::default impls), not at the type level.
+pub trait DescribeOscControls {
+    /// Return descriptions of all OSC controls this value exposes.
+    fn describe_controls(&self) -> Vec<OscControlDescription>;
+}

@@ -1,7 +1,7 @@
 //! Optikinetics Solar System - the grand champion gobo rotator
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 7]
 pub struct SolarSystem {
     #[channel_control]

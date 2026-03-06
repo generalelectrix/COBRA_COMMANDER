@@ -2,7 +2,7 @@
 
 use crate::fixture::prelude::*;
 
-#[derive(Default, Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Default, Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 0]
 pub struct EmptyChannel {}
 

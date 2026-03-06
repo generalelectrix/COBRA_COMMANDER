@@ -5,7 +5,7 @@ use super::color::{Color, Model as ColorModel};
 
 use crate::{color::ColorSpace, fixture::prelude::*};
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 8]
 #[strobe(Short)]
 pub struct FreedomFries {
@@ -71,11 +71,12 @@ const PROGRAM_SELECT_LABEL: LabelArray = LabelArray {
 
 /// Control for indexed program select via a unipolar fader, with
 /// value label read-out.
-#[derive(Debug)]
+#[derive(Debug, DescribeControls)]
 struct ProgramControl {
     run_program: Bool<()>,
     select: Unipolar<()>,
     program_cycle_all: Bool<()>,
+    #[skip_control]
     selected: usize,
 }
 

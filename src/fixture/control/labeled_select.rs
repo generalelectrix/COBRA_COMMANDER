@@ -140,6 +140,21 @@ impl OscControl<&str> for LabeledSelect {
     }
 }
 
+impl super::DescribeOscControls for LabeledSelect {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        let mut controls = vec![super::OscControlDescription {
+            name: self.name.clone(),
+            control_type: super::OscControlType::LabeledSelect {
+                labels: self.options.iter().map(|(l, _)| *l).collect(),
+            },
+        }];
+        if let Some(split) = &self.split {
+            controls.extend(split.split_on.describe_controls());
+        }
+        controls
+    }
+}
+
 impl RenderToDmxWithAnimations for LabeledSelect {
     fn render(
         &self,

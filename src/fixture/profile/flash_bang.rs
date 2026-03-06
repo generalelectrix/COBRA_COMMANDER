@@ -9,7 +9,7 @@ use anyhow::Result;
 use crate::fixture::control::strobe_array::*;
 use crate::fixture::prelude::*;
 
-#[derive(EmitState, Control)]
+#[derive(EmitState, Control, DescribeControls)]
 pub struct FlashBang {
     /// Intensity scale.
     ///

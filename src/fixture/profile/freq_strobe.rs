@@ -8,7 +8,7 @@ use crate::fixture::prelude::*;
 
 const CELL_COUNT: usize = 16;
 
-#[derive(EmitState, Control, PatchFixture)]
+#[derive(EmitState, Control, DescribeControls, PatchFixture)]
 #[channel_count = 16]
 #[strobe(Short)]
 pub struct FreqStrobe {

@@ -1,7 +1,7 @@
 //! Intuitive control profile for the American DJ Aquarius 250.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 2]
 #[strobe(Short)]
 pub struct Hypnotic {

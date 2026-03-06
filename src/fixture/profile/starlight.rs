@@ -1,7 +1,7 @@
 //! Control profile for the "house light" Starlight white laser moonflower.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 4]
 #[strobe(Short)]
 pub struct Starlight {

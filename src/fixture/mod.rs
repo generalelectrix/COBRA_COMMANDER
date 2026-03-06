@@ -84,7 +84,7 @@ pub mod prelude {
     pub use crate::strobe::StrobeResponse;
     pub use anyhow::bail;
     pub use fixture_macros::{
-        Control, EmitState, OptionsMenu, PatchFixture, Update, register_patcher,
+        Control, DescribeControls, EmitState, OptionsMenu, PatchFixture, Update, register_patcher,
     };
     pub use number::{BipolarFloat, Phase, UnipolarFloat};
     pub use serde::Deserialize;

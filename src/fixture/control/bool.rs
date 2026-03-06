@@ -129,6 +129,15 @@ impl<R: RenderToDmx<bool>> OscControl<bool> for Bool<R> {
     }
 }
 
+impl<R: RenderToDmx<bool>> super::DescribeOscControls for Bool<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        vec![super::OscControlDescription {
+            name: self.name.clone(),
+            control_type: super::OscControlType::Bool,
+        }]
+    }
+}
+
 impl<R: RenderToDmx<bool>> RenderToDmxWithAnimations for Bool<R> {
     fn render(
         &self,

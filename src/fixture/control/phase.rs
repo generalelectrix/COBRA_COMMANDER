@@ -128,6 +128,15 @@ impl<R: RenderToDmx<Phase>> OscControl<Phase> for PhaseControl<R> {
     }
 }
 
+impl<R: RenderToDmx<Phase>> super::DescribeOscControls for PhaseControl<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        vec![super::OscControlDescription {
+            name: self.name.clone(),
+            control_type: super::OscControlType::Phase,
+        }]
+    }
+}
+
 impl<R: RenderToDmx<Phase>> RenderToDmxWithAnimations for PhaseControl<R> {
     fn render(
         &self,

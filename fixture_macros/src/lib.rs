@@ -373,6 +373,55 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
     .into()
 }
 
+/// Derive the DescribeOscControls trait on a fixture struct.
+///
+/// Iterates over named struct fields and calls describe_controls() on each.
+/// Fields annotated with #[skip_control] are skipped.
+/// Fields annotated with #[optional] are handled as Option<T>.
+#[proc_macro_derive(DescribeControls, attributes(skip_control, optional))]
+pub fn derive_describe_controls(input: TokenStream) -> TokenStream {
+    let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
+
+    let Data::Struct(struct_data) = data else {
+        panic!("Can only derive DescribeControls for structs.");
+    };
+    let Fields::Named(fields) = struct_data.fields else {
+        panic!("Can only derive DescribeControls for named structs.");
+    };
+    let mut lines = quote! {};
+    for field in fields.named.iter() {
+        if field_has_attr(field, "skip_control") {
+            continue;
+        }
+        let Some(ident) = &field.ident else {
+            continue;
+        };
+
+        let describe_call = quote! {
+            controls.extend(#ident.describe_controls());
+        };
+
+        lines = insert_optional_call(
+            field_has_attr(field, "optional"),
+            false,
+            ident,
+            describe_call,
+            lines,
+        );
+    }
+    quote! {
+        impl crate::fixture::control::DescribeOscControls for #ident {
+            fn describe_controls(&self) -> Vec<crate::fixture::control::OscControlDescription> {
+                use crate::fixture::control::DescribeOscControls as _;
+                let mut controls = Vec::new();
+                #lines
+                controls
+            }
+        }
+    }
+    .into()
+}
+
 /// Derive the Update trait on a fixture struct.
 /// Most fixtures do not have time-determinate internal state, so for the moment
 /// this is just a convenient way to omit an empty impl block.

@@ -187,6 +187,15 @@ impl<R: RenderToDmx<usize>> OscControl<usize> for IndexedSelect<R> {
     }
 }
 
+impl<R: RenderToDmx<usize>> super::DescribeOscControls for IndexedSelect<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        vec![super::OscControlDescription {
+            name: self.name.clone(),
+            control_type: super::OscControlType::IndexedSelect { n: self.n },
+        }]
+    }
+}
+
 impl<R: RenderToDmx<usize>> RenderToDmxWithAnimations for IndexedSelect<R> {
     fn render(
         &self,

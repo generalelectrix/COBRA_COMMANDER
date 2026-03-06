@@ -1,7 +1,7 @@
 //! Clay Paky Astroscan - drunken sailor extraordinaire
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 9]
 #[strobe(Long)]
 pub struct Astroscan {
@@ -111,5 +111,54 @@ impl AnimatedFixture for Astroscan {
             animation_vals.filter(&AnimationTarget::MirrorRotation),
             dmx_buf,
         );
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::fixture::control::{DescribeOscControls, OscControlType};
+
+    #[test]
+    fn test_describe_controls() {
+        let fixture = Astroscan::default();
+        let controls = fixture.describe_controls();
+        let names: Vec<&str> = controls.iter().map(|c| c.name.as_str()).collect();
+
+        assert!(names.contains(&"LampOn"));
+        assert!(names.contains(&"Dimmer"));
+        assert!(names.contains(&"Iris"));
+        assert!(names.contains(&"Color"));
+        assert!(names.contains(&"Gobo"));
+        assert!(names.contains(&"MirrorRotation"));
+        assert!(names.contains(&"MirrorMirrorRotation"));
+        assert!(names.contains(&"GoboRotation"));
+        assert!(names.contains(&"MirrorGoboRotation"));
+        assert!(names.contains(&"Pan"));
+        assert!(names.contains(&"MirrorPan"));
+        assert!(names.contains(&"Tilt"));
+        assert!(names.contains(&"MirrorTilt"));
+
+        // Verify control types
+        let lamp_on = controls.iter().find(|c| c.name == "LampOn").unwrap();
+        assert_eq!(lamp_on.control_type, OscControlType::Bool);
+
+        let dimmer = controls.iter().find(|c| c.name == "Dimmer").unwrap();
+        assert_eq!(dimmer.control_type, OscControlType::Unipolar);
+
+        let color = controls.iter().find(|c| c.name == "Color").unwrap();
+        assert!(matches!(
+            &color.control_type,
+            OscControlType::LabeledSelect { labels } if labels.len() == 8
+        ));
+
+        let gobo = controls.iter().find(|c| c.name == "Gobo").unwrap();
+        assert_eq!(gobo.control_type, OscControlType::IndexedSelect { n: 5 });
+
+        let pan = controls.iter().find(|c| c.name == "Pan").unwrap();
+        assert_eq!(pan.control_type, OscControlType::Bipolar);
+
+        let mirror_pan = controls.iter().find(|c| c.name == "MirrorPan").unwrap();
+        assert_eq!(mirror_pan.control_type, OscControlType::Bool);
     }
 }

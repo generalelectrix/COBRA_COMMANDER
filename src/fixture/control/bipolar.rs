@@ -191,6 +191,15 @@ impl<R: RenderToDmx<BipolarFloat>> OscControl<BipolarFloat> for Bipolar<R> {
     }
 }
 
+impl<R: RenderToDmx<BipolarFloat>> super::DescribeOscControls for Bipolar<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        vec![super::OscControlDescription {
+            name: self.name.clone(),
+            control_type: super::OscControlType::Bipolar,
+        }]
+    }
+}
+
 impl<R: RenderToDmx<BipolarFloat>> RenderToDmxWithAnimations for Bipolar<R> {
     fn render(
         &self,
@@ -287,6 +296,14 @@ impl<R: RenderToDmx<BipolarFloat>> Mirrored<R> {
     pub fn with_channel_knob(self, index: KnobIndex) -> ChannelKnobBipolar<Self> {
         let label = self.control.name.clone();
         ChannelControl::wrap(self, label, false, ChannelKnobHandler { index })
+    }
+}
+
+impl<R: RenderToDmx<BipolarFloat>> super::DescribeOscControls for Mirrored<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        let mut controls = self.control.describe_controls();
+        controls.extend(self.mirror.describe_controls());
+        controls
     }
 }
 

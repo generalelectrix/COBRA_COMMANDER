@@ -2,7 +2,7 @@
 //! Probably fine for any generic 2-channel hazer.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 2]
 pub struct Radiance {
     #[channel_control]

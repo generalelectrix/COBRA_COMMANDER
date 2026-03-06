@@ -139,6 +139,16 @@ impl ChannelHandler<bool> for ChannelLevelHandler {
 
 pub type ChannelLevelBool<C> = ChannelLevelControl<C, bool>;
 
+impl<C, T, H> super::DescribeOscControls for ChannelControl<C, T, H>
+where
+    C: OscControl<T> + RenderToDmxWithAnimations + super::DescribeOscControls,
+    H: ChannelHandler<T>,
+{
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        self.control.describe_controls()
+    }
+}
+
 /// Delegate rendering to the inner control.
 impl<C, T, H> RenderToDmxWithAnimations for ChannelControl<C, T, H>
 where
