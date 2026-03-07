@@ -162,3 +162,78 @@ impl RenderToDmx<Phase> for RenderPhaseToRange {
             unipolar_to_range(self.start, self.end, UnipolarFloat::new(val.val()));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use number::Phase;
+    use rosc::{OscMessage, OscType};
+
+    use crate::osc::{MockEmitter, OscClientId, OscControlMessage};
+
+    use super::*;
+
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_new_defaults_to_zero() {
+        let ctrl = PhaseControl::new("X", ());
+        assert_eq!(ctrl.val(), Phase::ZERO);
+    }
+
+    #[test]
+    fn test_at_half_sets_half() {
+        let ctrl = PhaseControl::new("X", ()).at_half();
+        assert!((ctrl.val().val() - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_control_matching_name() {
+        let mut ctrl = PhaseControl::new("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/X", OscType::Float(0.75));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert!((ctrl.val().val() - 0.75).abs() < 1e-6);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].0, "X");
+    }
+
+    #[test]
+    fn test_control_non_matching() {
+        let mut ctrl = PhaseControl::new("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/Y", OscType::Float(0.75));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(!handled);
+    }
+
+    #[test]
+    fn test_val_with_anim() {
+        let ctrl = PhaseControl::new("X", ()).at_half();
+        // Phase wraps, so 0.5 + 0.2 should be ~0.7 (no wrap needed)
+        let result = ctrl.val_with_anim([0.2].into_iter());
+        assert!((result.val() - 0.7).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_render_phase_to_range() {
+        let render = RenderPhaseToRange {
+            dmx_buf_offset: 0,
+            start: 0,
+            end: 255,
+        };
+        let mut buf = [0u8; 1];
+        render.render(&Phase::new(0.5), &mut buf);
+        assert_eq!(buf[0], 127);
+    }
+}

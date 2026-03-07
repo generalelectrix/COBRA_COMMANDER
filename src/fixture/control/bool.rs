@@ -169,3 +169,85 @@ impl RenderToDmx<bool> for RenderBoolToRange {
         dmx_buf[self.dmx_buf_offset] = if *val { self.on } else { self.off }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rosc::{OscMessage, OscType};
+
+    use crate::osc::{MockEmitter, OscClientId, OscControlMessage};
+
+    use super::*;
+
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_new_off_defaults_false() {
+        let ctrl = Bool::new_off("X", ());
+        assert!(!ctrl.val());
+    }
+
+    #[test]
+    fn test_new_on_defaults_true() {
+        let ctrl = Bool::new_on("X", ());
+        assert!(ctrl.val());
+    }
+
+    #[test]
+    fn test_control_sets_true() {
+        let mut ctrl = Bool::new_off("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/X", OscType::Float(1.0));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert!(ctrl.val());
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 1);
+        if let OscType::Float(v) = msgs[0].1 {
+            assert!((v - 1.0).abs() < 1e-6);
+        } else {
+            panic!("expected float");
+        }
+    }
+
+    #[test]
+    fn test_control_sets_false() {
+        let mut ctrl = Bool::new_on("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/X", OscType::Float(0.0));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert!(!ctrl.val());
+    }
+
+    #[test]
+    fn test_control_non_matching() {
+        let mut ctrl = Bool::new_off("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/Y", OscType::Float(1.0));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(!handled);
+    }
+
+    #[test]
+    fn test_render_bool_to_range() {
+        let render = RenderBoolToRange {
+            dmx_buf_offset: 0,
+            off: 10,
+            on: 200,
+        };
+        let mut buf = [0u8; 1];
+        render.render(&true, &mut buf);
+        assert_eq!(buf[0], 200);
+        render.render(&false, &mut buf);
+        assert_eq!(buf[0], 10);
+    }
+}

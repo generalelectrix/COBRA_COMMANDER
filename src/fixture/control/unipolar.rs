@@ -195,3 +195,101 @@ impl RenderToDmx<UnipolarFloat> for RenderUnipolarToRange {
         dmx_buf[self.dmx_buf_offset] = unipolar_to_range(self.start, self.end, *val);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use number::UnipolarFloat;
+    use rosc::{OscMessage, OscType};
+
+    use crate::osc::{MockEmitter, OscClientId, OscControlMessage};
+
+    use super::*;
+
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_new_defaults_to_zero() {
+        let ctrl = Unipolar::new("X", ());
+        assert_eq!(ctrl.val(), UnipolarFloat::ZERO);
+    }
+
+    #[test]
+    fn test_at_full_sets_to_one() {
+        let ctrl = Unipolar::new("X", ()).at_full();
+        assert_eq!(ctrl.val(), UnipolarFloat::ONE);
+    }
+
+    #[test]
+    fn test_at_sets_custom_value() {
+        let ctrl = Unipolar::new("X", ()).at(UnipolarFloat::new(0.5));
+        assert!((ctrl.val().val() - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_control_matching_name() {
+        let mut ctrl = Unipolar::new("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/X", OscType::Float(0.75));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert!((ctrl.val().val() - 0.75).abs() < 1e-6);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].0, "X");
+    }
+
+    #[test]
+    fn test_control_non_matching_name() {
+        let mut ctrl = Unipolar::new("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/Y", OscType::Float(0.75));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(!handled);
+        assert_eq!(ctrl.val(), UnipolarFloat::ZERO);
+    }
+
+    #[test]
+    fn test_val_with_anim_sums() {
+        let ctrl = Unipolar::new("X", ()).at(UnipolarFloat::new(0.3));
+        let result = ctrl.val_with_anim([0.2, 0.1].into_iter());
+        assert!((result.val() - 0.6).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_val_with_anim_clamps() {
+        let ctrl = Unipolar::new("X", ()).at(UnipolarFloat::new(0.8));
+        let result = ctrl.val_with_anim([0.5].into_iter());
+        assert_eq!(result, UnipolarFloat::ONE);
+    }
+
+    #[test]
+    fn test_render_unipolar_to_range() {
+        let render = RenderUnipolarToRange {
+            dmx_buf_offset: 0,
+            start: 0,
+            end: 255,
+        };
+        let mut buf = [0u8; 1];
+        render.render(&UnipolarFloat::new(0.5), &mut buf);
+        assert_eq!(buf[0], 127);
+
+        let render = RenderUnipolarToRange {
+            dmx_buf_offset: 0,
+            start: 100,
+            end: 200,
+        };
+        render.render(&UnipolarFloat::ONE, &mut buf);
+        assert_eq!(buf[0], 200);
+        render.render(&UnipolarFloat::ZERO, &mut buf);
+        assert_eq!(buf[0], 100);
+    }
+}

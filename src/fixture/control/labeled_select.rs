@@ -173,3 +173,124 @@ struct Split {
     /// The offset to add to the rendered DMX value.
     offset: u8,
 }
+
+#[cfg(test)]
+mod tests {
+    use rosc::{OscMessage, OscType};
+
+    use crate::osc::{MockEmitter, OscClientId, OscControlMessage};
+
+    use super::*;
+
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    fn test_select() -> LabeledSelect {
+        LabeledSelect::new("Color", 0, vec![("Red", 10), ("Green", 20), ("Blue", 30)])
+    }
+
+    #[test]
+    fn test_new_selects_first() {
+        let sel = test_select();
+        assert_eq!(sel.dmx_val(), 10);
+    }
+
+    #[test]
+    fn test_control_direct_valid_label() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        sel.control_direct("Green", &emitter).unwrap();
+        assert_eq!(sel.dmx_val(), 20);
+        let msgs = emitter.take();
+        // Should emit radio pattern for all 3 labels
+        assert_eq!(msgs.len(), 3);
+    }
+
+    #[test]
+    fn test_control_direct_invalid_errors() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        assert!(sel.control_direct("NoSuch", &emitter).is_err());
+    }
+
+    #[test]
+    fn test_control_direct_same_value_noop() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        // Already at index 0 ("Red"), selecting "Red" again should be a noop
+        sel.control_direct("Red", &emitter).unwrap();
+        let msgs = emitter.take();
+        assert!(msgs.is_empty());
+    }
+
+    #[test]
+    fn test_control_ignores_release() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/Color/Red", OscType::Float(0.0));
+        let handled = sel.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        // No state emission on release
+        let msgs = emitter.take();
+        assert!(msgs.is_empty());
+    }
+
+    #[test]
+    fn test_control_parses_label() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/Color/Red", OscType::Float(1.0));
+        let handled = sel.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        // Red is already selected (index 0), so no state change
+        // Now select Green
+        let msg = make_msg("/g/Color/Green", OscType::Float(1.0));
+        let handled = sel.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert_eq!(sel.dmx_val(), 20);
+    }
+
+    #[test]
+    fn test_control_non_matching() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/Other", OscType::Float(1.0));
+        let handled = sel.control(&msg, &emitter).unwrap();
+        assert!(!handled);
+    }
+
+    #[test]
+    fn test_emit_state_radio_pattern() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        sel.control_direct("Green", &emitter).unwrap();
+        emitter.take(); // clear
+        sel.emit_state(&emitter);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 3);
+        // Red=0.0, Green=1.0, Blue=0.0
+        assert_eq!(msgs[0].1, OscType::Float(0.0));
+        assert_eq!(msgs[1].1, OscType::Float(1.0));
+        assert_eq!(msgs[2].1, OscType::Float(0.0));
+    }
+
+    #[test]
+    fn test_dmx_val_with_split() {
+        let mut sel = test_select().with_split(5);
+        let emitter = MockEmitter::new();
+        // Split off by default
+        assert_eq!(sel.dmx_val(), 10);
+        // Turn on split
+        let msg = make_msg("/g/SplitColor", OscType::Float(1.0));
+        sel.control(&msg, &emitter).unwrap();
+        assert_eq!(sel.dmx_val(), 15); // 10 + 5
+    }
+}
