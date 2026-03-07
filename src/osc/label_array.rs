@@ -34,3 +34,49 @@ impl LabelArray {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::osc::MockEmitter;
+
+    fn make_label_array() -> LabelArray {
+        LabelArray {
+            control: "Lbl",
+            empty_label: "-",
+            n: 4,
+        }
+    }
+
+    #[test]
+    fn test_set_fills_labels() {
+        let la = make_label_array();
+        let emitter = MockEmitter::new();
+        la.set(vec!["A".to_string(), "B".to_string()].into_iter(), &emitter);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(msgs[0], ("Lbl/0".to_string(), OscType::String("A".to_string())));
+        assert_eq!(msgs[1], ("Lbl/1".to_string(), OscType::String("B".to_string())));
+        assert_eq!(msgs[2], ("Lbl/2".to_string(), OscType::String("-".to_string())));
+        assert_eq!(msgs[3], ("Lbl/3".to_string(), OscType::String("-".to_string())));
+    }
+
+    #[test]
+    fn test_set_truncates_excess() {
+        let la = LabelArray {
+            control: "Lbl",
+            empty_label: "-",
+            n: 3,
+        };
+        let emitter = MockEmitter::new();
+        let labels = vec!["A", "B", "C", "D", "E"]
+            .into_iter()
+            .map(String::from);
+        la.set(labels, &emitter);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs[0], ("Lbl/0".to_string(), OscType::String("A".to_string())));
+        assert_eq!(msgs[1], ("Lbl/1".to_string(), OscType::String("B".to_string())));
+        assert_eq!(msgs[2], ("Lbl/2".to_string(), OscType::String("C".to_string())));
+    }
+}

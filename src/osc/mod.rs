@@ -345,6 +345,33 @@ impl OscControlMessage {
     }
 }
 
+#[cfg(test)]
+pub struct MockEmitter {
+    pub messages: std::cell::RefCell<Vec<(String, OscType)>>,
+}
+
+#[cfg(test)]
+impl MockEmitter {
+    pub fn new() -> Self {
+        Self {
+            messages: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    pub fn take(&self) -> Vec<(String, OscType)> {
+        self.messages.borrow_mut().drain(..).collect()
+    }
+}
+
+#[cfg(test)]
+impl EmitScopedOscMessage for MockEmitter {
+    fn emit_osc(&self, msg: ScopedOscMessage) {
+        self.messages
+            .borrow_mut()
+            .push((msg.control.to_string(), msg.arg));
+    }
+}
+
 pub mod prelude {
     pub use super::FixtureStateEmitter;
     pub use super::basic_controls::{Button, UnipolarOsc, button, unipolar};
