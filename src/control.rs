@@ -1,6 +1,7 @@
 //! Top-level traits and types for control events.
 
 use std::{
+    fmt,
     sync::mpsc::{Receiver, RecvTimeoutError, Sender},
     time::Duration,
 };
@@ -186,7 +187,7 @@ impl CommandClient {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         self.send
             .send(ControlMessage::Meta(cmd, Some(reply_tx)))
-            .context("show control channel disconnected")?;
+            .map_err(|_| anyhow::anyhow!("show control channel disconnected"))?;
         reply_rx.recv().context("show did not send a response")
     }
 }
@@ -195,12 +196,31 @@ impl CommandClient {
 /// system actions, and lifecycle events.
 ///
 /// Any source with a Sender<ControlMessage> can send these.
-#[derive(Debug, Clone)]
 pub enum MetaCommand {
     ReloadPatch,
     RefreshUI,
     ResetAllAnimations,
     StartAnimationVisualizer,
+    AssignDmxPort {
+        universe: usize,
+        port: Box<dyn rust_dmx::DmxPort>,
+    },
+}
+
+impl fmt::Debug for MetaCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReloadPatch => write!(f, "ReloadPatch"),
+            Self::RefreshUI => write!(f, "RefreshUI"),
+            Self::ResetAllAnimations => write!(f, "ResetAllAnimations"),
+            Self::StartAnimationVisualizer => write!(f, "StartAnimationVisualizer"),
+            Self::AssignDmxPort { universe, port } => f
+                .debug_struct("AssignDmxPort")
+                .field("universe", universe)
+                .field("port", &format_args!("{port}"))
+                .finish(),
+        }
+    }
 }
 
 /// Translate an OSC control message (already known to be in the "Meta" group)
@@ -316,5 +336,18 @@ mod tests {
         let result = meta_command_from_osc(&msg);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("DoSomethingWeird"));
+    }
+
+    #[test]
+    fn meta_command_debug_formats_port_display() {
+        use crate::dmx::mock::MockDmxPort;
+        let cmd = MetaCommand::AssignDmxPort {
+            universe: 3,
+            port: Box::new(MockDmxPort::new()),
+        };
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("AssignDmxPort"));
+        assert!(debug.contains("universe: 3"));
+        assert!(debug.contains("mock"));
     }
 }

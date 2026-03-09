@@ -7,7 +7,7 @@ use local_ip_address::local_ip;
 use log::{LevelFilter, error};
 use midi::Device;
 use midi_harness::install_midi_device_change_handler;
-use rust_dmx::{DmxPort, OfflineDmxPort, available_ports, select_port_from};
+use rust_dmx::{DmxPort, OfflineDmxPort, available_ports};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::sync::mpsc::channel;
 use std::time::Duration;
@@ -132,25 +132,29 @@ fn run_show(args: RunArgs) -> Result<()> {
     let universe_count = patch.universe_count();
     println!("This show requires {universe_count} universe(s).");
 
-    let mut dmx_ports = Vec::new();
-
-    if args.artnet {
-        println!("Searching for artnet ports...");
-    }
-    let mut available_ports = available_ports(args.artnet.then_some(ARTNET_POLL_TIMEOUT))?;
-    if args.quickstart {
-        for (i, port) in (0..universe_count).zip(available_ports.into_iter().rev().chain(
-            std::iter::repeat_with(|| Box::new(OfflineDmxPort) as Box<dyn DmxPort>),
-        )) {
+    let dmx_ports: Vec<Box<dyn DmxPort>> = if args.quickstart {
+        if args.artnet {
+            println!("Searching for artnet ports...");
+        }
+        let available = available_ports(args.artnet.then_some(ARTNET_POLL_TIMEOUT))?;
+        let mut ports = Vec::new();
+        for (i, port) in (0..universe_count).zip(
+            available
+                .into_iter()
+                .rev()
+                .chain(std::iter::repeat_with(|| {
+                    Box::new(OfflineDmxPort) as Box<dyn DmxPort>
+                })),
+        ) {
             println!("Assigning universe {i} to port {port}.");
-            dmx_ports.push(port);
+            ports.push(port);
         }
+        ports
     } else {
-        for i in 0..universe_count {
-            println!("Assign port to universe {i}:");
-            dmx_ports.push(select_port_from(&mut available_ports)?);
-        }
-    }
+        (0..universe_count)
+            .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+            .collect()
+    };
 
     let mut show = Show::new(
         patch,
@@ -169,7 +173,7 @@ fn run_show(args: RunArgs) -> Result<()> {
     if !args.quickstart {
         let cli_client = command_client.clone();
         std::thread::spawn(move || {
-            if let Err(e) = cli::run_cli_configuration(cli_client) {
+            if let Err(e) = cli::run_cli_configuration(cli_client, universe_count) {
                 error!("CLI configuration error: {e:#}");
             }
         });

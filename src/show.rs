@@ -205,6 +205,9 @@ impl Show {
                 self.refresh_ui();
                 Ok(())
             }
+            MetaCommand::AssignDmxPort { universe, port } => {
+                assign_dmx_port(&mut self.dmx_ports, &mut self.dmx_buffers, universe, port)
+            }
             MetaCommand::StartAnimationVisualizer => {
                 if self.animation_service.is_none() {
                     self.animation_service = Some(animation_publisher(&self.zmq_ctx)?);
@@ -422,6 +425,29 @@ impl Show {
     }
 }
 
+/// Assign a DMX port to a universe.
+///
+/// Validates the universe index, opens the port, zeros the DMX buffer,
+/// and swaps the port into place.
+fn assign_dmx_port(
+    dmx_ports: &mut [Box<dyn DmxPort>],
+    dmx_buffers: &mut [DmxBuffer],
+    universe: usize,
+    mut port: Box<dyn DmxPort>,
+) -> Result<()> {
+    if universe >= dmx_ports.len() {
+        bail!(
+            "universe {universe} out of range (show has {} universe(s))",
+            dmx_ports.len()
+        );
+    }
+    port.open()
+        .map_err(|e| anyhow::anyhow!("failed to open port {port}: {e}"))?;
+    dmx_buffers[universe].fill(0);
+    dmx_ports[universe] = port;
+    Ok(())
+}
+
 /// Strongly-typed top-level show control messages.
 /// These cover all of the fixed control features, but not fixture-specific controls.
 #[derive(Debug, Clone)]
@@ -441,5 +467,64 @@ pub enum ShowControlMessage {
 impl From<Hsluv> for HsluvColor {
     fn from(c: Hsluv) -> Self {
         Self::new(c.hue, c.sat, c.lightness)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dmx::mock::MockDmxPort;
+    use rust_dmx::OfflineDmxPort;
+
+    fn make_ports(n: usize) -> (Vec<Box<dyn DmxPort>>, Vec<DmxBuffer>) {
+        let ports: Vec<Box<dyn DmxPort>> = (0..n)
+            .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+            .collect();
+        let buffers = vec![[0u8; 512]; n];
+        (ports, buffers)
+    }
+
+    #[test]
+    fn assign_dmx_port_success() {
+        let (mut ports, mut buffers) = make_ports(2);
+        // Put non-zero data in the buffer to verify it gets zeroed.
+        buffers[1].fill(0xFF);
+
+        let mock = Box::new(MockDmxPort::new());
+        let result = assign_dmx_port(&mut ports, &mut buffers, 1, mock);
+        assert!(result.is_ok());
+
+        // Buffer was zeroed.
+        assert!(buffers[1].iter().all(|&b| b == 0));
+
+        // Port was swapped in and opened (Display shows "mock").
+        assert_eq!(format!("{}", ports[1]), "mock");
+    }
+
+    #[test]
+    fn assign_dmx_port_open_fails() {
+        let (mut ports, mut buffers) = make_ports(1);
+        let original_display = format!("{}", ports[0]);
+
+        let mock = Box::new(MockDmxPort::failing());
+        let result = assign_dmx_port(&mut ports, &mut buffers, 0, mock);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("failed to open port"));
+
+        // Original port is unchanged.
+        assert_eq!(format!("{}", ports[0]), original_display);
+    }
+
+    #[test]
+    fn assign_dmx_port_universe_out_of_range() {
+        let (mut ports, mut buffers) = make_ports(2);
+
+        let mock = Box::new(MockDmxPort::new());
+        let result = assign_dmx_port(&mut ports, &mut buffers, 5, mock);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("out of range"));
+        assert!(err_msg.contains("2 universe(s)"));
     }
 }

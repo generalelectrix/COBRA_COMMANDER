@@ -1,6 +1,9 @@
+use std::path::PathBuf;
+use std::time::Duration;
+
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
-use std::path::PathBuf;
+use rust_dmx::{DmxPort, OfflineDmxPort, available_ports};
 use strum_macros::Display;
 use tunnels_lib::prompt::prompt_bool;
 
@@ -82,7 +85,8 @@ pub(crate) struct FixArgs {
 }
 
 /// Interactive CLI configuration, running against a live show.
-pub(crate) fn run_cli_configuration(client: CommandClient) -> Result<()> {
+pub(crate) fn run_cli_configuration(client: CommandClient, universe_count: usize) -> Result<()> {
+    offer_action(&client, |c| prompt_assign_dmx_ports(c, universe_count))?;
     offer_action(&client, prompt_start_animation_visualizer)?;
     Ok(())
 }
@@ -95,7 +99,7 @@ pub(crate) fn run_cli_configuration(client: CommandClient) -> Result<()> {
 /// user declined and we move on.
 fn offer_action(
     client: &CommandClient,
-    action: fn(&CommandClient) -> Result<Option<CommandResponse>>,
+    action: impl Fn(&CommandClient) -> Result<Option<CommandResponse>>,
 ) -> Result<()> {
     loop {
         match action(client)? {
@@ -107,6 +111,64 @@ fn offer_action(
                 }
             }
         }
+    }
+}
+
+const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn prompt_assign_dmx_ports(
+    client: &CommandClient,
+    universe_count: usize,
+) -> Result<Option<CommandResponse>> {
+    if !prompt_bool("Assign DMX ports?")? {
+        return Ok(None);
+    }
+    let artnet = prompt_bool("Scan for artnet ports?")?;
+    let artnet_timeout = artnet.then_some(ARTNET_POLL_TIMEOUT);
+    if artnet {
+        println!("Searching for artnet ports...");
+    }
+    let mut ports = available_ports(artnet_timeout)?;
+    for universe in 0..universe_count {
+        println!("Assign port to universe {universe}:");
+        let port = prompt_select_port(&mut ports)?;
+        let response = client.send_command(MetaCommand::AssignDmxPort { universe, port })?;
+        if let Err(e) = &response {
+            println!("Error assigning universe {universe}: {e}");
+        }
+    }
+    Ok(Some(Ok(())))
+}
+
+/// Prompt the user to select a DMX port. Does NOT open the port.
+///
+/// Selected ports are removed from the list so they can't be double-assigned.
+fn prompt_select_port(ports: &mut Vec<Box<dyn DmxPort>>) -> Result<Box<dyn DmxPort>> {
+    println!("Available DMX ports:");
+    println!("  0: offline");
+    for (i, port) in ports.iter().enumerate() {
+        println!("  {}: {port}", i + 1);
+    }
+    loop {
+        print!("Select a port: ");
+        std::io::Write::flush(&mut std::io::stdout())?;
+        let input = tunnels_lib::prompt::read_string()?;
+        let index: usize = match input.trim().parse() {
+            Ok(v) => v,
+            Err(e) => {
+                println!("{e}");
+                continue;
+            }
+        };
+        if index == 0 {
+            return Ok(Box::new(OfflineDmxPort) as Box<dyn DmxPort>);
+        }
+        let index = index - 1;
+        if index >= ports.len() {
+            println!("please enter a value less than {}", ports.len() + 1);
+            continue;
+        }
+        return Ok(ports.remove(index));
     }
 }
 

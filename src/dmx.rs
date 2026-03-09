@@ -46,3 +46,61 @@ pub type DmxBuffer = [u8; 512];
 
 /// Index into the DMX universes.
 pub type UniverseIdx = usize;
+
+#[cfg(test)]
+pub(crate) mod mock {
+    use rust_dmx::{DmxPort, OpenError, WriteError};
+    use serde::{Deserialize, Serialize};
+    use std::fmt;
+
+    #[derive(Serialize, Deserialize)]
+    pub struct MockDmxPort {
+        pub open_should_fail: bool,
+        pub opened: bool,
+    }
+
+    impl MockDmxPort {
+        pub fn new() -> Self {
+            Self {
+                open_should_fail: false,
+                opened: false,
+            }
+        }
+
+        pub fn failing() -> Self {
+            Self {
+                open_should_fail: true,
+                opened: false,
+            }
+        }
+    }
+
+    #[typetag::serde]
+    impl DmxPort for MockDmxPort {
+        fn open(&mut self) -> Result<(), OpenError> {
+            if self.open_should_fail {
+                Err(OpenError::NotConnected)
+            } else {
+                self.opened = true;
+                Ok(())
+            }
+        }
+
+        fn close(&mut self) {
+            self.opened = false;
+        }
+
+        fn write(&mut self, _frame: &[u8]) -> Result<(), WriteError> {
+            if !self.opened {
+                return Err(WriteError::Disconnected);
+            }
+            Ok(())
+        }
+    }
+
+    impl fmt::Display for MockDmxPort {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "mock")
+        }
+    }
+}

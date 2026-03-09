@@ -45,6 +45,9 @@ url = { version = "*", features = ["serde"] }
 termion = "4.0.5"
 owo-colors = "4.2.3"
 
+[dev-dependencies]
+typetag = "0.2"
+
 # [patch.'https://github.com/generalelectrix/tunnels']
 # midi_harness = { path = "../tunnels/midi_harness" }
 # tunnels = { path = "../tunnels/tunnels" }
