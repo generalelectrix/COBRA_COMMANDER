@@ -9,7 +9,7 @@ use crate::{
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
     clocks::Clocks,
     color::Hsluv,
-    control::{ControlMessage, Controller},
+    control::{ControlMessage, Controller, MetaCommand},
     dmx::DmxBuffer,
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
@@ -27,6 +27,7 @@ use log::error;
 use rust_dmx::DmxPort;
 
 pub struct Show {
+    zmq_ctx: zmq::Context,
     controller: Controller,
     dmx_ports: Vec<Box<dyn DmxPort>>,
     dmx_buffers: Vec<DmxBuffer>,
@@ -59,6 +60,7 @@ impl Show {
         animation_service: Option<AnimationPublisher>,
         preview: Previewer,
         master_strobe_channel: bool,
+        zmq_ctx: zmq::Context,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
@@ -72,6 +74,7 @@ impl Show {
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
         let mut show = Self {
+            zmq_ctx,
             controller,
             dmx_buffers: vec![[0u8; 512]; dmx_ports.len()],
             dmx_ports,
@@ -157,7 +160,13 @@ impl Show {
             }
             ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
+            ControlMessage::Meta(cmd) => self.handle_meta_command(cmd),
         }
+    }
+
+    /// Handle a meta-command.
+    fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<()> {
+        match cmd {}
     }
 
     /// Handle a single MIDI control message.

@@ -165,12 +165,22 @@ impl<'a> EmitMidiMasterMessage for ControlMessageWithMetadataSender<'a> {
     }
 }
 
+/// Commands for show-level meta-control: configuration changes,
+/// system actions, and lifecycle events.
+///
+/// Any source with a Sender<ControlMessage> can send these.
+#[derive(Debug, Clone)]
+pub enum MetaCommand {
+    // Variants will be added in subsequent refactoring steps.
+}
+
 pub enum ControlMessage {
     RegisterClient(OscClientId),
     DeregisterClient(OscClientId),
     MidiDeviceChange(DeviceChange),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
+    Meta(MetaCommand),
 }
 
 #[cfg(test)]

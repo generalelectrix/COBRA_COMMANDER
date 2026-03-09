@@ -258,6 +258,7 @@ fn run_show(args: RunArgs) -> Result<()> {
             .then(Previewer::terminal)
             .unwrap_or_default(),
         args.master_strobe_channel,
+        zmq_ctx,
     )?;
 
     println!("Running show.");
