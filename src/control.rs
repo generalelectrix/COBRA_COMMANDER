@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use midi_harness::DeviceChange;
 use rosc::OscMessage;
 use tunnels::midi::DeviceSpec;
@@ -165,6 +165,32 @@ impl<'a> EmitMidiMasterMessage for ControlMessageWithMetadataSender<'a> {
     }
 }
 
+/// The result of processing a MetaCommand.
+pub type CommandResponse = std::result::Result<(), String>;
+
+/// A handle for sending commands to the show and waiting for responses.
+///
+/// Cloneable — any thread can hold one.
+#[derive(Clone)]
+pub struct CommandClient {
+    send: Sender<ControlMessage>,
+}
+
+impl CommandClient {
+    pub fn new(send: Sender<ControlMessage>) -> Self {
+        Self { send }
+    }
+
+    /// Send a command and block until the show responds.
+    pub fn send_command(&self, cmd: MetaCommand) -> Result<CommandResponse> {
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        self.send
+            .send(ControlMessage::Meta(cmd, Some(reply_tx)))
+            .context("show control channel disconnected")?;
+        reply_rx.recv().context("show did not send a response")
+    }
+}
+
 /// Commands for show-level meta-control: configuration changes,
 /// system actions, and lifecycle events.
 ///
@@ -174,6 +200,7 @@ pub enum MetaCommand {
     ReloadPatch,
     RefreshUI,
     ResetAllAnimations,
+    StartAnimationVisualizer,
 }
 
 /// Translate an OSC control message (already known to be in the "Meta" group)
@@ -201,7 +228,8 @@ pub enum ControlMessage {
     MidiDeviceChange(DeviceChange),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
-    Meta(MetaCommand),
+    /// A meta-command with an optional reply channel for the response.
+    Meta(MetaCommand, Option<Sender<CommandResponse>>),
 }
 
 #[cfg(test)]

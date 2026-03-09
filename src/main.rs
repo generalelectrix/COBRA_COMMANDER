@@ -1,20 +1,16 @@
-use anyhow::Context as _;
 use anyhow::{Result, bail};
-use clap::{Args, Parser, Subcommand};
+use clap::Parser;
 use clock_service::prompt_start_clock_service;
 use clocks::Clocks;
 use fixture::Patch;
 use local_ip_address::local_ip;
-use log::LevelFilter;
+use log::{LevelFilter, error};
 use midi::Device;
 use midi_harness::install_midi_device_change_handler;
 use rust_dmx::{DmxPort, OfflineDmxPort, available_ports, select_port_from};
 use simplelog::{Config as LogConfig, SimpleLogger};
-use std::env::current_exe;
-use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::time::Duration;
-use strum_macros::Display;
 use tunnels::audio::AudioInput;
 use tunnels::audio::prompt_audio;
 use tunnels::midi::prompt_midi;
@@ -22,10 +18,9 @@ use tunnels::midi::{DeviceSpec, list_ports};
 use tunnels_lib::prompt::{prompt_bool, prompt_indexed_value};
 use zmq::Context;
 
-use crate::animation_visualizer::{
-    AnimationPublisher, animation_publisher, run_animation_visualizer,
-};
-use crate::control::Controller;
+use crate::animation_visualizer::run_animation_visualizer;
+use crate::cli::*;
+use crate::control::{CommandClient, Controller};
 use crate::midi::{ColorOrgan, ControlHandler};
 use crate::preview::Previewer;
 use crate::show::Show;
@@ -33,6 +28,7 @@ use crate::show::Show;
 mod animation;
 mod animation_visualizer;
 mod channel;
+mod cli;
 mod clock_service;
 mod clocks;
 mod color;
@@ -48,81 +44,6 @@ mod show;
 mod strobe;
 mod util;
 mod wled;
-
-#[derive(Parser)]
-#[command(about)]
-struct Cli {
-    /// If true, provide verbose logging.
-    #[arg(long)]
-    debug: bool,
-
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand, Display)]
-#[strum(serialize_all = "lowercase")]
-enum Command {
-    /// Run the controller.
-    Run(RunArgs),
-
-    /// Check that the provided patch file is valid, then quit.
-    Check(CheckArgs),
-
-    /// Run the animation visualizer.
-    Viz,
-
-    /// Get fixture info.
-    Fix(FixArgs),
-}
-
-#[derive(Args)]
-struct RunArgs {
-    /// Path to a YAML file containing the fixture patch.
-    patch_file: PathBuf,
-
-    /// If true, speedrun auto configuration with defaults.
-    ///
-    /// Mostly useful for testing.
-    #[arg(long)]
-    quickstart: bool,
-
-    /// If true, poll for artnet interfaces as possible DMX ports.
-    #[arg(long)]
-    artnet: bool,
-
-    /// If true, use the last channel fader as a master strobe control.
-    #[arg(long)]
-    master_strobe_channel: bool,
-
-    /// The port on which to listen for OSC messages.
-    #[arg(long, default_value_t = 8000)]
-    osc_receive_port: u16,
-
-    /// If true, render fixture preview into the CLI.
-    #[arg(long)]
-    cli_preview: bool,
-}
-
-#[derive(Args)]
-struct CheckArgs {
-    /// Path to a YAML file containing the fixture patch.
-    patch_file: PathBuf,
-
-    /// Print the OSC controls for each fixture group in the patch.
-    #[arg(long)]
-    describe_controls: bool,
-}
-
-#[derive(Args)]
-struct FixArgs {
-    /// Show info for all registered fixture types.
-    #[arg(long)]
-    all: bool,
-
-    /// Show info for one fixture type.
-    fixture: Option<String>,
-}
 
 fn main() -> Result<()> {
     let args = Cli::try_parse()?;
@@ -164,18 +85,13 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     let internal_clocks = matches!(clocks, Clocks::Internal { .. });
 
-    let animation_service = if args.quickstart {
-        None
-    } else {
-        prompt_start_animation_service(&zmq_ctx)?
-    };
-
     match local_ip() {
         Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
         Err(e) => println!("Unable to fetch local IP address: {e}."),
     }
 
     let (send_control_msg, recv_control_msg) = channel();
+    let command_client = CommandClient::new(send_control_msg.clone());
 
     // NOTE: this MUST be called before any other MIDI functions.
     install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
@@ -236,23 +152,28 @@ fn run_show(args: RunArgs) -> Result<()> {
         }
     }
 
-    if animation_service.is_some() {
-        launch_animation_visualizer()?;
-    }
-
     let mut show = Show::new(
         patch,
         args.patch_file,
         controller,
         dmx_ports,
         clocks,
-        animation_service,
+        None,
         args.cli_preview
             .then(Previewer::terminal)
             .unwrap_or_default(),
         args.master_strobe_channel,
         zmq_ctx,
     )?;
+
+    if !args.quickstart {
+        let cli_client = command_client.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = cli::run_cli_configuration(cli_client) {
+                error!("CLI configuration error: {e:#}");
+            }
+        });
+    }
 
     println!("Running show.");
 
@@ -279,22 +200,6 @@ fn check_patch(args: CheckArgs) -> Result<()> {
             println!();
         }
     }
-    Ok(())
-}
-
-fn prompt_start_animation_service(ctx: &Context) -> Result<Option<AnimationPublisher>> {
-    if !prompt_bool("Run animation visualizer?")? {
-        return Ok(None);
-    }
-    Ok(Some(animation_publisher(ctx)?))
-}
-
-fn launch_animation_visualizer() -> Result<()> {
-    let bin_path = current_exe().context("failed to get the path to the running binary")?;
-    std::process::Command::new(bin_path)
-        .arg(Command::Viz.to_string())
-        .spawn()
-        .context("failed to start animation visualizer")?;
     Ok(())
 }
 

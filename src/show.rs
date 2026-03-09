@@ -3,9 +3,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use std::env::current_exe;
+
 use crate::{
     animation::AnimationUIState,
-    animation_visualizer::{AnimationPublisher, AnimationServiceState},
+    animation_visualizer::{AnimationPublisher, AnimationServiceState, animation_publisher},
+    cli::Command,
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
     clocks::Clocks,
     color::Hsluv,
@@ -21,7 +24,7 @@ use crate::{
 };
 
 pub use crate::channel::ChannelId;
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use rust_dmx::DmxPort;
@@ -160,7 +163,13 @@ impl Show {
             }
             ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
-            ControlMessage::Meta(cmd) => self.handle_meta_command(cmd),
+            ControlMessage::Meta(cmd, reply) => {
+                let result = self.handle_meta_command(cmd);
+                if let Some(reply) = reply {
+                    let _ = reply.send(result.as_ref().map_err(|e| format!("{e:#}")).copied());
+                }
+                result
+            }
         }
     }
 
@@ -194,6 +203,18 @@ impl Show {
                     group.reset_animations();
                 }
                 self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::StartAnimationVisualizer => {
+                if self.animation_service.is_none() {
+                    self.animation_service = Some(animation_publisher(&self.zmq_ctx)?);
+                }
+                let bin_path =
+                    current_exe().context("failed to get the path to the running binary")?;
+                std::process::Command::new(bin_path)
+                    .arg(Command::Viz.to_string())
+                    .spawn()
+                    .context("failed to start animation visualizer")?;
                 Ok(())
             }
         }
