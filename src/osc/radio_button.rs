@@ -92,6 +92,128 @@ impl RadioButton {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::osc::{MockEmitter, OscClientId};
+    use rosc::OscMessage;
+
+    #[derive(Debug, PartialEq)]
+    enum Msg {
+        Selected(usize),
+    }
+
+    fn make_msg(addr: &str, arg: OscType) -> crate::osc::OscControlMessage {
+        crate::osc::OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    fn make_radio(x_primary: bool, n: usize) -> RadioButton {
+        RadioButton {
+            control: "Ctrl",
+            n,
+            x_primary_coordinate: x_primary,
+        }
+    }
+
+    #[test]
+    fn test_valid_press_x_primary() {
+        let rb = make_radio(true, 3);
+        let mut map = GroupControlMap::default();
+        rb.map(&mut map, Msg::Selected);
+        let msg = make_msg("/group/Ctrl/1/1", OscType::Float(1.0));
+        let result = map.handle(&msg).unwrap();
+        assert_eq!(result.unwrap().0, Msg::Selected(0));
+    }
+
+    #[test]
+    fn test_ignores_release() {
+        let rb = make_radio(true, 3);
+        let mut map = GroupControlMap::default();
+        rb.map(&mut map, Msg::Selected);
+        let msg = make_msg("/group/Ctrl/1/1", OscType::Float(0.0));
+        let result = map.handle(&msg).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_out_of_range_errors() {
+        let rb = make_radio(true, 3);
+        let mut map = GroupControlMap::default();
+        rb.map(&mut map, Msg::Selected);
+        // index 4 (0-based 3) is >= n=3
+        let msg = make_msg("/group/Ctrl/4/1", OscType::Float(1.0));
+        assert!(map.handle(&msg).is_err());
+    }
+
+    #[test]
+    fn test_secondary_nonzero_errors() {
+        let rb = make_radio(true, 3);
+        let mut map = GroupControlMap::default();
+        rb.map(&mut map, Msg::Selected);
+        // secondary (y) = 1 (0-based) which is > 0
+        let msg = make_msg("/group/Ctrl/1/2", OscType::Float(1.0));
+        assert!(map.handle(&msg).is_err());
+    }
+
+    #[test]
+    fn test_y_primary_swaps_axes() {
+        let rb = make_radio(false, 3);
+        let mut map = GroupControlMap::default();
+        rb.map(&mut map, Msg::Selected);
+        // x_primary=false, so y is primary. /1/2 → x=0,y=1 → primary=y=1
+        let msg = make_msg("/group/Ctrl/1/2", OscType::Float(1.0));
+        let result = map.handle(&msg).unwrap();
+        assert_eq!(result.unwrap().0, Msg::Selected(1));
+    }
+
+    #[test]
+    fn test_zero_index_errors() {
+        let rb = make_radio(true, 3);
+        let mut map = GroupControlMap::default();
+        rb.map(&mut map, Msg::Selected);
+        let msg = make_msg("/group/Ctrl/0/1", OscType::Float(1.0));
+        assert!(map.handle(&msg).is_err());
+    }
+
+    #[test]
+    fn test_missing_indices_errors() {
+        let rb = make_radio(true, 3);
+        let mut map = GroupControlMap::default();
+        rb.map(&mut map, Msg::Selected);
+        // No indices after control — addr_payload is empty
+        let msg = make_msg("/group/Ctrl", OscType::Float(1.0));
+        assert!(map.handle(&msg).is_err());
+    }
+
+    #[test]
+    fn test_set_emits_correct_pattern() {
+        let rb = make_radio(true, 3);
+        let emitter = MockEmitter::new();
+        rb.set(1, false, &emitter);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs[0], ("Ctrl/1/1".to_string(), OscType::Float(0.0)));
+        assert_eq!(msgs[1], ("Ctrl/2/1".to_string(), OscType::Float(1.0)));
+        assert_eq!(msgs[2], ("Ctrl/3/1".to_string(), OscType::Float(0.0)));
+    }
+
+    #[test]
+    fn test_set_out_of_range_no_emit() {
+        let rb = make_radio(true, 3);
+        let emitter = MockEmitter::new();
+        rb.set(5, false, &emitter);
+        let msgs = emitter.take();
+        assert!(msgs.is_empty());
+    }
+}
+
 /// Parse radio button indices from a TouchOSC button grid.
 fn parse_radio_button_indices(addr_payload: &str) -> Result<(usize, usize), String> {
     let mut pieces_iter = addr_payload

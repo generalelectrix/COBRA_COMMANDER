@@ -109,6 +109,10 @@ struct RunArgs {
 struct CheckArgs {
     /// Path to a YAML file containing the fixture patch.
     patch_file: PathBuf,
+
+    /// Print the OSC controls for each fixture group in the patch.
+    #[arg(long)]
+    describe_controls: bool,
 }
 
 #[derive(Args)]
@@ -264,8 +268,23 @@ fn run_show(args: RunArgs) -> Result<()> {
 }
 
 fn check_patch(args: CheckArgs) -> Result<()> {
-    Patch::from_file(&args.patch_file)?;
+    let patch = Patch::from_file(&args.patch_file)?;
     println!("Patch is OK.");
+    if args.describe_controls {
+        println!();
+        for (key, group) in patch.iter_with_keys() {
+            let controls = group.describe_controls();
+            println!(
+                "{key} ({} control{}):",
+                controls.len(),
+                if controls.len() == 1 { "" } else { "s" }
+            );
+            for control in &controls {
+                println!("  {}: {}", control.name, control.control_type);
+            }
+            println!();
+        }
+    }
     Ok(())
 }
 

@@ -2,7 +2,7 @@ use std::{collections::VecDeque, time::Duration};
 
 use crate::{fixture::prelude::*, osc::OscControlMessage, util::unipolar_to_range};
 
-#[derive(Debug, EmitState, Control, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, PatchFixture)]
 #[channel_count = 5]
 #[strobe(Long)]
 pub struct Comet {
@@ -58,17 +58,21 @@ impl Update for Comet {
 }
 
 /// Manage Comet trigger state.
-#[derive(Debug)]
+#[derive(Debug, DescribeControls)]
 struct TriggerState {
     music_trigger: Bool<()>,
     auto_step_rate: Unipolar<()>,
     auto_step: Bool<()>,
     /// queue of step actions to process
+    #[skip_control]
     steps_to_take: std::collections::VecDeque<Step>,
     /// what state was this machine in on the last update?
+    #[skip_control]
     prior_state: Stepping,
     /// how many frames should we hold current output before re-updating?
+    #[skip_control]
     updates_to_hold: usize,
+    #[skip_control]
     current_output_value: u8,
 }
 

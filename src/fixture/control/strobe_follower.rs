@@ -62,6 +62,12 @@ impl<R: RenderToDmx<Option<UnipolarFloat>>> OscControl<()> for StrobeFollower<R>
     fn emit_state(&self, _emitter: &dyn crate::osc::EmitScopedOscMessage) {}
 }
 
+impl<R: RenderToDmx<Option<UnipolarFloat>>> super::DescribeOscControls for StrobeFollower<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        vec![]
+    }
+}
+
 impl<R: RenderToDmx<Option<UnipolarFloat>>> RenderToDmxWithAnimations for StrobeFollower<R> {
     fn render(
         &self,

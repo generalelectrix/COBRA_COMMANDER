@@ -65,6 +65,19 @@ impl Venus {
     }
 }
 
+impl crate::fixture::control::DescribeOscControls for Venus {
+    fn describe_controls(&self) -> Vec<crate::fixture::control::OscControlDescription> {
+        use crate::fixture::control::{OscControlDescription, OscControlType};
+        vec![
+            OscControlDescription { name: "BaseRotation".into(), control_type: OscControlType::Bipolar },
+            OscControlDescription { name: "CradleMotion".into(), control_type: OscControlType::Unipolar },
+            OscControlDescription { name: "HeadRotation".into(), control_type: OscControlType::Bipolar },
+            OscControlDescription { name: "ColorRotation".into(), control_type: OscControlType::Bipolar },
+            OscControlDescription { name: "LampControl".into(), control_type: OscControlType::Bool },
+        ]
+    }
+}
+
 impl NonAnimatedFixture for Venus {
     fn render(&self, _group_controls: &FixtureGroupControls, dmx_buf: &mut [u8]) {
         render_bipolar_to_dir_and_val(self.base_rotation.current(), &mut dmx_buf[0..2]);

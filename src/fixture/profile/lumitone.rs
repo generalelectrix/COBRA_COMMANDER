@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, EmitState, Control, Update)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update)]
 pub struct Lumitone {
     #[channel_control]
     #[on_change = "send_state"]

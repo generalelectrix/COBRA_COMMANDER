@@ -1,7 +1,7 @@
 //! Martin Wizard Extreme - the one that Goes Slow
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 11]
 #[strobe(Long)]
 pub struct WizardExtreme {

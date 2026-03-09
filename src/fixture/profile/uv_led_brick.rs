@@ -1,7 +1,7 @@
 //! Control profile for a uv_led_brick.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 7]
 #[strobe(Short)]
 pub struct UvLedBrick {

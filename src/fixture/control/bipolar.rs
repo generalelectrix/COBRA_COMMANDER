@@ -191,6 +191,15 @@ impl<R: RenderToDmx<BipolarFloat>> OscControl<BipolarFloat> for Bipolar<R> {
     }
 }
 
+impl<R: RenderToDmx<BipolarFloat>> super::DescribeOscControls for Bipolar<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        vec![super::OscControlDescription {
+            name: self.name.clone(),
+            control_type: super::OscControlType::Bipolar,
+        }]
+    }
+}
+
 impl<R: RenderToDmx<BipolarFloat>> RenderToDmxWithAnimations for Bipolar<R> {
     fn render(
         &self,
@@ -290,6 +299,14 @@ impl<R: RenderToDmx<BipolarFloat>> Mirrored<R> {
     }
 }
 
+impl<R: RenderToDmx<BipolarFloat>> super::DescribeOscControls for Mirrored<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        let mut controls = self.control.describe_controls();
+        controls.extend(self.mirror.describe_controls());
+        controls
+    }
+}
+
 impl<R: RenderToDmx<BipolarFloat>> RenderToDmxWithAnimations for Mirrored<R> {
     fn render(
         &self,
@@ -349,7 +366,11 @@ impl<R: RenderToDmx<BipolarFloat>> OscControl<BipolarFloat> for Mirrored<R> {
         emitter: &dyn EmitScopedOscMessage,
         callback: impl Fn(&BipolarFloat),
     ) -> anyhow::Result<bool> {
-        self.control.control_with_callback(msg, emitter, callback)
+        if self.control.control_with_callback(msg, emitter, callback)? {
+            return Ok(true);
+        }
+        // Mirror toggle doesn't use the bipolar callback.
+        self.mirror.control(msg, emitter)
     }
 }
 
@@ -369,5 +390,165 @@ fn bipolar_to_split_range(
         unipolar_to_range(cw_slow, cw_fast, v.abs())
     } else {
         unipolar_to_range(ccw_slow, ccw_fast, v.abs())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use number::BipolarFloat;
+    use rosc::{OscMessage, OscType};
+
+    use crate::osc::{MockEmitter, OscClientId, OscControlMessage};
+
+    use super::*;
+
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_new_defaults_to_zero() {
+        let ctrl = Bipolar::new("X", ());
+        assert_eq!(ctrl.val(), BipolarFloat::ZERO);
+    }
+
+    #[test]
+    fn test_control_matching_name() {
+        let mut ctrl = Bipolar::new("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/X", OscType::Float(-0.5));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert!((ctrl.val().val() - (-0.5)).abs() < 1e-6);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].0, "X");
+    }
+
+    #[test]
+    fn test_control_non_matching_name() {
+        let mut ctrl = Bipolar::new("X", ());
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/Y", OscType::Float(-0.5));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(!handled);
+    }
+
+    #[test]
+    fn test_val_with_anim_no_detent() {
+        let mut ctrl = Bipolar::new("X", ());
+        ctrl.val = BipolarFloat::new(0.5);
+        let result = ctrl.val_with_anim([0.3].into_iter());
+        assert!((result.val() - 0.8).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_val_with_anim_with_detent_nulls() {
+        let mut ctrl = Bipolar::new("X", ()).with_detent();
+        ctrl.val = BipolarFloat::new(0.03);
+        let result = ctrl.val_with_anim(std::iter::empty());
+        assert_eq!(result, BipolarFloat::ZERO);
+    }
+
+    #[test]
+    fn test_render_bipolar_to_range() {
+        let render = RenderBipolarToRange {
+            dmx_buf_offset: 0,
+            start: 0,
+            end: 255,
+        };
+        let mut buf = [0u8; 1];
+        // BipolarFloat 0.0 rescales to unipolar 0.5
+        render.render(&BipolarFloat::ZERO, &mut buf);
+        assert_eq!(buf[0], 127);
+        render.render(&BipolarFloat::ONE, &mut buf);
+        assert_eq!(buf[0], 255);
+        render.render(&BipolarFloat::new(-1.0), &mut buf);
+        assert_eq!(buf[0], 0);
+    }
+
+    #[test]
+    fn test_render_split_range_positive() {
+        let render = RenderBipolarToSplitRange {
+            dmx_buf_offset: 0,
+            cw_slow: 10,
+            cw_fast: 100,
+            ccw_slow: 110,
+            ccw_fast: 200,
+            stop: 0,
+        };
+        let mut buf = [0u8; 1];
+        render.render(&BipolarFloat::ONE, &mut buf);
+        assert_eq!(buf[0], 100);
+    }
+
+    #[test]
+    fn test_render_split_range_negative() {
+        let render = RenderBipolarToSplitRange {
+            dmx_buf_offset: 0,
+            cw_slow: 10,
+            cw_fast: 100,
+            ccw_slow: 110,
+            ccw_fast: 200,
+            stop: 0,
+        };
+        let mut buf = [0u8; 1];
+        render.render(&BipolarFloat::new(-1.0), &mut buf);
+        assert_eq!(buf[0], 200);
+    }
+
+    #[test]
+    fn test_render_split_range_zero() {
+        let render = RenderBipolarToSplitRange {
+            dmx_buf_offset: 0,
+            cw_slow: 10,
+            cw_fast: 100,
+            ccw_slow: 110,
+            ccw_fast: 200,
+            stop: 128,
+        };
+        let mut buf = [0u8; 1];
+        render.render(&BipolarFloat::ZERO, &mut buf);
+        assert_eq!(buf[0], 128);
+    }
+
+    #[test]
+    fn test_render_coarse_fine() {
+        let render = RenderBipolarToCoarseAndFine { dmx_buf_offset: 0 };
+        let mut buf = [0u8; 2];
+        // Bipolar 0.0 → unipolar 0.5 → ~32767
+        render.render(&BipolarFloat::ZERO, &mut buf);
+        let val = u16::from_be_bytes([buf[0], buf[1]]);
+        assert_eq!(val, (0.5 * u16::MAX as f64).round() as u16);
+    }
+
+    #[test]
+    fn test_mirrored_delegates_bipolar() {
+        let bipolar = Bipolar::new("X", ()).with_mirroring(false);
+        let mut ctrl = bipolar;
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/X", OscType::Float(0.7));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert!((ctrl.control.val().val() - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_mirrored_handles_mirror_toggle() {
+        let bipolar = Bipolar::new("X", ()).with_mirroring(false);
+        let mut ctrl = bipolar;
+        let emitter = MockEmitter::new();
+        assert!(!ctrl.mirror.val());
+        let msg = make_msg("/g/MirrorX", OscType::Float(1.0));
+        let handled = ctrl.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert!(ctrl.mirror.val());
     }
 }

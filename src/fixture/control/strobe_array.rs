@@ -492,3 +492,108 @@ impl<const C: usize, C0: Chase<C>, C1: Chase<C>> Chase<C> for Lockstep<C, C0, C1
         self.c1.set_next(reverse, state);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_set_activates_cell() {
+        let mut state = FlashState::<4>::default();
+        state.set(2);
+        assert!(state.cells()[2].is_some());
+        assert!(state.cells()[0].is_none());
+    }
+
+    #[test]
+    fn test_set_out_of_range_no_panic() {
+        let mut state = FlashState::<4>::default();
+        // Should log error but not panic
+        state.set(4);
+        // All cells should still be None
+        assert!(state.cells().iter().all(|c| c.is_none()));
+    }
+
+    #[test]
+    fn test_update_ages_and_clears() {
+        let mut state = FlashState::<4>::default();
+        state.set(1);
+        assert!(state.cells()[1].is_some());
+        // flash_len defaults to 1, so updating by 1 frame should clear it
+        state.update(1);
+        assert!(state.cells()[1].is_none());
+    }
+
+    #[test]
+    fn test_singles_cycle_forward() {
+        let mut chase = PatternArray::<1, 4>::singles(0..4);
+        let mut state = FlashState::<4>::default();
+
+        chase.set_next(false, &mut state);
+        assert!(state.cells()[0].is_some());
+        state.update(1); // clear
+
+        chase.set_next(false, &mut state);
+        assert!(state.cells()[1].is_some());
+        state.update(1);
+
+        chase.set_next(false, &mut state);
+        assert!(state.cells()[2].is_some());
+        state.update(1);
+
+        chase.set_next(false, &mut state);
+        assert!(state.cells()[3].is_some());
+    }
+
+    #[test]
+    fn test_singles_cycle_reverse() {
+        let mut chase = PatternArray::<1, 4>::singles(0..4);
+        let mut state = FlashState::<4>::default();
+
+        // Start at next_item=0, reverse wraps to last
+        chase.set_next(true, &mut state);
+        assert!(state.cells()[0].is_some());
+        state.update(1);
+
+        // Now next_item should have wrapped to 3
+        chase.set_next(true, &mut state);
+        assert!(state.cells()[3].is_some());
+    }
+
+    #[test]
+    fn test_reset_returns_to_start() {
+        let mut chase = PatternArray::<1, 4>::singles(0..4);
+        let mut state = FlashState::<4>::default();
+
+        chase.set_next(false, &mut state);
+        state.update(1);
+        chase.set_next(false, &mut state);
+        state.update(1);
+
+        chase.reset();
+        chase.set_next(false, &mut state);
+        assert!(state.cells()[0].is_some());
+    }
+
+    #[test]
+    fn test_all_flashes_every_cell() {
+        let mut chase = PatternArray::<4, 4>::all();
+        let mut state = FlashState::<4>::default();
+        chase.set_next(false, &mut state);
+        assert!(state.cells().iter().all(|c| c.is_some()));
+    }
+
+    #[test]
+    fn test_lockstep_offsets_second() {
+        let c0 = PatternArray::<1, 4>::singles(0..4);
+        let c1 = PatternArray::<1, 4>::singles(0..4);
+        // Offset of 2: c1 starts 2 steps ahead
+        let mut lockstep = Lockstep::new(c0, c1, 2);
+        lockstep.reset();
+        let mut state = FlashState::<4>::default();
+        lockstep.set_next(false, &mut state);
+        // c0 fires cell 0, c1 (offset by 2) fires cell 2
+        assert!(state.cells()[0].is_some());
+        assert!(state.cells()[2].is_some());
+    }
+}

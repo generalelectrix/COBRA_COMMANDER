@@ -7,7 +7,7 @@ use crate::{
 use reqwest::Url;
 use wled_json_api_library::structures::state::{Seg, State};
 
-#[derive(Debug, EmitState, Control, Update)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update)]
 pub struct Wled {
     #[channel_control]
     #[on_change = "update_level"]
@@ -147,7 +147,7 @@ pub mod rug_doctor {
         }
     }
 
-    #[derive(Debug, EmitState, Control, Update)]
+    #[derive(Debug, EmitState, Control, DescribeControls, Update)]
     pub struct RugDoctor {
         #[channel_control]
         wled: Wled,

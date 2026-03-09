@@ -44,7 +44,7 @@ impl FlashState {
 
     /// Start a new flash.
     pub fn flash_now(&mut self) {
-        self.flash = Some(self.duration);
+        self.flash = Some(0);
     }
 
     /// Return true if this flash is on.
@@ -207,7 +207,7 @@ impl StrobeClock {
             // be less perceptible anyway.
             rate
         } else {
-            let interval_frame_count = ((1.0 / rate) / UPDATE_INTERVAL.as_secs_f64()).round();
+            let interval_frame_count = ((1.0 / rate) / UPDATE_INTERVAL.as_secs_f64()).round().max(1.0);
             1. / (interval_frame_count * UPDATE_INTERVAL.as_secs_f64())
         };
     }
@@ -465,5 +465,144 @@ trait EmitMidiStrobeMessage {
 impl<T: EmitMidiMasterMessage> EmitMidiStrobeMessage for T {
     fn emit_midi_strobe_message(&self, msg: &StateChange) {
         self.emit_midi_master_message(&crate::master::StateChange::Strobe(msg.clone()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- FlashState tests ---
+
+    #[test]
+    fn test_flash_not_on_initially() {
+        let state = FlashState::new(StrobeResponse::Short);
+        assert!(!state.is_on());
+    }
+
+    #[test]
+    fn test_short_flash_on_after_trigger() {
+        let mut state = FlashState::new(StrobeResponse::Short);
+        state.flash_now();
+        assert!(state.is_on());
+    }
+
+    #[test]
+    fn test_short_flash_expires_after_one_frame() {
+        let mut state = FlashState::new(StrobeResponse::Short);
+        state.flash_now();
+        state.update(1);
+        assert!(!state.is_on());
+    }
+
+    #[test]
+    fn test_long_flash_survives_one_update() {
+        let mut state = FlashState::new(StrobeResponse::Long);
+        state.flash_now();
+        state.update(1);
+        assert!(state.is_on(), "Long flash should survive 1 update");
+    }
+
+    #[test]
+    fn test_long_flash_lasts_exactly_three_frames() {
+        let mut state = FlashState::new(StrobeResponse::Long);
+        state.flash_now();
+        state.update(1);
+        assert!(state.is_on(), "Long flash should be on after frame 1");
+        state.update(1);
+        assert!(state.is_on(), "Long flash should be on after frame 2");
+        state.update(1);
+        assert!(!state.is_on(), "Long flash should expire after frame 3");
+    }
+
+    #[test]
+    fn test_reflash_resets_duration() {
+        let mut state = FlashState::new(StrobeResponse::Long);
+        state.flash_now();
+        state.update(1);
+        state.update(1);
+        // 2 frames in, flash_now again should reset
+        state.flash_now();
+        state.update(1);
+        assert!(
+            state.is_on(),
+            "Re-triggered flash should still be on after 1 frame"
+        );
+    }
+
+    // --- apply_rate tests ---
+
+    fn test_strobe_clock(rate_raw: f64, rate_mult: Multiplier) -> StrobeClock {
+        let mut sc = StrobeClock::default();
+        sc.rate_raw = rate_raw;
+        sc.rate_mult = rate_mult;
+        sc.set_from_tap = false;
+        sc.apply_rate();
+        sc
+    }
+
+    #[test]
+    fn test_apply_rate_normal_rate_finite() {
+        let sc = test_strobe_clock(5.0, Multiplier::One);
+        assert!(
+            sc.clock.rate_coarse.is_finite(),
+            "rate_coarse should be finite, got {}",
+            sc.clock.rate_coarse
+        );
+    }
+
+    #[test]
+    fn test_apply_rate_max_rate_x1_finite() {
+        let sc = test_strobe_clock(MAX_STROBE_RATE, Multiplier::One);
+        assert!(
+            sc.clock.rate_coarse.is_finite(),
+            "rate_coarse should be finite at max rate x1, got {}",
+            sc.clock.rate_coarse
+        );
+    }
+
+    #[test]
+    fn test_apply_rate_max_rate_x2_finite() {
+        let sc = test_strobe_clock(MAX_STROBE_RATE, Multiplier::Two);
+        assert!(
+            sc.clock.rate_coarse.is_finite(),
+            "rate_coarse should be finite at max rate x2, got {}",
+            sc.clock.rate_coarse
+        );
+    }
+
+    #[test]
+    fn test_apply_rate_max_rate_x8_finite() {
+        let sc = test_strobe_clock(MAX_STROBE_RATE, Multiplier::Eight);
+        assert!(
+            sc.clock.rate_coarse.is_finite(),
+            "rate_coarse should be finite at max rate x8, got {}",
+            sc.clock.rate_coarse
+        );
+    }
+
+    #[test]
+    fn test_apply_rate_moderate_rate_x8_finite() {
+        let sc = test_strobe_clock(10.0, Multiplier::Eight);
+        assert!(
+            sc.clock.rate_coarse.is_finite(),
+            "rate_coarse should be finite at 10Hz x8, got {}",
+            sc.clock.rate_coarse
+        );
+    }
+
+    #[test]
+    fn test_apply_rate_discretizes_to_integer_frames() {
+        // 4 Hz → period 0.25s → 0.25/0.0253 ≈ 9.88 → rounds to 10 frames
+        // Expected rate = 1/(10 * 0.0253) ≈ 3.953 Hz
+        let sc = test_strobe_clock(4.0, Multiplier::One);
+        let expected_frames = 10.0;
+        let expected_rate = 1.0 / (expected_frames * UPDATE_INTERVAL.as_secs_f64());
+        let tolerance = 0.001;
+        assert!(
+            (sc.clock.rate_coarse - expected_rate).abs() < tolerance,
+            "Expected rate ~{expected_rate}, got {}",
+            sc.clock.rate_coarse
+        );
     }
 }

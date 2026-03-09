@@ -16,6 +16,7 @@ use super::animation_target::{
 use crate::channel::ChannelControlMessage;
 use crate::fixture::animation_target::AnimationTarget;
 use crate::master::MasterControls;
+use crate::fixture::control::{DescribeOscControls, OscControlDescription};
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 
 /// Statically-defined fixture type name.
@@ -125,7 +126,7 @@ pub trait Update {
     fn update(&mut self, update: FixtureGroupUpdate, dt: Duration) {}
 }
 
-pub trait NonAnimatedFixture: Update + EmitState + Control {
+pub trait NonAnimatedFixture: Update + EmitState + Control + DescribeOscControls {
     /// Render into the provided DMX buffer.
     /// The buffer will be pre-sized to the fixture's channel count and offset
     /// to the fixture's start address.
@@ -133,7 +134,7 @@ pub trait NonAnimatedFixture: Update + EmitState + Control {
     fn render(&self, group_controls: &FixtureGroupControls, dmx_buffer: &mut [u8]);
 }
 
-pub trait AnimatedFixture: Update + EmitState + Control {
+pub trait AnimatedFixture: Update + EmitState + Control + DescribeOscControls {
     type Target: AnimationTarget;
 
     fn render_with_animations(
@@ -144,7 +145,7 @@ pub trait AnimatedFixture: Update + EmitState + Control {
     );
 }
 
-pub trait Fixture: Update + EmitState + Control {
+pub trait Fixture: Update + EmitState + Control + DescribeOscControls {
     /// Render into the provided DMX buffer.
     /// The buffer will be pre-sized to the fixture's channel count and offset
     /// to the fixture's start address.
@@ -207,6 +208,12 @@ pub struct FixtureWithAnimations<F: AnimatedFixture> {
 impl<F: AnimatedFixture> EmitState for FixtureWithAnimations<F> {
     fn emit_state(&self, emitter: &FixtureStateEmitter) {
         self.fixture.emit_state(emitter);
+    }
+}
+
+impl<F: AnimatedFixture> DescribeOscControls for FixtureWithAnimations<F> {
+    fn describe_controls(&self) -> Vec<OscControlDescription> {
+        self.fixture.describe_controls()
     }
 }
 

@@ -101,6 +101,20 @@ pub enum PatchOption {
     Bool,
 }
 
+#[cfg(test)]
+impl PatchOption {
+    pub fn example_value(&self) -> serde_yaml::Value {
+        use serde_yaml::Value;
+        match self {
+            PatchOption::Int => Value::Number(1.into()),
+            PatchOption::Bool => Value::Bool(false),
+            PatchOption::Select(opts) => Value::String(opts[0].clone()),
+            PatchOption::SocketAddr => Value::String("127.0.0.1:9999".into()),
+            PatchOption::Url => Value::String("http://127.0.0.1:9999".into()),
+        }
+    }
+}
+
 impl Display for PatchOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

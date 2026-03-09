@@ -139,6 +139,16 @@ impl ChannelHandler<bool> for ChannelLevelHandler {
 
 pub type ChannelLevelBool<C> = ChannelLevelControl<C, bool>;
 
+impl<C, T, H> super::DescribeOscControls for ChannelControl<C, T, H>
+where
+    C: OscControl<T> + RenderToDmxWithAnimations + super::DescribeOscControls,
+    H: ChannelHandler<T>,
+{
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        self.control.describe_controls()
+    }
+}
+
 /// Delegate rendering to the inner control.
 impl<C, T, H> RenderToDmxWithAnimations for ChannelControl<C, T, H>
 where
@@ -220,3 +230,83 @@ pub type ChannelKnobUnipolar<C> = ChannelKnobControl<C, UnipolarFloat>;
 pub type ChannelKnobPhase<C> = ChannelKnobControl<C, Phase>;
 
 pub type ChannelKnobBipolar<C> = ChannelKnobControl<C, BipolarFloat>;
+
+#[cfg(test)]
+mod tests {
+    use number::UnipolarFloat;
+
+    use crate::channel::{ChannelControlMessage, ChannelStateChange, KnobValue};
+
+    use super::*;
+
+    #[test]
+    fn test_level_parses_level_msg() {
+        let handler = ChannelLevelHandler;
+        let msg = ChannelControlMessage::Level(UnipolarFloat::new(0.75));
+        let result: Option<UnipolarFloat> = handler.parse(&msg);
+        assert!(result.is_some());
+        assert!((result.unwrap().val() - 0.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_level_ignores_knob_msg() {
+        let handler = ChannelLevelHandler;
+        let msg = ChannelControlMessage::Knob {
+            index: 0,
+            value: KnobValue::Unipolar(UnipolarFloat::new(0.5)),
+        };
+        let result: Option<UnipolarFloat> = handler.parse(&msg);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_level_emits_level_change() {
+        let handler = ChannelLevelHandler;
+        let val = UnipolarFloat::new(0.5);
+        let change: ChannelStateChange = handler.emit(&val);
+        match change {
+            ChannelStateChange::Level(v) => assert!((v.val() - 0.5).abs() < 1e-9),
+            _ => panic!("expected Level change"),
+        }
+    }
+
+    #[test]
+    fn test_knob_parses_matching_index() {
+        let handler = ChannelKnobHandler { index: 0 };
+        let msg = ChannelControlMessage::Knob {
+            index: 0,
+            value: KnobValue::Unipolar(UnipolarFloat::new(0.5)),
+        };
+        let result: Option<UnipolarFloat> = handler.parse(&msg);
+        assert!(result.is_some());
+        assert!((result.unwrap().val() - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_knob_ignores_wrong_index() {
+        let handler = ChannelKnobHandler { index: 0 };
+        let msg = ChannelControlMessage::Knob {
+            index: 1,
+            value: KnobValue::Unipolar(UnipolarFloat::new(0.5)),
+        };
+        let result: Option<UnipolarFloat> = handler.parse(&msg);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_knob_emits_knob_change() {
+        let handler = ChannelKnobHandler { index: 2 };
+        let val = UnipolarFloat::new(0.5);
+        let change: ChannelStateChange = handler.emit(&val);
+        match change {
+            ChannelStateChange::Knob { index, value } => {
+                assert_eq!(index, 2);
+                match value {
+                    KnobValue::Unipolar(v) => assert!((v.val() - 0.5).abs() < 1e-9),
+                    _ => panic!("expected Unipolar knob value"),
+                }
+            }
+            _ => panic!("expected Knob change"),
+        }
+    }
+}

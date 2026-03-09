@@ -3,7 +3,7 @@ use super::color::Model::Rgbw;
 
 use crate::fixture::{color::Color, prelude::*};
 
-#[derive(Debug, EmitState, Control, Update, PatchFixture)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 9]
 #[strobe(Short)]
 pub struct RotosphereQ3 {

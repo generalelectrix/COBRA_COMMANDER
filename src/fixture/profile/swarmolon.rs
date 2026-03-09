@@ -10,7 +10,7 @@ use crate::fixture::{fixture::FixtureType, patch::PatchFixture};
 mod derby {
     use crate::fixture::prelude::*;
 
-    #[derive(Debug, PatchFixture, Control, Update, EmitState)]
+    #[derive(Debug, PatchFixture, Control, DescribeControls, Update, EmitState)]
     #[channel_count = 9]
     #[strobe(Short)]
     pub struct SwarmolonDerby {
@@ -68,7 +68,7 @@ mod derby {
 mod strobe {
     use crate::fixture::prelude::*;
 
-    #[derive(Debug, PatchFixture, Control, Update, EmitState)]
+    #[derive(Debug, PatchFixture, Control, DescribeControls, Update, EmitState)]
     #[channel_count = 9]
     #[strobe(Short)]
     pub struct SwarmolonStrobe {
@@ -109,7 +109,7 @@ mod strobe {
 mod lasers {
     use crate::fixture::prelude::*;
 
-    #[derive(Debug, PatchFixture, Control, Update, EmitState)]
+    #[derive(Debug, PatchFixture, Control, DescribeControls, Update, EmitState)]
     #[channel_count = 9]
     #[strobe(Short)]
     pub struct SwarmolonLasers {

@@ -187,6 +187,18 @@ impl<R: RenderToDmx<usize>> OscControl<usize> for IndexedSelect<R> {
     }
 }
 
+impl<R: RenderToDmx<usize>> super::DescribeOscControls for IndexedSelect<R> {
+    fn describe_controls(&self) -> Vec<super::OscControlDescription> {
+        vec![super::OscControlDescription {
+            name: self.name.clone(),
+            control_type: super::OscControlType::IndexedSelect {
+                n: self.n,
+                x_primary_coordinate: self.x_primary_coordinate,
+            },
+        }]
+    }
+}
+
 impl<R: RenderToDmx<usize>> RenderToDmxWithAnimations for IndexedSelect<R> {
     fn render(
         &self,
@@ -243,4 +255,132 @@ fn parse_radio_button_indices(addr_payload: &str) -> Result<(usize, usize)> {
     ensure!(x != 0, "x index is unexpectedly 0");
     ensure!(y != 0, "y index is unexpectedly 0");
     Ok((x - 1, y - 1))
+}
+
+#[cfg(test)]
+mod tests {
+    use rosc::{OscMessage, OscType};
+
+    use crate::osc::{MockEmitter, OscClientId, OscControlMessage};
+
+    use super::*;
+
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    fn test_select() -> IndexedSelect<RenderIndexedSelectToFixedValues> {
+        IndexedSelect::fixed_values("Ctrl", 0, true, &[10, 20, 30])
+    }
+
+    #[test]
+    fn test_new_starts_at_zero() {
+        let sel = test_select();
+        assert_eq!(sel.selected(), 0);
+    }
+
+    #[test]
+    fn test_control_direct_valid() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        sel.control_direct(2, &emitter).unwrap();
+        assert_eq!(sel.selected(), 2);
+        let msgs = emitter.take();
+        // Should emit radio pattern: n=3 messages
+        assert_eq!(msgs.len(), 3);
+    }
+
+    #[test]
+    fn test_control_direct_out_of_range() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        assert!(sel.control_direct(5, &emitter).is_err());
+    }
+
+    #[test]
+    fn test_control_direct_same_noop() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        // Already at 0, selecting 0 again should be silent
+        sel.control_direct(0, &emitter).unwrap();
+        let msgs = emitter.take();
+        assert!(msgs.is_empty());
+    }
+
+    #[test]
+    fn test_control_ignores_release() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        // x_primary_coordinate=true, so index comes from first coord
+        let msg = make_msg("/g/Ctrl/2/1", OscType::Float(0.0));
+        let handled = sel.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        // No state change on release
+        assert_eq!(sel.selected(), 0);
+    }
+
+    #[test]
+    fn test_control_parses_radio_indices() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        // x_primary_coordinate=true: /2/1 means x=2,y=1 → primary=x-1=1, secondary=y-1=0
+        let msg = make_msg("/g/Ctrl/2/1", OscType::Float(1.0));
+        let handled = sel.control(&msg, &emitter).unwrap();
+        assert!(handled);
+        assert_eq!(sel.selected(), 1);
+    }
+
+    #[test]
+    fn test_control_non_matching() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        let msg = make_msg("/g/Other/1/1", OscType::Float(1.0));
+        let handled = sel.control(&msg, &emitter).unwrap();
+        assert!(!handled);
+    }
+
+    #[test]
+    fn test_emit_state_radio_pattern() {
+        let mut sel = test_select();
+        let emitter = MockEmitter::new();
+        sel.control_direct(1, &emitter).unwrap();
+        emitter.take(); // clear
+        sel.emit_state(&emitter);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 3);
+        // Index 0: 0.0, Index 1: 1.0, Index 2: 0.0
+        assert_eq!(msgs[0].1, OscType::Float(0.0));
+        assert_eq!(msgs[1].1, OscType::Float(1.0));
+        assert_eq!(msgs[2].1, OscType::Float(0.0));
+    }
+
+    #[test]
+    fn test_render_fixed_values() {
+        let render = RenderIndexedSelectToFixedValues {
+            dmx_buf_offset: 0,
+            vals: &[10, 20, 30],
+        };
+        let mut buf = [0u8; 1];
+        render.render(&1, &mut buf);
+        assert_eq!(buf[0], 20);
+    }
+
+    #[test]
+    fn test_render_multiple() {
+        let render = RenderIndexedSelectToMultiple {
+            dmx_buf_offset: 0,
+            mult: 10,
+            offset: 5,
+        };
+        let mut buf = [0u8; 1];
+        render.render(&2, &mut buf);
+        assert_eq!(buf[0], 25); // 2*10 + 5
+    }
 }

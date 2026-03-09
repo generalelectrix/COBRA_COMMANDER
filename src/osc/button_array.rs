@@ -66,3 +66,84 @@ impl ButtonArray {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::osc::{MockEmitter, OscClientId};
+    use rosc::OscMessage;
+
+    #[derive(Debug, PartialEq)]
+    enum Msg {
+        Pressed(usize),
+    }
+
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_press_returns_index() {
+        let ba = button_array("Ctrl");
+        let mut map = GroupControlMap::default();
+        ba.map(&mut map, Msg::Pressed);
+        let msg = make_msg("/group/Ctrl/2", OscType::Float(1.0));
+        let result = map.handle(&msg).unwrap();
+        assert_eq!(result.unwrap().0, Msg::Pressed(1));
+    }
+
+    #[test]
+    fn test_release_ignored() {
+        let ba = button_array("Ctrl");
+        let mut map = GroupControlMap::default();
+        ba.map(&mut map, Msg::Pressed);
+        let msg = make_msg("/group/Ctrl/2", OscType::Float(0.0));
+        let result = map.handle(&msg).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_zero_index_errors() {
+        let ba = button_array("Ctrl");
+        let mut map = GroupControlMap::default();
+        ba.map(&mut map, Msg::Pressed);
+        let msg = make_msg("/group/Ctrl/0", OscType::Float(1.0));
+        assert!(map.handle(&msg).is_err());
+    }
+
+    #[test]
+    fn test_missing_index_errors() {
+        let ba = button_array("Ctrl");
+        let mut map = GroupControlMap::default();
+        ba.map(&mut map, Msg::Pressed);
+        let msg = make_msg("/group/Ctrl", OscType::Float(1.0));
+        assert!(map.handle(&msg).is_err());
+    }
+
+    #[test]
+    fn test_set_true_emits_one() {
+        let ba = button_array("Ctrl");
+        let emitter = MockEmitter::new();
+        ba.set(1, true, &emitter);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0], ("Ctrl/2".to_string(), OscType::Float(1.0)));
+    }
+
+    #[test]
+    fn test_set_false_emits_zero() {
+        let ba = button_array("Ctrl");
+        let emitter = MockEmitter::new();
+        ba.set(1, false, &emitter);
+        let msgs = emitter.take();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0], ("Ctrl/2".to_string(), OscType::Float(0.0)));
+    }
+}
