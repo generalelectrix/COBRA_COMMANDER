@@ -171,7 +171,28 @@ impl<'a> EmitMidiMasterMessage for ControlMessageWithMetadataSender<'a> {
 /// Any source with a Sender<ControlMessage> can send these.
 #[derive(Debug, Clone)]
 pub enum MetaCommand {
-    // Variants will be added in subsequent refactoring steps.
+    ReloadPatch,
+    RefreshUI,
+    ResetAllAnimations,
+}
+
+/// Translate an OSC control message (already known to be in the "Meta" group)
+/// into a MetaCommand.
+///
+/// Returns `Ok(None)` when the message is valid but should be ignored.
+pub fn meta_command_from_osc(msg: &OscControlMessage) -> Result<Option<MetaCommand>> {
+    match msg.control() {
+        "ReloadPatch" => Ok(Some(MetaCommand::ReloadPatch)),
+        "RefreshUI" => {
+            if msg.get_bool()? {
+                Ok(Some(MetaCommand::RefreshUI))
+            } else {
+                Ok(None)
+            }
+        }
+        "ResetAllAnimations" => Ok(Some(MetaCommand::ResetAllAnimations)),
+        unknown => bail!("unknown Meta control {}", unknown),
+    }
 }
 
 pub enum ControlMessage {
@@ -212,5 +233,60 @@ pub mod mock {
     impl EmitScopedOscMessage for NoOpEmitter {
         fn emit_float(&self, _: &str, _: f64) {}
         fn emit_osc(&self, _: crate::osc::ScopedOscMessage) {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::osc::{OscClientId, OscControlMessage};
+    use rosc::{OscMessage, OscType};
+
+    /// Helper: construct an OscControlMessage with the given address and arg.
+    fn make_meta_osc(control: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: format!("/Meta/{control}"),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn meta_command_from_osc_reload_patch() {
+        let msg = make_meta_osc("ReloadPatch", OscType::Float(1.0));
+        let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
+        assert!(matches!(cmd, MetaCommand::ReloadPatch));
+    }
+
+    #[test]
+    fn meta_command_from_osc_refresh_ui_truthy() {
+        let msg = make_meta_osc("RefreshUI", OscType::Float(1.0));
+        let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
+        assert!(matches!(cmd, MetaCommand::RefreshUI));
+    }
+
+    #[test]
+    fn meta_command_from_osc_refresh_ui_falsy_is_none() {
+        let msg = make_meta_osc("RefreshUI", OscType::Float(0.0));
+        let result = meta_command_from_osc(&msg).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn meta_command_from_osc_reset_all_animations() {
+        let msg = make_meta_osc("ResetAllAnimations", OscType::Float(1.0));
+        let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
+        assert!(matches!(cmd, MetaCommand::ResetAllAnimations));
+    }
+
+    #[test]
+    fn meta_command_from_osc_unknown_is_err() {
+        let msg = make_meta_osc("DoSomethingWeird", OscType::Float(1.0));
+        let result = meta_command_from_osc(&msg);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("DoSomethingWeird"));
     }
 }

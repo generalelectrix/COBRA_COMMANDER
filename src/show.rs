@@ -9,7 +9,7 @@ use crate::{
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
     clocks::Clocks,
     color::Hsluv,
-    control::{ControlMessage, Controller, MetaCommand},
+    control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
     dmx::DmxBuffer,
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
@@ -166,7 +166,37 @@ impl Show {
 
     /// Handle a meta-command.
     fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<()> {
-        match cmd {}
+        match cmd {
+            MetaCommand::ReloadPatch => {
+                self.patch.repatch_from_file(&self.patch_file_path)?;
+                let sender = self.controller.sender_with_metadata(None);
+                sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
+                Channels::emit_osc_state_change(
+                    crate::channel::StateChange::Clear,
+                    &ScopedControlEmitter {
+                        entity: crate::osc::channels::GROUP,
+                        emitter: &sender,
+                    },
+                );
+                self.channels = Channels::from_iter(self.patch.channels().cloned());
+                self.refresh_ui();
+                for buf in &mut self.dmx_buffers {
+                    buf.fill(0);
+                }
+                Ok(())
+            }
+            MetaCommand::RefreshUI => {
+                self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::ResetAllAnimations => {
+                for group in self.patch.iter_mut() {
+                    group.reset_animations();
+                }
+                self.refresh_ui();
+                Ok(())
+            }
+        }
     }
 
     /// Handle a single MIDI control message.
@@ -232,44 +262,11 @@ impl Show {
 
         match msg.group() {
             "Meta" => {
-                match msg.control() {
-                    "ReloadPatch" => {
-                        self.patch.repatch_from_file(&self.patch_file_path)?;
-                        sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
-                        Channels::emit_osc_state_change(
-                            crate::channel::StateChange::Clear,
-                            &ScopedControlEmitter {
-                                entity: crate::osc::channels::GROUP,
-                                emitter: &sender,
-                            },
-                        );
-                        // Re-initialize the channels to match the new patch.
-                        self.channels = Channels::from_iter(self.patch.channels().cloned());
-                        self.refresh_ui();
-                        // Zero out the DMX buffers.
-                        for buf in &mut self.dmx_buffers {
-                            buf.fill(0);
-                        }
-                    }
-                    "RefreshUI" => {
-                        if msg.get_bool()? {
-                            self.refresh_ui();
-                        }
-                    }
-                    // TODO: it would be nicer for this to be scoped under Animation,
-                    // but that interface is currently tailored to controlling the current group.
-                    "ResetAllAnimations" => {
-                        for group in self.patch.iter_mut() {
-                            group.reset_animations();
-                        }
-                        // TODO: this is overkill but easiest solution
-                        self.refresh_ui();
-                    }
-                    unknown => {
-                        bail!("unknown Meta control {}", unknown)
-                    }
+                if let Some(cmd) = meta_command_from_osc(msg)? {
+                    self.handle_meta_command(cmd)
+                } else {
+                    Ok(())
                 }
-                Ok(())
             }
             crate::master::GROUP => self.master_controls.control_osc(msg, &sender),
             crate::osc::channels::GROUP => {
