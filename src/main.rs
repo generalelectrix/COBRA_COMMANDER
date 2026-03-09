@@ -8,7 +8,6 @@ use local_ip_address::local_ip;
 use log::LevelFilter;
 use midi::Device;
 use midi_harness::install_midi_device_change_handler;
-use osc::prompt_osc_config;
 use rust_dmx::{DmxPort, OfflineDmxPort, available_ports, select_port_from};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::env::current_exe;
@@ -176,12 +175,6 @@ fn run_show(args: RunArgs) -> Result<()> {
         Err(e) => println!("Unable to fetch local IP address: {e}."),
     }
 
-    let osc_controllers = if args.quickstart {
-        vec![]
-    } else {
-        prompt_osc_config(args.osc_receive_port)?.unwrap_or_default()
-    };
-
     let (send_control_msg, recv_control_msg) = channel();
 
     // NOTE: this MUST be called before any other MIDI functions.
@@ -214,7 +207,7 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     let controller = Controller::new(
         args.osc_receive_port,
-        osc_controllers,
+        vec![],
         midi_devices,
         send_control_msg,
         recv_control_msg,
