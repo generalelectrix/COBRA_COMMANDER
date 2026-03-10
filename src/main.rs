@@ -13,7 +13,6 @@ use std::time::Duration;
 use tunnels::midi::list_ports;
 use zmq::Context;
 
-use crate::animation_visualizer::run_animation_visualizer;
 use crate::cli::*;
 use crate::control::{CommandClient, Controller};
 use crate::midi::ControlHandler;
@@ -21,7 +20,7 @@ use crate::preview::Previewer;
 use crate::show::Show;
 
 mod animation;
-mod animation_visualizer;
+mod animation_service;
 mod channel;
 mod cli;
 mod clock_service;
@@ -36,6 +35,7 @@ mod midi;
 mod osc;
 mod preview;
 mod show;
+mod visualizer;
 mod strobe;
 mod util;
 mod wled;
@@ -54,7 +54,7 @@ fn main() -> Result<()> {
     match args.command {
         Command::Run(args) => run_show(args),
         Command::Check(args) => check_patch(args),
-        Command::Viz => run_animation_visualizer(),
+        Command::Viz => visualizer::run_visualizer(),
         Command::Fix(args) => fixture_help(args),
     }
 }

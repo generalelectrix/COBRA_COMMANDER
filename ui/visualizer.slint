@@ -1,0 +1,11 @@
+export component VisualizerWindow inherits Window {
+    title: "Cobra Commander Animation Visualizer";
+    preferred-width: 700px;
+    preferred-height: 400px;
+
+    // The plot is rendered as a GL underlay via set_rendering_notifier.
+    // A transparent Rectangle ensures the GL content shows through.
+    Rectangle {
+        background: transparent;
+    }
+}

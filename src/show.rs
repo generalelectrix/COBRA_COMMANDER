@@ -7,9 +7,8 @@ use std::env::current_exe;
 
 use crate::{
     animation::AnimationUIState,
-    animation_visualizer::{AnimationPublisher, AnimationServiceState, animation_publisher},
+    animation_service::{AnimationPublisher, AnimationServiceState, animation_publisher},
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
-    cli::Command,
     clocks::Clocks,
     color::Hsluv,
     control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
@@ -251,7 +250,7 @@ impl Show {
                 let bin_path =
                     current_exe().context("failed to get the path to the running binary")?;
                 std::process::Command::new(bin_path)
-                    .arg(Command::Viz.to_string())
+                    .arg("viz")
                     .spawn()
                     .context("failed to start animation visualizer")?;
                 Ok(())

@@ -13,7 +13,6 @@
 use anyhow::{Result, anyhow};
 use std::time::Duration;
 use strum::VariantArray;
-use strum_macros::VariantArray;
 
 use number::UnipolarFloat;
 use tunnels::{

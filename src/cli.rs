@@ -66,6 +66,7 @@ pub(crate) struct RunArgs {
     /// If true, render fixture preview into the CLI.
     #[arg(long)]
     pub cli_preview: bool,
+
 }
 
 #[derive(Args)]
