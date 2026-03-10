@@ -5,9 +5,11 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use rust_dmx::{DmxPort, OfflineDmxPort, available_ports};
 use strum_macros::Display;
+use tunnels::midi::{list_ports, prompt_midi};
 use tunnels_lib::prompt::prompt_bool;
 
 use crate::control::{CommandClient, CommandResponse, MetaCommand};
+use crate::midi::Device;
 
 #[derive(Parser)]
 #[command(about)]
@@ -85,7 +87,12 @@ pub(crate) struct FixArgs {
 }
 
 /// Interactive CLI configuration, running against a live show.
-pub(crate) fn run_cli_configuration(client: CommandClient, universe_count: usize) -> Result<()> {
+pub(crate) fn run_cli_configuration(
+    client: CommandClient,
+    internal_clocks: bool,
+    universe_count: usize,
+) -> Result<()> {
+    offer_action(&client, |c| prompt_configure_midi(c, internal_clocks))?;
     offer_action(&client, |c| prompt_assign_dmx_ports(c, universe_count))?;
     offer_action(&client, prompt_start_animation_visualizer)?;
     println!("Show configuration complete.");
@@ -113,6 +120,51 @@ fn offer_action(
             }
         }
     }
+}
+
+fn prompt_configure_midi(
+    client: &CommandClient,
+    internal_clocks: bool,
+) -> Result<Option<CommandResponse>> {
+    let (midi_inputs, midi_outputs) = list_ports()?;
+    let mut midi_devices =
+        Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
+
+    if midi_devices.is_empty() {
+        println!("No known MIDI devices were automatically discovered.");
+    } else {
+        println!("These known MIDI devices were found:");
+        for d in &midi_devices {
+            println!("  - {}", d.device);
+        }
+    }
+
+    if !prompt_bool("Does this look correct?")? {
+        midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all(internal_clocks))?;
+    }
+
+    // if prompt_bool("Use a color organ?")? {
+    if false {
+        let input_id = tunnels_lib::prompt::prompt_indexed_value("Input port:", &midi_inputs)?.id;
+        let output_id =
+            tunnels_lib::prompt::prompt_indexed_value("Output port:", &midi_outputs)?.id;
+        midi_devices.push(tunnels::midi::DeviceSpec {
+            device: Device::ColorOrgan(crate::midi::ColorOrgan::new(0, 60, 0)?),
+            input_id,
+            output_id,
+        });
+    }
+
+    for spec in midi_devices {
+        let device_name = spec.device.to_string();
+        let response = client.send_command(MetaCommand::AddMidiDevice(spec))?;
+        match &response {
+            Ok(()) => println!("  Added {device_name}."),
+            Err(e) => println!("  Error adding {device_name}: {e}"),
+        }
+    }
+
+    Ok(Some(Ok(())))
 }
 
 const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);

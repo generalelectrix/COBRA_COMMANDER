@@ -13,15 +13,13 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 use tunnels::audio::AudioInput;
 use tunnels::audio::prompt_audio;
-use tunnels::midi::prompt_midi;
-use tunnels::midi::{DeviceSpec, list_ports};
-use tunnels_lib::prompt::{prompt_bool, prompt_indexed_value};
+use tunnels::midi::list_ports;
 use zmq::Context;
 
 use crate::animation_visualizer::run_animation_visualizer;
 use crate::cli::*;
 use crate::control::{CommandClient, Controller};
-use crate::midi::{ColorOrgan, ControlHandler};
+use crate::midi::ControlHandler;
 use crate::preview::Previewer;
 use crate::show::Show;
 
@@ -96,30 +94,21 @@ fn run_show(args: RunArgs) -> Result<()> {
     // NOTE: this MUST be called before any other MIDI functions.
     install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
 
-    let (midi_inputs, midi_outputs) = list_ports()?;
-    let mut midi_devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
-    if midi_devices.is_empty() {
-        println!("No known MIDI devices were automatically discovered.");
-    } else {
-        println!("These known MIDI devices were found:");
-        for d in &midi_devices {
-            println!("  - {}", d.device);
+    let midi_devices = if args.quickstart {
+        let (midi_inputs, midi_outputs) = list_ports()?;
+        let devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
+        if devices.is_empty() {
+            println!("No known MIDI devices were automatically discovered.");
+        } else {
+            println!("These known MIDI devices were found:");
+            for d in &devices {
+                println!("  - {}", d.device);
+            }
         }
-    }
-    if !args.quickstart && !prompt_bool("Does this look correct?")? {
-        midi_devices = prompt_midi(&midi_inputs, &midi_outputs, Device::all(internal_clocks))?;
-    }
-
-    // if prompt_bool("Use a color organ?")? {
-    if false {
-        let input_id = prompt_indexed_value("Input port:", &midi_inputs)?.id;
-        let output_id = prompt_indexed_value("Output port:", &midi_outputs)?.id;
-        midi_devices.push(DeviceSpec {
-            device: Device::ColorOrgan(ColorOrgan::new(0, 60, 0)?),
-            input_id,
-            output_id,
-        })
-    }
+        devices
+    } else {
+        vec![]
+    };
 
     let controller = Controller::new(
         args.osc_receive_port,
@@ -173,7 +162,9 @@ fn run_show(args: RunArgs) -> Result<()> {
     if !args.quickstart {
         let cli_client = command_client.clone();
         std::thread::spawn(move || {
-            if let Err(e) = cli::run_cli_configuration(cli_client, universe_count) {
+            if let Err(e) =
+                cli::run_cli_configuration(cli_client, internal_clocks, universe_count)
+            {
                 error!("CLI configuration error: {e:#}");
             }
         });

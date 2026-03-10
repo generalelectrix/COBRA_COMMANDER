@@ -208,6 +208,11 @@ impl Show {
             MetaCommand::AssignDmxPort { universe, port } => {
                 assign_dmx_port(&mut self.dmx_ports, &mut self.dmx_buffers, universe, port)
             }
+            MetaCommand::AddMidiDevice(spec) => {
+                self.controller.add_midi_device(spec)?;
+                self.refresh_ui();
+                Ok(())
+            }
             MetaCommand::StartAnimationVisualizer => {
                 if self.animation_service.is_none() {
                     self.animation_service = Some(animation_publisher(&self.zmq_ctx)?);

@@ -103,35 +103,108 @@ The goal is to invert this: **start the show immediately with defaults, then all
 
 ---
 
-## Step 6: Make MIDI configuration dynamic
+## Step 6: Add MIDI devices dynamically
 
-**What:** Start with auto-discovered devices (no confirmation prompt). Offer reconfiguration in the CLI config thread.
+**What:** Add individual MIDI devices at runtime via `MetaCommand::AddMidiDevice`. Non-quickstart starts with zero MIDI devices — the CLI config thread runs the current auto-discover → confirm → reconfigure workflow, then sends each device one-by-one to the show. The same MetaCommand will serve a future GUI device picker.
+
+**Why incremental add instead of bulk replace:**
+- `DeviceManager` already supports `add_from_spec()` for individual devices
+- Adding to the existing manager preserves all slot state, including reconnect tracking
+- A GUI wants "add this device" not "replace everything with this new list"
+- Simpler error model: one device fails, others unaffected
 
 **main.rs changes:**
-- Remove the confirmation prompt (`prompt_bool("Does this look correct?")`) and manual `prompt_midi()` path
-- Keep auto-discovery: `Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs)` stays
-- Delete the disabled color organ block (`if false { ... }`)
+- Remove the entire MIDI configuration block: auto-discovery, confirmation prompt, `prompt_midi` fallback, and the disabled color organ block (lines 99-121)
+- Non-quickstart now starts with zero MIDI devices — the CLI config thread handles all MIDI setup
+- Keep quickstart's existing behavior: `Device::auto_configure` runs at startup and devices are passed directly to the controller (no CLI thread, no prompts)
+- Move the color organ block (currently `if false { ... }`) into the CLI config thread action (see cli.rs below) — it stays disabled but lives in the right place for future enablement
 
 **control.rs changes:**
-- Add `MetaCommand::ReconfigureMidi(Vec<DeviceSpec<Device>>)` — replaces the entire MIDI device set
+- Add `MetaCommand::AddMidiDevice(DeviceSpec<Device>)` — adds a single device
+- `DeviceSpec` is already `Clone + Debug`, and `MetaCommand` already dropped `Clone` in Step 5
 
-**Controller / MidiController changes:**
-- `Controller` needs a `reconfigure_midi(&mut self, devices: Vec<DeviceSpec<Device>>) -> Result<()>` method that tears down existing connections and sets up new ones
-- This requires `MidiController` to support teardown + rebuild. Check if `midi_harness` supports this; if not, drop and recreate `MidiController` entirely.
+**midi/mod.rs changes (MidiController):**
+- Add `pub fn add_device(&mut self, spec: DeviceSpec<Device>) -> Result<()>` to `MidiController`
+- Delegates to `self.0.borrow_mut().add_from_spec(spec.device, spec.input_id, spec.output_id)`
+- This creates a new slot with input+output connections. The slot immediately participates in the reconnect system — if the device disconnects and reappears, `try_reconnect` will reconnect it automatically.
 
-**show.rs changes:**
-- `handle_meta_command` matches `ReconfigureMidi`, calls `self.controller.reconfigure_midi(devices)`, then `self.refresh_ui()`
+**show.rs changes (Controller):**
+- Add `pub fn add_midi_device(&mut self, spec: DeviceSpec<Device>) -> Result<()>` to `Controller`
+- Delegates to `self.midi.add_device(spec)`
+- `handle_meta_command` matches `AddMidiDevice(spec)`:
+  - Calls `self.controller.add_midi_device(spec)?`
+  - Calls `self.refresh_ui()` to update any connected displays
+  - Returns success/error via reply channel
 
 **cli.rs changes:**
-- Add `prompt_reconfigure_midi(client: &CommandClient) -> Result<Option<CommandResponse>>` action function
-- Lists ports, runs `prompt_midi()`, sends `ReconfigureMidi` command
+- Add `prompt_configure_midi(client: &CommandClient, internal_clocks: bool) -> Result<Option<CommandResponse>>` action function
+- This mirrors the current main.rs MIDI workflow, moved to the CLI config thread:
+  1. Call `midi_harness::list_ports()` to get current inputs/outputs
+  2. Run `Device::auto_configure(internal_clocks, &inputs, &outputs)` to find matching devices
+  3. Display discovered devices (same format as current main.rs output)
+  4. Ask `prompt_bool("Does this look correct?")`
+  5. If yes → use the auto-discovered list as-is
+  6. If no → call `prompt_midi(&inputs, &outputs, Device::all(internal_clocks))` for manual reconfiguration
+  7. Send each resulting `DeviceSpec` one-by-one as `MetaCommand::AddMidiDevice(spec)` via `CommandClient`, reporting success/failure for each
+- Include the color organ block (still gated behind `if false { ... }` or a prompt) — moved here from main.rs
 - Wire into `run_cli_configuration` via `offer_action`
 
 **Dependency on internal_clocks:** `Device::auto_configure` and `Device::all` take `internal_clocks: bool`. Pass `internal_clocks` into the CLI thread at spawn time (captures the initial value). If Step 7 adds dynamic clock switching later, it should update the MIDI devices too.
 
-**Files:** `src/control.rs`, `src/show.rs`, `src/cli.rs`, `src/main.rs`, `src/control.rs` (Controller), possibly `src/midi/mod.rs` (MidiController)
+**Auto-reconnect preservation:** Adding a device via `add_from_spec` creates a `DeviceSlot` with the device's `DeviceId` for both input and output. The existing `handle_device_change` → `try_reconnect` path checks ALL slots (including newly added ones). No changes needed to the reconnect system.
 
-**Complexity:** Moderate. Depends on `midi_harness` API capabilities.
+**midi_harness changes needed:** None — `add_from_spec()`, `add_slot()`, `connect_input()`, `connect_output()` already exist.
+
+**Files:** `src/control.rs`, `src/show.rs`, `src/cli.rs`, `src/main.rs`, `src/midi/mod.rs`
+
+**Complexity:** Low. All building blocks exist.
+
+---
+
+## Step 6.5: Empty MIDI device slots
+
+**What:** Clear the device assignment from a slot, leaving it empty. The slot itself remains (slots will be patch-driven in future work). No CLI config thread action — this API exists for future GUI use.
+
+**Slot state model:**
+
+Slots have three states:
+
+| State | `input`/`output` fields | Reconnect behavior |
+|-------|------------------------|--------------------|
+| **Empty** | `None` / `None` | No — nothing to reconnect |
+| **Populated + Disconnected** | `Some` with `port: None` | Yes — `try_reconnect` re-establishes when device reappears |
+| **Populated + Connected** | `Some` with `port: Some(...)` | N/A — already connected |
+
+- `add_from_spec` transitions Empty → Populated + Connected
+- Physical device disappearing transitions Populated + Connected → Populated + Disconnected
+- Physical device reappearing transitions Populated + Disconnected → Populated + Connected
+- **Step 6.5's "empty" operation** transitions Populated (either sub-state) → Empty
+
+**midi_harness changes (new API):**
+- Add `pub fn clear_slot(&mut self, name: &str) -> Result<()>` to `DeviceManager`
+- Sets `slot.input = None` and `slot.output = None`, dropping any active connections
+- The slot remains in `self.slots` with its `name` and `model` intact — just no device assigned
+- Returns error if no slot with that name exists
+- After clearing, `try_reconnect` won't match this slot (no `DeviceId` to match against)
+
+**control.rs changes:**
+- Add `MetaCommand::ClearMidiDevice(String)` — empties the named slot
+
+**midi/mod.rs changes (MidiController):**
+- Add `pub fn clear_device(&mut self, name: &str) -> Result<()>` — delegates to `clear_slot`
+- Add `pub fn device_names(&self) -> Vec<String>` — for future GUI use
+
+**show.rs changes (Controller):**
+- Add `pub fn clear_midi_device(&mut self, name: &str) -> Result<()>`
+- `handle_meta_command` matches `ClearMidiDevice(name)`, calls clear, then `self.refresh_ui()`
+
+**cli.rs changes:** None — no CLI config thread action for clearing.
+
+**Auto-reconnect interaction:** After clearing, the slot has no `DeviceId` entries. `try_reconnect` won't match it. The slot is empty until re-populated via `AddMidiDevice`.
+
+**Files:** `tunnels/midi_harness/src/lib.rs`, `src/control.rs`, `src/show.rs`, `src/midi/mod.rs`
+
+**Complexity:** Low-moderate.
 
 ---
 
@@ -180,16 +253,16 @@ The goal is to invert this: **start the show immediately with defaults, then all
 After all steps, `run_cli_configuration` offers actions in this order:
 
 ```rust
-pub(crate) fn run_cli_configuration(client: CommandClient) -> Result<()> {
+pub(crate) fn run_cli_configuration(client: CommandClient, internal_clocks: bool) -> Result<()> {
     offer_action(&client, prompt_set_clock_source)?;
-    offer_action(&client, prompt_reconfigure_midi)?;
+    offer_action(&client, |c| prompt_configure_midi(c, internal_clocks))?;
     offer_action(&client, prompt_assign_dmx_ports)?;
     offer_action(&client, prompt_start_animation_visualizer)?;
     Ok(())
 }
 ```
 
-Clock source first (affects MIDI), then MIDI, then DMX (independent), then animation visualizer.
+Clock source first (affects MIDI), then MIDI (auto-discover → confirm → add one-by-one), then DMX (independent), then animation visualizer.
 
 ---
 
@@ -199,11 +272,12 @@ Clock source first (affects MIDI), then MIDI, then DMX (independent), then anima
 Steps 1-4.5: DONE
   |
   +---> Step 5 (DMX ports) ---- moderate, pure show-side, no external deps
-  +---> Step 6 (MIDI devices) - moderate, depends on MidiController teardown
+  +---> Step 6 (MIDI add) ----- low, all building blocks exist in midi_harness
+  +---> Step 6.5 (MIDI clear) - low-moderate, new clear_slot in midi_harness
   +---> Step 7 (clock source) - high, thread lifecycle, cross-cutting with MIDI
 ```
 
-Steps 5-6 are independent. Step 7 should come last because clock mode changes affect MIDI configuration (Step 6).
+Steps 5 and 6 are independent. Step 6.5 follows Step 6. Step 7 should come last because clock mode changes affect MIDI configuration (Step 6).
 
 ---
 
@@ -217,4 +291,4 @@ After each step:
 5. Each prompt sends a `MetaCommand` via `CommandClient`, show processes it and replies
 6. Errors in commands are displayed and user is offered retry via `offer_action`
 
-End state: `run_show()` does only: parse patch, auto-discover MIDI, create controller + show with all-default config, spawn CLI thread, `show.run()`. All interactive configuration happens in the CLI thread against the running show.
+End state: `run_show()` does only: parse patch, create controller + show with all-default config, spawn CLI thread, `show.run()`. All interactive configuration (including MIDI discovery) happens in the CLI thread against the running show.

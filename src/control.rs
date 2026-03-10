@@ -82,6 +82,11 @@ impl Controller {
         self.osc.deregister(client_id);
     }
 
+    /// Add a MIDI device.
+    pub fn add_midi_device(&mut self, spec: DeviceSpec<Device>) -> Result<()> {
+        self.midi.add_device(spec)
+    }
+
     /// Handle a MIDI device change.
     pub fn handle_device_change(&mut self, change: DeviceChange) -> Result<bool> {
         self.midi.handle_device_change(change)
@@ -205,6 +210,7 @@ pub enum MetaCommand {
         universe: usize,
         port: Box<dyn rust_dmx::DmxPort>,
     },
+    AddMidiDevice(DeviceSpec<Device>),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -218,6 +224,10 @@ impl fmt::Debug for MetaCommand {
                 .debug_struct("AssignDmxPort")
                 .field("universe", universe)
                 .field("port", &format_args!("{port}"))
+                .finish(),
+            Self::AddMidiDevice(spec) => f
+                .debug_struct("AddMidiDevice")
+                .field("device", &spec.device)
                 .finish(),
         }
     }

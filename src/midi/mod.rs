@@ -194,6 +194,13 @@ impl MidiController {
         Ok(Self(RefCell::new(controller)))
     }
 
+    /// Add a device to the controller.
+    pub fn add_device(&mut self, spec: DeviceSpec<Device>) -> Result<()> {
+        self.0
+            .borrow_mut()
+            .add_from_spec(spec.device, spec.input_id, spec.output_id)
+    }
+
     /// Handle a device appearing or disappearing.
     ///
     /// Return true if we should trigger a UI refresh due to a device reconnecting.
