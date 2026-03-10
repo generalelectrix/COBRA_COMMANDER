@@ -127,14 +127,9 @@ fn run_show(args: RunArgs) -> Result<()> {
         }
         let available = available_ports(args.artnet.then_some(ARTNET_POLL_TIMEOUT))?;
         let mut ports = Vec::new();
-        for (i, port) in (0..universe_count).zip(
-            available
-                .into_iter()
-                .rev()
-                .chain(std::iter::repeat_with(|| {
-                    Box::new(OfflineDmxPort) as Box<dyn DmxPort>
-                })),
-        ) {
+        for (i, port) in (0..universe_count).zip(available.into_iter().rev().chain(
+            std::iter::repeat_with(|| Box::new(OfflineDmxPort) as Box<dyn DmxPort>),
+        )) {
             println!("Assigning universe {i} to port {port}.");
             ports.push(port);
         }
@@ -162,8 +157,7 @@ fn run_show(args: RunArgs) -> Result<()> {
     if !args.quickstart {
         let cli_client = command_client.clone();
         std::thread::spawn(move || {
-            if let Err(e) =
-                cli::run_cli_configuration(cli_client, internal_clocks, universe_count)
+            if let Err(e) = cli::run_cli_configuration(cli_client, internal_clocks, universe_count)
             {
                 error!("CLI configuration error: {e:#}");
             }

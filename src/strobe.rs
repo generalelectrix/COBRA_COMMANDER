@@ -207,7 +207,9 @@ impl StrobeClock {
             // be less perceptible anyway.
             rate
         } else {
-            let interval_frame_count = ((1.0 / rate) / UPDATE_INTERVAL.as_secs_f64()).round().max(1.0);
+            let interval_frame_count = ((1.0 / rate) / UPDATE_INTERVAL.as_secs_f64())
+                .round()
+                .max(1.0);
             1. / (interval_frame_count * UPDATE_INTERVAL.as_secs_f64())
         };
     }

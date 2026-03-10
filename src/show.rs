@@ -8,8 +8,8 @@ use std::env::current_exe;
 use crate::{
     animation::AnimationUIState,
     animation_visualizer::{AnimationPublisher, AnimationServiceState, animation_publisher},
-    cli::Command,
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
+    cli::Command,
     clocks::Clocks,
     color::Hsluv,
     control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
