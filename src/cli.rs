@@ -127,8 +127,7 @@ fn prompt_configure_midi(
     internal_clocks: bool,
 ) -> Result<Option<CommandResponse>> {
     let (midi_inputs, midi_outputs) = list_ports()?;
-    let mut midi_devices =
-        Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
+    let mut midi_devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
 
     if midi_devices.is_empty() {
         println!("No known MIDI devices were automatically discovered.");
@@ -173,9 +172,6 @@ fn prompt_assign_dmx_ports(
     client: &CommandClient,
     universe_count: usize,
 ) -> Result<Option<CommandResponse>> {
-    if !prompt_bool("Assign DMX ports?")? {
-        return Ok(None);
-    }
     let artnet = prompt_bool("Scan for artnet ports?")?;
     let artnet_timeout = artnet.then_some(ARTNET_POLL_TIMEOUT);
     if artnet {
