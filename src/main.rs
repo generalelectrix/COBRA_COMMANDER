@@ -1,6 +1,5 @@
 use anyhow::{Result, bail};
 use clap::Parser;
-use clock_service::prompt_start_clock_service;
 use clocks::Clocks;
 use fixture::Patch;
 use local_ip_address::local_ip;
@@ -11,8 +10,6 @@ use rust_dmx::{DmxPort, OfflineDmxPort, available_ports};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::sync::mpsc::channel;
 use std::time::Duration;
-use tunnels::audio::AudioInput;
-use tunnels::audio::prompt_audio;
 use tunnels::midi::list_ports;
 use zmq::Context;
 
@@ -69,19 +66,7 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     let zmq_ctx = Context::new();
 
-    let clocks = if args.quickstart {
-        Clocks::internal(None)
-    } else if let Some(clock_service) = prompt_start_clock_service(zmq_ctx.clone())? {
-        Clocks::Service(clock_service)
-    } else {
-        let audio_device = prompt_audio()?
-            .map(|device_name| AudioInput::new(Some(device_name)))
-            .transpose()?;
-
-        Clocks::internal(audio_device)
-    };
-
-    let internal_clocks = matches!(clocks, Clocks::Internal { .. });
+    let clocks = Clocks::internal(None);
 
     match local_ip() {
         Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
@@ -89,14 +74,14 @@ fn run_show(args: RunArgs) -> Result<()> {
     }
 
     let (send_control_msg, recv_control_msg) = channel();
-    let command_client = CommandClient::new(send_control_msg.clone());
+    let command_client = CommandClient::new(send_control_msg.clone(), zmq_ctx.clone());
 
     // NOTE: this MUST be called before any other MIDI functions.
     install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
 
     let midi_devices = if args.quickstart {
         let (midi_inputs, midi_outputs) = list_ports()?;
-        let devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
+        let devices = Device::auto_configure(true, &midi_inputs, &midi_outputs);
         if devices.is_empty() {
             println!("No known MIDI devices were automatically discovered.");
         } else {
@@ -157,8 +142,7 @@ fn run_show(args: RunArgs) -> Result<()> {
     if !args.quickstart {
         let cli_client = command_client.clone();
         std::thread::spawn(move || {
-            if let Err(e) = cli::run_cli_configuration(cli_client, internal_clocks, universe_count)
-            {
+            if let Err(e) = cli::run_cli_configuration(cli_client, universe_count) {
                 error!("CLI configuration error: {e:#}");
             }
         });

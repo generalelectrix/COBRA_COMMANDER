@@ -24,6 +24,8 @@ use crate::{
 };
 
 pub use crate::channel::ChannelId;
+use tunnels::audio::AudioInput;
+
 use anyhow::{Context as _, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
@@ -216,6 +218,18 @@ impl Show {
             MetaCommand::ClearMidiDevice { slot_name } => {
                 self.controller.clear_midi_device(&slot_name)?;
                 self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::UseClockService(service) => {
+                self.clocks = Clocks::Service(service);
+                self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::SetAudioDevice(device_name) => {
+                let Clocks::Internal { audio_input, .. } = &mut self.clocks else {
+                    bail!("cannot set audio device: not using internal clocks");
+                };
+                *audio_input = AudioInput::new(Some(device_name))?;
                 Ok(())
             }
             MetaCommand::StartAnimationVisualizer => {

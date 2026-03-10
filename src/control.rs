@@ -185,11 +185,16 @@ pub type CommandResponse = std::result::Result<(), String>;
 #[derive(Clone)]
 pub struct CommandClient {
     send: Sender<ControlMessage>,
+    zmq_ctx: zmq::Context,
 }
 
 impl CommandClient {
-    pub fn new(send: Sender<ControlMessage>) -> Self {
-        Self { send }
+    pub fn new(send: Sender<ControlMessage>, zmq_ctx: zmq::Context) -> Self {
+        Self { send, zmq_ctx }
+    }
+
+    pub fn zmq_ctx(&self) -> &zmq::Context {
+        &self.zmq_ctx
     }
 
     /// Send a command and block until the show responds.
@@ -220,6 +225,8 @@ pub enum MetaCommand {
     ClearMidiDevice {
         slot_name: String,
     },
+    UseClockService(crate::clock_service::ClockService),
+    SetAudioDevice(String),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -239,6 +246,8 @@ impl fmt::Debug for MetaCommand {
                 .field("device", &spec.device)
                 .finish(),
             Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
+            Self::UseClockService(_) => write!(f, "UseClockService"),
+            Self::SetAudioDevice(name) => write!(f, "SetAudioDevice({name})"),
         }
     }
 }

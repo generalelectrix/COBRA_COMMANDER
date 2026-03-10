@@ -8,7 +8,9 @@ use strum_macros::Display;
 use tunnels::midi::{list_ports, prompt_midi};
 use tunnels_lib::prompt::prompt_bool;
 
-use crate::control::{CommandClient, CommandResponse, MetaCommand};
+use crate::clock_service::prompt_start_clock_service;
+use crate::control::{CommandClient, MetaCommand};
+use tunnels::audio::prompt_audio;
 use crate::midi::Device;
 
 #[derive(Parser)]
@@ -89,9 +91,9 @@ pub(crate) struct FixArgs {
 /// Interactive CLI configuration, running against a live show.
 pub(crate) fn run_cli_configuration(
     client: CommandClient,
-    internal_clocks: bool,
     universe_count: usize,
 ) -> Result<()> {
+    let internal_clocks = offer_action(&client, prompt_configure_clocks)?;
     offer_action(&client, |c| prompt_configure_midi(c, internal_clocks))?;
     offer_action(&client, |c| prompt_assign_dmx_ports(c, universe_count))?;
     offer_action(&client, prompt_start_animation_visualizer)?;
@@ -99,33 +101,42 @@ pub(crate) fn run_cli_configuration(
     Ok(())
 }
 
-/// Run a user-facing action that may produce a command.
-///
-/// Calls `action` to prompt the user and build a command. If the command
-/// fails, the user is offered the chance to try again (re-running the
-/// full prompt flow) or move on. If `action` returns `Ok(None)`, the
-/// user declined and we move on.
-fn offer_action(
+/// Run a user-facing action, retrying on error if the user agrees.
+fn offer_action<T>(
     client: &CommandClient,
-    action: impl Fn(&CommandClient) -> Result<Option<CommandResponse>>,
-) -> Result<()> {
+    action: impl Fn(&CommandClient) -> Result<T>,
+) -> Result<T> {
     loop {
-        match action(client)? {
-            None | Some(Ok(())) => return Ok(()),
-            Some(Err(e)) => {
-                println!("Error: {e}");
+        match action(client) {
+            Ok(value) => return Ok(value),
+            Err(e) => {
+                println!("Error: {e:#}");
                 if !prompt_bool("Try again?")? {
-                    return Ok(());
+                    return Err(e);
                 }
             }
         }
     }
 }
 
+fn prompt_configure_clocks(client: &CommandClient) -> Result<bool> {
+    if let Some(service) = prompt_start_clock_service(client.zmq_ctx().clone())? {
+        client.send_command(MetaCommand::UseClockService(service))?
+            .map_err(|e| anyhow::anyhow!(e))?;
+        return Ok(false);
+    }
+    // Internal clocks — optionally configure audio input.
+    if let Some(device_name) = prompt_audio()? {
+        client.send_command(MetaCommand::SetAudioDevice(device_name))?
+            .map_err(|e| anyhow::anyhow!(e))?;
+    }
+    Ok(true)
+}
+
 fn prompt_configure_midi(
     client: &CommandClient,
     internal_clocks: bool,
-) -> Result<Option<CommandResponse>> {
+) -> Result<()> {
     let (midi_inputs, midi_outputs) = list_ports()?;
     let mut midi_devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
 
@@ -163,7 +174,7 @@ fn prompt_configure_midi(
         }
     }
 
-    Ok(Some(Ok(())))
+    Ok(())
 }
 
 const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -171,7 +182,7 @@ const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 fn prompt_assign_dmx_ports(
     client: &CommandClient,
     universe_count: usize,
-) -> Result<Option<CommandResponse>> {
+) -> Result<()> {
     let artnet = prompt_bool("Scan for artnet ports?")?;
     let artnet_timeout = artnet.then_some(ARTNET_POLL_TIMEOUT);
     if artnet {
@@ -186,7 +197,7 @@ fn prompt_assign_dmx_ports(
             println!("Error assigning universe {universe}: {e}");
         }
     }
-    Ok(Some(Ok(())))
+    Ok(())
 }
 
 /// Prompt the user to select a DMX port. Does NOT open the port.
@@ -221,11 +232,10 @@ fn prompt_select_port(ports: &mut Vec<Box<dyn DmxPort>>) -> Result<Box<dyn DmxPo
     }
 }
 
-fn prompt_start_animation_visualizer(client: &CommandClient) -> Result<Option<CommandResponse>> {
+fn prompt_start_animation_visualizer(client: &CommandClient) -> Result<()> {
     if !prompt_bool("Start animation visualizer?")? {
-        return Ok(None);
+        return Ok(());
     }
-    Ok(Some(
-        client.send_command(MetaCommand::StartAnimationVisualizer)?,
-    ))
+    client.send_command(MetaCommand::StartAnimationVisualizer)?
+        .map_err(|e| anyhow::anyhow!(e))
 }
