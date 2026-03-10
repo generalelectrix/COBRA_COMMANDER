@@ -55,10 +55,22 @@ mod tests {
         la.set(vec!["A".to_string(), "B".to_string()].into_iter(), &emitter);
         let msgs = emitter.take();
         assert_eq!(msgs.len(), 4);
-        assert_eq!(msgs[0], ("Lbl/0".to_string(), OscType::String("A".to_string())));
-        assert_eq!(msgs[1], ("Lbl/1".to_string(), OscType::String("B".to_string())));
-        assert_eq!(msgs[2], ("Lbl/2".to_string(), OscType::String("-".to_string())));
-        assert_eq!(msgs[3], ("Lbl/3".to_string(), OscType::String("-".to_string())));
+        assert_eq!(
+            msgs[0],
+            ("Lbl/0".to_string(), OscType::String("A".to_string()))
+        );
+        assert_eq!(
+            msgs[1],
+            ("Lbl/1".to_string(), OscType::String("B".to_string()))
+        );
+        assert_eq!(
+            msgs[2],
+            ("Lbl/2".to_string(), OscType::String("-".to_string()))
+        );
+        assert_eq!(
+            msgs[3],
+            ("Lbl/3".to_string(), OscType::String("-".to_string()))
+        );
     }
 
     #[test]
@@ -69,14 +81,21 @@ mod tests {
             n: 3,
         };
         let emitter = MockEmitter::new();
-        let labels = vec!["A", "B", "C", "D", "E"]
-            .into_iter()
-            .map(String::from);
+        let labels = vec!["A", "B", "C", "D", "E"].into_iter().map(String::from);
         la.set(labels, &emitter);
         let msgs = emitter.take();
         assert_eq!(msgs.len(), 3);
-        assert_eq!(msgs[0], ("Lbl/0".to_string(), OscType::String("A".to_string())));
-        assert_eq!(msgs[1], ("Lbl/1".to_string(), OscType::String("B".to_string())));
-        assert_eq!(msgs[2], ("Lbl/2".to_string(), OscType::String("C".to_string())));
+        assert_eq!(
+            msgs[0],
+            ("Lbl/0".to_string(), OscType::String("A".to_string()))
+        );
+        assert_eq!(
+            msgs[1],
+            ("Lbl/1".to_string(), OscType::String("B".to_string()))
+        );
+        assert_eq!(
+            msgs[2],
+            ("Lbl/2".to_string(), OscType::String("C".to_string()))
+        );
     }
 }

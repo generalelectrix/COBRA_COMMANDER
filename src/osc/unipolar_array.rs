@@ -83,10 +83,7 @@ mod tests {
         ua.map(&mut map, |i, v| Ok(Msg::Value(i, v)));
         let msg = make_msg("/group/Ctrl/3", OscType::Float(0.5));
         let result = map.handle(&msg).unwrap();
-        assert_eq!(
-            result.unwrap().0,
-            Msg::Value(2, UnipolarFloat::new(0.5))
-        );
+        assert_eq!(result.unwrap().0, Msg::Value(2, UnipolarFloat::new(0.5)));
     }
 
     #[test]

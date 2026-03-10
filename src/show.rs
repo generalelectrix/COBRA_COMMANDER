@@ -3,13 +3,16 @@ use std::{
     time::{Duration, Instant},
 };
 
+use std::env::current_exe;
+
 use crate::{
     animation::AnimationUIState,
-    animation_visualizer::{AnimationPublisher, AnimationServiceState},
+    animation_visualizer::{AnimationPublisher, AnimationServiceState, animation_publisher},
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
+    cli::Command,
     clocks::Clocks,
     color::Hsluv,
-    control::{ControlMessage, Controller},
+    control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
     dmx::DmxBuffer,
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
@@ -21,12 +24,15 @@ use crate::{
 };
 
 pub use crate::channel::ChannelId;
-use anyhow::{Result, bail};
+use tunnels::audio::AudioInput;
+
+use anyhow::{Context as _, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use rust_dmx::DmxPort;
 
 pub struct Show {
+    zmq_ctx: zmq::Context,
     controller: Controller,
     dmx_ports: Vec<Box<dyn DmxPort>>,
     dmx_buffers: Vec<DmxBuffer>,
@@ -59,6 +65,7 @@ impl Show {
         animation_service: Option<AnimationPublisher>,
         preview: Previewer,
         master_strobe_channel: bool,
+        zmq_ctx: zmq::Context,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
@@ -72,6 +79,7 @@ impl Show {
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
         let mut show = Self {
+            zmq_ctx,
             controller,
             dmx_buffers: vec![[0u8; 512]; dmx_ports.len()],
             dmx_ports,
@@ -157,6 +165,85 @@ impl Show {
             }
             ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
+            ControlMessage::Meta(cmd, reply) => {
+                let result = self.handle_meta_command(cmd);
+                if let Some(reply) = reply {
+                    let _ = reply.send(result.as_ref().map_err(|e| format!("{e:#}")).copied());
+                }
+                result
+            }
+        }
+    }
+
+    /// Handle a meta-command.
+    fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<()> {
+        match cmd {
+            MetaCommand::ReloadPatch => {
+                self.patch.repatch_from_file(&self.patch_file_path)?;
+                let sender = self.controller.sender_with_metadata(None);
+                sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
+                Channels::emit_osc_state_change(
+                    crate::channel::StateChange::Clear,
+                    &ScopedControlEmitter {
+                        entity: crate::osc::channels::GROUP,
+                        emitter: &sender,
+                    },
+                );
+                self.channels = Channels::from_iter(self.patch.channels().cloned());
+                self.refresh_ui();
+                for buf in &mut self.dmx_buffers {
+                    buf.fill(0);
+                }
+                Ok(())
+            }
+            MetaCommand::RefreshUI => {
+                self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::ResetAllAnimations => {
+                for group in self.patch.iter_mut() {
+                    group.reset_animations();
+                }
+                self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::AssignDmxPort { universe, port } => {
+                assign_dmx_port(&mut self.dmx_ports, &mut self.dmx_buffers, universe, port)
+            }
+            MetaCommand::AddMidiDevice(spec) => {
+                self.controller.add_midi_device(spec)?;
+                self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::ClearMidiDevice { slot_name } => {
+                self.controller.clear_midi_device(&slot_name)?;
+                self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::UseClockService(service) => {
+                self.clocks = Clocks::Service(service);
+                self.refresh_ui();
+                Ok(())
+            }
+            MetaCommand::SetAudioDevice(device_name) => {
+                let Clocks::Internal { audio_input, .. } = &mut self.clocks else {
+                    bail!("cannot set audio device: not using internal clocks");
+                };
+                *audio_input = AudioInput::new(Some(device_name))?;
+                Ok(())
+            }
+            MetaCommand::StartAnimationVisualizer => {
+                if self.animation_service.is_none() {
+                    self.animation_service = Some(animation_publisher(&self.zmq_ctx)?);
+                }
+                let bin_path =
+                    current_exe().context("failed to get the path to the running binary")?;
+                std::process::Command::new(bin_path)
+                    .arg(Command::Viz.to_string())
+                    .spawn()
+                    .context("failed to start animation visualizer")?;
+                Ok(())
+            }
         }
     }
 
@@ -223,44 +310,11 @@ impl Show {
 
         match msg.group() {
             "Meta" => {
-                match msg.control() {
-                    "ReloadPatch" => {
-                        self.patch.repatch_from_file(&self.patch_file_path)?;
-                        sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
-                        Channels::emit_osc_state_change(
-                            crate::channel::StateChange::Clear,
-                            &ScopedControlEmitter {
-                                entity: crate::osc::channels::GROUP,
-                                emitter: &sender,
-                            },
-                        );
-                        // Re-initialize the channels to match the new patch.
-                        self.channels = Channels::from_iter(self.patch.channels().cloned());
-                        self.refresh_ui();
-                        // Zero out the DMX buffers.
-                        for buf in &mut self.dmx_buffers {
-                            buf.fill(0);
-                        }
-                    }
-                    "RefreshUI" => {
-                        if msg.get_bool()? {
-                            self.refresh_ui();
-                        }
-                    }
-                    // TODO: it would be nicer for this to be scoped under Animation,
-                    // but that interface is currently tailored to controlling the current group.
-                    "ResetAllAnimations" => {
-                        for group in self.patch.iter_mut() {
-                            group.reset_animations();
-                        }
-                        // TODO: this is overkill but easiest solution
-                        self.refresh_ui();
-                    }
-                    unknown => {
-                        bail!("unknown Meta control {}", unknown)
-                    }
+                if let Some(cmd) = meta_command_from_osc(msg)? {
+                    self.handle_meta_command(cmd)
+                } else {
+                    Ok(())
                 }
-                Ok(())
             }
             crate::master::GROUP => self.master_controls.control_osc(msg, &sender),
             crate::osc::channels::GROUP => {
@@ -395,6 +449,29 @@ impl Show {
     }
 }
 
+/// Assign a DMX port to a universe.
+///
+/// Validates the universe index, opens the port, zeros the DMX buffer,
+/// and swaps the port into place.
+fn assign_dmx_port(
+    dmx_ports: &mut [Box<dyn DmxPort>],
+    dmx_buffers: &mut [DmxBuffer],
+    universe: usize,
+    mut port: Box<dyn DmxPort>,
+) -> Result<()> {
+    if universe >= dmx_ports.len() {
+        bail!(
+            "universe {universe} out of range (show has {} universe(s))",
+            dmx_ports.len()
+        );
+    }
+    port.open()
+        .map_err(|e| anyhow::anyhow!("failed to open port {port}: {e}"))?;
+    dmx_buffers[universe].fill(0);
+    dmx_ports[universe] = port;
+    Ok(())
+}
+
 /// Strongly-typed top-level show control messages.
 /// These cover all of the fixed control features, but not fixture-specific controls.
 #[derive(Debug, Clone)]
@@ -414,5 +491,64 @@ pub enum ShowControlMessage {
 impl From<Hsluv> for HsluvColor {
     fn from(c: Hsluv) -> Self {
         Self::new(c.hue, c.sat, c.lightness)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dmx::mock::MockDmxPort;
+    use rust_dmx::OfflineDmxPort;
+
+    fn make_ports(n: usize) -> (Vec<Box<dyn DmxPort>>, Vec<DmxBuffer>) {
+        let ports: Vec<Box<dyn DmxPort>> = (0..n)
+            .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+            .collect();
+        let buffers = vec![[0u8; 512]; n];
+        (ports, buffers)
+    }
+
+    #[test]
+    fn assign_dmx_port_success() {
+        let (mut ports, mut buffers) = make_ports(2);
+        // Put non-zero data in the buffer to verify it gets zeroed.
+        buffers[1].fill(0xFF);
+
+        let mock = Box::new(MockDmxPort::new());
+        let result = assign_dmx_port(&mut ports, &mut buffers, 1, mock);
+        assert!(result.is_ok());
+
+        // Buffer was zeroed.
+        assert!(buffers[1].iter().all(|&b| b == 0));
+
+        // Port was swapped in and opened (Display shows "mock").
+        assert_eq!(format!("{}", ports[1]), "mock");
+    }
+
+    #[test]
+    fn assign_dmx_port_open_fails() {
+        let (mut ports, mut buffers) = make_ports(1);
+        let original_display = format!("{}", ports[0]);
+
+        let mock = Box::new(MockDmxPort::failing());
+        let result = assign_dmx_port(&mut ports, &mut buffers, 0, mock);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("failed to open port"));
+
+        // Original port is unchanged.
+        assert_eq!(format!("{}", ports[0]), original_display);
+    }
+
+    #[test]
+    fn assign_dmx_port_universe_out_of_range() {
+        let (mut ports, mut buffers) = make_ports(2);
+
+        let mock = Box::new(MockDmxPort::new());
+        let result = assign_dmx_port(&mut ports, &mut buffers, 5, mock);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("out of range"));
+        assert!(err_msg.contains("2 universe(s)"));
     }
 }

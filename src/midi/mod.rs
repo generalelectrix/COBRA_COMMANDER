@@ -194,6 +194,24 @@ impl MidiController {
         Ok(Self(RefCell::new(controller)))
     }
 
+    /// Add a device to the controller.
+    pub fn add_device(&mut self, spec: DeviceSpec<Device>) -> Result<()> {
+        self.0
+            .borrow_mut()
+            .add_from_spec(spec.device, spec.input_id, spec.output_id)
+    }
+
+    /// Clear the device assignment from the named slot.
+    pub fn clear_device(&mut self, slot_name: &str) -> Result<()> {
+        self.0.borrow_mut().clear_slot(slot_name)
+    }
+
+    /// Return the names of all device slots.
+    #[expect(unused)]
+    pub fn device_names(&self) -> Vec<String> {
+        self.0.borrow().slot_names()
+    }
+
     /// Handle a device appearing or disappearing.
     ///
     /// Return true if we should trigger a UI refresh due to a device reconnecting.

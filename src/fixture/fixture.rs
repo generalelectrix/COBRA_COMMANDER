@@ -15,8 +15,8 @@ use super::animation_target::{
 };
 use crate::channel::ChannelControlMessage;
 use crate::fixture::animation_target::AnimationTarget;
-use crate::master::MasterControls;
 use crate::fixture::control::{DescribeOscControls, OscControlDescription};
+use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
 
 /// Statically-defined fixture type name.

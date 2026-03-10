@@ -33,12 +33,10 @@ mod control_message;
 mod label_array;
 mod listener;
 mod radio_button;
-mod register;
 mod sender;
 mod unipolar_array;
 
 pub use control_message::OscControlMessage;
-pub use register::prompt_osc_config;
 
 /// Emit an implicitly-scoped OSC message.
 pub trait EmitScopedOscMessage {

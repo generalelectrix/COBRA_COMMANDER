@@ -1,11 +1,12 @@
 //! Top-level traits and types for control events.
 
 use std::{
+    fmt,
     sync::mpsc::{Receiver, RecvTimeoutError, Sender},
     time::Duration,
 };
 
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use midi_harness::DeviceChange;
 use rosc::OscMessage;
 use tunnels::midi::DeviceSpec;
@@ -79,6 +80,16 @@ impl Controller {
     /// Deregister an OSC client.
     pub fn deregister_osc_client(&mut self, client_id: OscClientId) {
         self.osc.deregister(client_id);
+    }
+
+    /// Add a MIDI device.
+    pub fn add_midi_device(&mut self, spec: DeviceSpec<Device>) -> Result<()> {
+        self.midi.add_device(spec)
+    }
+
+    /// Clear the device assignment from a MIDI slot.
+    pub fn clear_midi_device(&mut self, slot_name: &str) -> Result<()> {
+        self.midi.clear_device(slot_name)
     }
 
     /// Handle a MIDI device change.
@@ -165,12 +176,109 @@ impl<'a> EmitMidiMasterMessage for ControlMessageWithMetadataSender<'a> {
     }
 }
 
+/// The result of processing a MetaCommand.
+pub type CommandResponse = std::result::Result<(), String>;
+
+/// A handle for sending commands to the show and waiting for responses.
+///
+/// Cloneable — any thread can hold one.
+#[derive(Clone)]
+pub struct CommandClient {
+    send: Sender<ControlMessage>,
+    zmq_ctx: zmq::Context,
+}
+
+impl CommandClient {
+    pub fn new(send: Sender<ControlMessage>, zmq_ctx: zmq::Context) -> Self {
+        Self { send, zmq_ctx }
+    }
+
+    pub fn zmq_ctx(&self) -> &zmq::Context {
+        &self.zmq_ctx
+    }
+
+    /// Send a command and block until the show responds.
+    pub fn send_command(&self, cmd: MetaCommand) -> Result<CommandResponse> {
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        self.send
+            .send(ControlMessage::Meta(cmd, Some(reply_tx)))
+            .map_err(|_| anyhow::anyhow!("show control channel disconnected"))?;
+        reply_rx.recv().context("show did not send a response")
+    }
+}
+
+/// Commands for show-level meta-control: configuration changes,
+/// system actions, and lifecycle events.
+///
+/// Any source with a Sender<ControlMessage> can send these.
+pub enum MetaCommand {
+    ReloadPatch,
+    RefreshUI,
+    ResetAllAnimations,
+    StartAnimationVisualizer,
+    AssignDmxPort {
+        universe: usize,
+        port: Box<dyn rust_dmx::DmxPort>,
+    },
+    AddMidiDevice(DeviceSpec<Device>),
+    #[expect(unused)]
+    ClearMidiDevice {
+        slot_name: String,
+    },
+    UseClockService(crate::clock_service::ClockService),
+    SetAudioDevice(String),
+}
+
+impl fmt::Debug for MetaCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReloadPatch => write!(f, "ReloadPatch"),
+            Self::RefreshUI => write!(f, "RefreshUI"),
+            Self::ResetAllAnimations => write!(f, "ResetAllAnimations"),
+            Self::StartAnimationVisualizer => write!(f, "StartAnimationVisualizer"),
+            Self::AssignDmxPort { universe, port } => f
+                .debug_struct("AssignDmxPort")
+                .field("universe", universe)
+                .field("port", &format_args!("{port}"))
+                .finish(),
+            Self::AddMidiDevice(spec) => f
+                .debug_struct("AddMidiDevice")
+                .field("device", &spec.device)
+                .finish(),
+            Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
+            Self::UseClockService(_) => write!(f, "UseClockService"),
+            Self::SetAudioDevice(name) => write!(f, "SetAudioDevice({name})"),
+        }
+    }
+}
+
+/// Translate an OSC control message (already known to be in the "Meta" group)
+/// into a MetaCommand.
+///
+/// Returns `Ok(None)` when the message is valid but should be ignored.
+pub fn meta_command_from_osc(msg: &OscControlMessage) -> Result<Option<MetaCommand>> {
+    match msg.control() {
+        "ReloadPatch" => Ok(Some(MetaCommand::ReloadPatch)),
+        "RefreshUI" => {
+            if msg.get_bool()? {
+                Ok(Some(MetaCommand::RefreshUI))
+            } else {
+                Ok(None)
+            }
+        }
+        "ResetAllAnimations" => Ok(Some(MetaCommand::ResetAllAnimations)),
+        unknown => bail!("unknown Meta control {}", unknown),
+    }
+}
+
 pub enum ControlMessage {
     RegisterClient(OscClientId),
     DeregisterClient(OscClientId),
     MidiDeviceChange(DeviceChange),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
+    /// A meta-command with an optional reply channel for the response.
+    Meta(MetaCommand, Option<Sender<CommandResponse>>),
 }
 
 #[cfg(test)]
@@ -202,5 +310,73 @@ pub mod mock {
     impl EmitScopedOscMessage for NoOpEmitter {
         fn emit_float(&self, _: &str, _: f64) {}
         fn emit_osc(&self, _: crate::osc::ScopedOscMessage) {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::osc::{OscClientId, OscControlMessage};
+    use rosc::{OscMessage, OscType};
+
+    /// Helper: construct an OscControlMessage with the given address and arg.
+    fn make_meta_osc(control: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: format!("/Meta/{control}"),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn meta_command_from_osc_reload_patch() {
+        let msg = make_meta_osc("ReloadPatch", OscType::Float(1.0));
+        let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
+        assert!(matches!(cmd, MetaCommand::ReloadPatch));
+    }
+
+    #[test]
+    fn meta_command_from_osc_refresh_ui_truthy() {
+        let msg = make_meta_osc("RefreshUI", OscType::Float(1.0));
+        let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
+        assert!(matches!(cmd, MetaCommand::RefreshUI));
+    }
+
+    #[test]
+    fn meta_command_from_osc_refresh_ui_falsy_is_none() {
+        let msg = make_meta_osc("RefreshUI", OscType::Float(0.0));
+        let result = meta_command_from_osc(&msg).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn meta_command_from_osc_reset_all_animations() {
+        let msg = make_meta_osc("ResetAllAnimations", OscType::Float(1.0));
+        let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
+        assert!(matches!(cmd, MetaCommand::ResetAllAnimations));
+    }
+
+    #[test]
+    fn meta_command_from_osc_unknown_is_err() {
+        let msg = make_meta_osc("DoSomethingWeird", OscType::Float(1.0));
+        let result = meta_command_from_osc(&msg);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("DoSomethingWeird"));
+    }
+
+    #[test]
+    fn meta_command_debug_formats_port_display() {
+        use crate::dmx::mock::MockDmxPort;
+        let cmd = MetaCommand::AssignDmxPort {
+            universe: 3,
+            port: Box::new(MockDmxPort::new()),
+        };
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("AssignDmxPort"));
+        assert!(debug.contains("universe: 3"));
+        assert!(debug.contains("mock"));
     }
 }

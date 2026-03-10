@@ -107,18 +107,54 @@ impl crate::fixture::control::DescribeOscControls for Lumasphere {
     fn describe_controls(&self) -> Vec<crate::fixture::control::OscControlDescription> {
         use crate::fixture::control::{OscControlDescription, OscControlType};
         vec![
-            OscControlDescription { name: "lamp_1_intensity".into(), control_type: OscControlType::Unipolar },
-            OscControlDescription { name: "lamp_2_intensity".into(), control_type: OscControlType::Unipolar },
-            OscControlDescription { name: "ball_rotation".into(), control_type: OscControlType::Bipolar },
-            OscControlDescription { name: "ball_start".into(), control_type: OscControlType::Bool },
-            OscControlDescription { name: "color_rotation".into(), control_type: OscControlType::Unipolar },
-            OscControlDescription { name: "color_start".into(), control_type: OscControlType::Bool },
-            OscControlDescription { name: "strobe_1_state".into(), control_type: OscControlType::Bool },
-            OscControlDescription { name: "strobe_1_rate".into(), control_type: OscControlType::Unipolar },
-            OscControlDescription { name: "strobe_1_intensity".into(), control_type: OscControlType::Unipolar },
-            OscControlDescription { name: "strobe_2_state".into(), control_type: OscControlType::Bool },
-            OscControlDescription { name: "strobe_2_rate".into(), control_type: OscControlType::Unipolar },
-            OscControlDescription { name: "strobe_2_intensity".into(), control_type: OscControlType::Unipolar },
+            OscControlDescription {
+                name: "lamp_1_intensity".into(),
+                control_type: OscControlType::Unipolar,
+            },
+            OscControlDescription {
+                name: "lamp_2_intensity".into(),
+                control_type: OscControlType::Unipolar,
+            },
+            OscControlDescription {
+                name: "ball_rotation".into(),
+                control_type: OscControlType::Bipolar,
+            },
+            OscControlDescription {
+                name: "ball_start".into(),
+                control_type: OscControlType::Bool,
+            },
+            OscControlDescription {
+                name: "color_rotation".into(),
+                control_type: OscControlType::Unipolar,
+            },
+            OscControlDescription {
+                name: "color_start".into(),
+                control_type: OscControlType::Bool,
+            },
+            OscControlDescription {
+                name: "strobe_1_state".into(),
+                control_type: OscControlType::Bool,
+            },
+            OscControlDescription {
+                name: "strobe_1_rate".into(),
+                control_type: OscControlType::Unipolar,
+            },
+            OscControlDescription {
+                name: "strobe_1_intensity".into(),
+                control_type: OscControlType::Unipolar,
+            },
+            OscControlDescription {
+                name: "strobe_2_state".into(),
+                control_type: OscControlType::Bool,
+            },
+            OscControlDescription {
+                name: "strobe_2_rate".into(),
+                control_type: OscControlType::Unipolar,
+            },
+            OscControlDescription {
+                name: "strobe_2_intensity".into(),
+                control_type: OscControlType::Unipolar,
+            },
         ]
     }
 }

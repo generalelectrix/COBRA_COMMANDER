@@ -48,7 +48,7 @@ pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> 
     };
     let mut receiver = service.subscribe(&provider, None)?;
     let storage = Arc::new(Mutex::new(SharedClockData::default()));
-    let storage_handle = storage.clone();
+    let weak_handle = Arc::downgrade(&storage);
     thread::spawn(move || {
         loop {
             let msg = match receiver.receive_msg(true) {
@@ -61,7 +61,10 @@ pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> 
                 }
                 Ok(Some(msg)) => msg,
             };
-            let mut clock_state = storage_handle.lock().unwrap();
+            let Some(storage) = weak_handle.upgrade() else {
+                break;
+            };
+            let mut clock_state = storage.lock().unwrap();
             *clock_state = msg;
         }
     });

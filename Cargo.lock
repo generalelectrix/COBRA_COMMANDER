@@ -954,6 +954,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tunnels",
  "tunnels_lib",
+ "typetag",
  "url",
  "wled-json-api-library",
  "zero_configure",
@@ -2903,7 +2904,7 @@ dependencies = [
 [[package]]
 name = "midi_harness"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#eefa1c33796dc59b3ebcd73cdb571bcb7305fa03"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#32cdf9d21563f39cd62184e863567362002b6670"
 dependencies = [
  "anyhow",
  "coremidi-hotplug-notification",
@@ -3317,7 +3318,7 @@ dependencies = [
 [[package]]
 name = "number"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/number?branch=main#6fdaa2f7778ee07cff788fa409531a509093a7f3"
+source = "git+https://github.com/generalelectrix/number?branch=main#300d63369e5814ecefaaa27ac7a6029647989466"
 dependencies = [
  "derive_more 0.99.20",
  "num-traits",
@@ -4314,9 +4315,9 @@ dependencies = [
 
 [[package]]
 name = "rust_dmx"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e7c709c7b727049232b0324ce44d2975ec584b62e640d854e162c46133b8008"
+checksum = "9b80db2e0adc6ea5e794c5e0b6503562fcf5f2db79f1bbb953cd685070009f0c"
 dependencies = [
  "anyhow",
  "artnet_protocol",
@@ -5596,7 +5597,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#eefa1c33796dc59b3ebcd73cdb571bcb7305fa03"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#32cdf9d21563f39cd62184e863567362002b6670"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -5624,7 +5625,7 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#eefa1c33796dc59b3ebcd73cdb571bcb7305fa03"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#32cdf9d21563f39cd62184e863567362002b6670"
 dependencies = [
  "anyhow",
  "derive_more 2.0.1",
@@ -6262,7 +6263,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -7127,7 +7128,7 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#eefa1c33796dc59b3ebcd73cdb571bcb7305fa03"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#32cdf9d21563f39cd62184e863567362002b6670"
 dependencies = [
  "anyhow",
  "async-dnssd",
