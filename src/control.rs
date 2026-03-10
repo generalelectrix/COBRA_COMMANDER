@@ -87,6 +87,11 @@ impl Controller {
         self.midi.add_device(spec)
     }
 
+    /// Clear the device assignment from a MIDI slot.
+    pub fn clear_midi_device(&mut self, slot_name: &str) -> Result<()> {
+        self.midi.clear_device(slot_name)
+    }
+
     /// Handle a MIDI device change.
     pub fn handle_device_change(&mut self, change: DeviceChange) -> Result<bool> {
         self.midi.handle_device_change(change)
@@ -211,6 +216,10 @@ pub enum MetaCommand {
         port: Box<dyn rust_dmx::DmxPort>,
     },
     AddMidiDevice(DeviceSpec<Device>),
+    #[expect(unused)]
+    ClearMidiDevice {
+        slot_name: String,
+    },
 }
 
 impl fmt::Debug for MetaCommand {
@@ -229,6 +238,7 @@ impl fmt::Debug for MetaCommand {
                 .debug_struct("AddMidiDevice")
                 .field("device", &spec.device)
                 .finish(),
+            Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
         }
     }
 }

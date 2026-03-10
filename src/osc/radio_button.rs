@@ -92,6 +92,30 @@ impl RadioButton {
     }
 }
 
+/// Parse radio button indices from a TouchOSC button grid.
+fn parse_radio_button_indices(addr_payload: &str) -> Result<(usize, usize), String> {
+    let mut pieces_iter = addr_payload
+        .split('/')
+        .skip(1)
+        .take(2)
+        .map(str::parse::<usize>);
+    let x = pieces_iter
+        .next()
+        .ok_or_else(|| "x radio button index missing".to_string())?
+        .map_err(|err| format!("failed to parse radio button x index: {err}"))?;
+    let y = pieces_iter
+        .next()
+        .ok_or_else(|| "y radio button index missing".to_string())?
+        .map_err(|err| format!("failed to parse radio button y index: {err}"))?;
+    if x == 0 {
+        return Err("x index is unexpectedly 0".to_string());
+    }
+    if y == 0 {
+        return Err("y index is unexpectedly 0".to_string());
+    }
+    Ok((x - 1, y - 1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,28 +236,4 @@ mod tests {
         let msgs = emitter.take();
         assert!(msgs.is_empty());
     }
-}
-
-/// Parse radio button indices from a TouchOSC button grid.
-fn parse_radio_button_indices(addr_payload: &str) -> Result<(usize, usize), String> {
-    let mut pieces_iter = addr_payload
-        .split('/')
-        .skip(1)
-        .take(2)
-        .map(str::parse::<usize>);
-    let x = pieces_iter
-        .next()
-        .ok_or_else(|| "x radio button index missing".to_string())?
-        .map_err(|err| format!("failed to parse radio button x index: {err}"))?;
-    let y = pieces_iter
-        .next()
-        .ok_or_else(|| "y radio button index missing".to_string())?
-        .map_err(|err| format!("failed to parse radio button y index: {err}"))?;
-    if x == 0 {
-        return Err("x index is unexpectedly 0".to_string());
-    }
-    if y == 0 {
-        return Err("y index is unexpectedly 0".to_string());
-    }
-    Ok((x - 1, y - 1))
 }

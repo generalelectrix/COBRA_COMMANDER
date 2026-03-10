@@ -213,6 +213,11 @@ impl Show {
                 self.refresh_ui();
                 Ok(())
             }
+            MetaCommand::ClearMidiDevice { slot_name } => {
+                self.controller.clear_midi_device(&slot_name)?;
+                self.refresh_ui();
+                Ok(())
+            }
             MetaCommand::StartAnimationVisualizer => {
                 if self.animation_service.is_none() {
                     self.animation_service = Some(animation_publisher(&self.zmq_ctx)?);

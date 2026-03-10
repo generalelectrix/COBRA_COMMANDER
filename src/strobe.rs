@@ -535,10 +535,12 @@ mod tests {
     // --- apply_rate tests ---
 
     fn test_strobe_clock(rate_raw: f64, rate_mult: Multiplier) -> StrobeClock {
-        let mut sc = StrobeClock::default();
-        sc.rate_raw = rate_raw;
-        sc.rate_mult = rate_mult;
-        sc.set_from_tap = false;
+        let mut sc = StrobeClock {
+            rate_raw,
+            rate_mult,
+            set_from_tap: false,
+            ..StrobeClock::default()
+        };
         sc.apply_rate();
         sc
     }
