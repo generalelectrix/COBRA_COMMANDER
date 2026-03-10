@@ -88,6 +88,7 @@ pub(crate) struct FixArgs {
 pub(crate) fn run_cli_configuration(client: CommandClient, universe_count: usize) -> Result<()> {
     offer_action(&client, |c| prompt_assign_dmx_ports(c, universe_count))?;
     offer_action(&client, prompt_start_animation_visualizer)?;
+    println!("Show configuration complete.");
     Ok(())
 }
 
