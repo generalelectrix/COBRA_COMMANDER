@@ -122,13 +122,6 @@ impl Patch {
     /// binding a socket.
     pub fn repatch(&mut self, groups: &[FixtureGroupConfig]) -> Result<()> {
         let mut new_patch = Self::patch_all(groups)?;
-        // Ensure we have enough universes.
-        let new_univ = new_patch.universe_count();
-        let current_univ = self.universe_count();
-        ensure!(
-            new_univ <= current_univ,
-            "new patch requires {new_univ} universe(s) but the show was only configured with {current_univ}",
-        );
         // Retain state from existing fixture models if they match.
         // Since we're mutating the existing patch from here on out, we need to
         // make sure that none of these operations can fail.

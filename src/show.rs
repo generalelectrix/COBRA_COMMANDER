@@ -29,7 +29,7 @@ use tunnels::audio::AudioInput;
 use anyhow::{Context as _, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
-use rust_dmx::DmxPort;
+use rust_dmx::{DmxPort, OfflineDmxPort};
 
 pub struct Show {
     zmq_ctx: zmq::Context,
@@ -191,6 +191,18 @@ impl Show {
                 );
                 self.channels = Channels::from_iter(self.patch.channels().cloned());
                 self.refresh_ui();
+                let new_universe_count = self.patch.universe_count();
+                let current_len = self.dmx_ports.len();
+                if new_universe_count > current_len {
+                    for _ in current_len..new_universe_count {
+                        self.dmx_ports
+                            .push(Box::new(OfflineDmxPort) as Box<dyn DmxPort>);
+                        self.dmx_buffers.push([0u8; 512]);
+                    }
+                } else if new_universe_count < current_len {
+                    self.dmx_ports.truncate(new_universe_count);
+                    self.dmx_buffers.truncate(new_universe_count);
+                }
                 for buf in &mut self.dmx_buffers {
                     buf.fill(0);
                 }
