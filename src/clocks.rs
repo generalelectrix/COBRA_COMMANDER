@@ -26,6 +26,13 @@ pub enum Clocks {
     },
 }
 
+#[cfg(test)]
+impl Clocks {
+    pub fn test_new() -> Self {
+        Clocks::Service(ClockService::test_new())
+    }
+}
+
 impl Clocks {
     /// Initialize internally-controlled clocks. Use the provided audio input.
     pub fn internal(audio_device: Option<AudioInput>) -> Self {

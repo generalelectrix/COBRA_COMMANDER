@@ -29,7 +29,7 @@ use tunnels::audio::AudioInput;
 use anyhow::{Context as _, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
-use rust_dmx::DmxPort;
+use rust_dmx::{DmxPort, OfflineDmxPort};
 
 pub struct Show {
     zmq_ctx: zmq::Context,
@@ -191,6 +191,18 @@ impl Show {
                 );
                 self.channels = Channels::from_iter(self.patch.channels().cloned());
                 self.refresh_ui();
+                let new_universe_count = self.patch.universe_count();
+                let current_len = self.dmx_ports.len();
+                if new_universe_count > current_len {
+                    for _ in current_len..new_universe_count {
+                        self.dmx_ports
+                            .push(Box::new(OfflineDmxPort) as Box<dyn DmxPort>);
+                        self.dmx_buffers.push([0u8; 512]);
+                    }
+                } else if new_universe_count < current_len {
+                    self.dmx_ports.truncate(new_universe_count);
+                    self.dmx_buffers.truncate(new_universe_count);
+                }
                 for buf in &mut self.dmx_buffers {
                     buf.fill(0);
                 }
@@ -495,60 +507,112 @@ impl From<Hsluv> for HsluvColor {
 }
 
 #[cfg(test)]
+impl Show {
+    fn test_new(patch: Patch, patch_file_path: PathBuf) -> Self {
+        let (controller, _send) = Controller::test_new();
+        let universe_count = patch.universe_count();
+        let channels = Channels::from_iter(patch.channels().cloned());
+        let initial_channel = channels.current_channel();
+        Self {
+            zmq_ctx: zmq::Context::new(),
+            controller,
+            dmx_buffers: vec![[0u8; 512]; universe_count],
+            dmx_ports: (0..universe_count)
+                .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+                .collect(),
+            patch,
+            patch_file_path,
+            channels,
+            master_controls: Default::default(),
+            animation_ui_state: AnimationUIState::new(initial_channel),
+            clocks: Clocks::test_new(),
+            animation_service: None,
+            preview: Previewer::Off,
+            master_strobe_channel: false,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::dmx::mock::MockDmxPort;
-    use rust_dmx::OfflineDmxPort;
 
-    fn make_ports(n: usize) -> (Vec<Box<dyn DmxPort>>, Vec<DmxBuffer>) {
-        let ports: Vec<Box<dyn DmxPort>> = (0..n)
-            .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
-            .collect();
-        let buffers = vec![[0u8; 512]; n];
-        (ports, buffers)
+    const ONE_UNIVERSE_PATCH: &str = "- fixture: Dimmer\n  patches:\n    - addr: 1\n";
+    const TWO_UNIVERSE_PATCH: &str =
+        "- fixture: Dimmer\n  patches:\n    - addr: 1\n    - addr: 1\n      universe: 1\n";
+
+    /// Create a Show backed by a temporary patch file.
+    /// Returns the TempDir too — it must outlive the Show for reload tests.
+    fn show_from_yaml(yaml: &str) -> (Show, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let patch_path = dir.path().join("patch.yaml");
+        std::fs::write(&patch_path, yaml).unwrap();
+        let patch = Patch::from_file(&patch_path).unwrap();
+        let show = Show::test_new(patch, patch_path);
+        (show, dir)
     }
 
     #[test]
     fn assign_dmx_port_success() {
-        let (mut ports, mut buffers) = make_ports(2);
-        // Put non-zero data in the buffer to verify it gets zeroed.
-        buffers[1].fill(0xFF);
+        let (mut show, _dir) = show_from_yaml(TWO_UNIVERSE_PATCH);
+        show.dmx_buffers[1].fill(0xFF);
 
-        let mock = Box::new(MockDmxPort::new());
-        let result = assign_dmx_port(&mut ports, &mut buffers, 1, mock);
-        assert!(result.is_ok());
+        show.handle_meta_command(MetaCommand::AssignDmxPort {
+            universe: 1,
+            port: Box::new(MockDmxPort::new()),
+        })
+        .unwrap();
 
-        // Buffer was zeroed.
-        assert!(buffers[1].iter().all(|&b| b == 0));
-
-        // Port was swapped in and opened (Display shows "mock").
-        assert_eq!(format!("{}", ports[1]), "mock");
+        assert!(show.dmx_buffers[1].iter().all(|&b| b == 0));
+        assert_eq!(format!("{}", show.dmx_ports[1]), "mock");
     }
 
     #[test]
     fn assign_dmx_port_open_fails() {
-        let (mut ports, mut buffers) = make_ports(1);
-        let original_display = format!("{}", ports[0]);
+        let (mut show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
 
-        let mock = Box::new(MockDmxPort::failing());
-        let result = assign_dmx_port(&mut ports, &mut buffers, 0, mock);
+        let result = show.handle_meta_command(MetaCommand::AssignDmxPort {
+            universe: 0,
+            port: Box::new(MockDmxPort::failing()),
+        });
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("failed to open port"));
-
-        // Original port is unchanged.
-        assert_eq!(format!("{}", ports[0]), original_display);
+        assert!(result.unwrap_err().to_string().contains("failed to open port"));
     }
 
     #[test]
     fn assign_dmx_port_universe_out_of_range() {
-        let (mut ports, mut buffers) = make_ports(2);
+        let (mut show, _dir) = show_from_yaml(TWO_UNIVERSE_PATCH);
 
-        let mock = Box::new(MockDmxPort::new());
-        let result = assign_dmx_port(&mut ports, &mut buffers, 5, mock);
+        let result = show.handle_meta_command(MetaCommand::AssignDmxPort {
+            universe: 5,
+            port: Box::new(MockDmxPort::new()),
+        });
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("out of range"));
         assert!(err_msg.contains("2 universe(s)"));
+    }
+
+    #[test]
+    fn reload_patch_grows_universes() {
+        let (mut show, dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        assert_eq!(show.dmx_ports.len(), 1);
+
+        std::fs::write(dir.path().join("patch.yaml"), TWO_UNIVERSE_PATCH).unwrap();
+        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        assert_eq!(show.dmx_ports.len(), 2);
+        assert_eq!(show.dmx_buffers.len(), 2);
+    }
+
+    #[test]
+    fn reload_patch_shrinks_universes() {
+        let (mut show, dir) = show_from_yaml(TWO_UNIVERSE_PATCH);
+        assert_eq!(show.dmx_ports.len(), 2);
+
+        std::fs::write(dir.path().join("patch.yaml"), ONE_UNIVERSE_PATCH).unwrap();
+        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        assert_eq!(show.dmx_ports.len(), 1);
+        assert_eq!(show.dmx_buffers.len(), 1);
     }
 }

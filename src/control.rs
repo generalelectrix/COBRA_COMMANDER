@@ -110,6 +110,20 @@ impl Controller {
     }
 }
 
+#[cfg(test)]
+impl Controller {
+    pub fn test_new() -> (Self, Sender<ControlMessage>) {
+        let (send, recv) = std::sync::mpsc::channel();
+        let (osc, _osc_recv) = OscController::test_new();
+        let controller = Self {
+            osc,
+            midi: MidiController::new(vec![], send.clone()).unwrap(),
+            recv,
+        };
+        (controller, send)
+    }
+}
+
 impl tunnels::audio::EmitStateChange for Controller {
     fn emit_audio_state_change(&mut self, sc: tunnels::audio::StateChange) {
         crate::osc::audio::emit_osc_state_change(

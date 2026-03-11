@@ -950,6 +950,7 @@ dependencies = [
  "simplelog",
  "strum 0.27.2",
  "strum_macros 0.27.2",
+ "tempfile",
  "termion",
  "thiserror 2.0.17",
  "tunnels",

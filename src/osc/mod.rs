@@ -116,6 +116,14 @@ impl OscController {
     }
 }
 
+#[cfg(test)]
+impl OscController {
+    pub fn test_new() -> (Self, std::sync::mpsc::Receiver<OscSenderCommand>) {
+        let (send, recv) = std::sync::mpsc::channel();
+        (Self { send }, recv)
+    }
+}
+
 /// Decorate a control message emitter to inject a group into the address.
 pub struct FixtureStateEmitter<'a> {
     key: &'a FixtureGroupKey,
