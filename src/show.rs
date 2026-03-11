@@ -507,6 +507,33 @@ impl From<Hsluv> for HsluvColor {
 }
 
 #[cfg(test)]
+impl Show {
+    fn test_new(patch: Patch, patch_file_path: PathBuf) -> Self {
+        let (controller, _send) = Controller::test_new();
+        let universe_count = patch.universe_count();
+        let channels = Channels::from_iter(patch.channels().cloned());
+        let initial_channel = channels.current_channel();
+        Self {
+            zmq_ctx: zmq::Context::new(),
+            controller,
+            dmx_buffers: vec![[0u8; 512]; universe_count],
+            dmx_ports: (0..universe_count)
+                .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+                .collect(),
+            patch,
+            patch_file_path,
+            channels,
+            master_controls: Default::default(),
+            animation_ui_state: AnimationUIState::new(initial_channel),
+            clocks: Clocks::test_new(),
+            animation_service: None,
+            preview: Previewer::Off,
+            master_strobe_channel: false,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::dmx::mock::MockDmxPort;
@@ -562,5 +589,53 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("out of range"));
         assert!(err_msg.contains("2 universe(s)"));
+    }
+
+    #[test]
+    fn reload_patch_grows_universes() {
+        let dir = tempfile::tempdir().unwrap();
+        let patch_path = dir.path().join("patch.yaml");
+
+        std::fs::write(
+            &patch_path,
+            "- fixture: Dimmer\n  patches:\n    - addr: 1\n",
+        )
+        .unwrap();
+        let patch = Patch::from_file(&patch_path).unwrap();
+        let mut show = Show::test_new(patch, patch_path.clone());
+        assert_eq!(show.dmx_ports.len(), 1);
+
+        std::fs::write(
+            &patch_path,
+            "- fixture: Dimmer\n  patches:\n    - addr: 1\n    - addr: 1\n      universe: 1\n",
+        )
+        .unwrap();
+        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        assert_eq!(show.dmx_ports.len(), 2);
+        assert_eq!(show.dmx_buffers.len(), 2);
+    }
+
+    #[test]
+    fn reload_patch_shrinks_universes() {
+        let dir = tempfile::tempdir().unwrap();
+        let patch_path = dir.path().join("patch.yaml");
+
+        std::fs::write(
+            &patch_path,
+            "- fixture: Dimmer\n  patches:\n    - addr: 1\n    - addr: 1\n      universe: 1\n",
+        )
+        .unwrap();
+        let patch = Patch::from_file(&patch_path).unwrap();
+        let mut show = Show::test_new(patch, patch_path.clone());
+        assert_eq!(show.dmx_ports.len(), 2);
+
+        std::fs::write(
+            &patch_path,
+            "- fixture: Dimmer\n  patches:\n    - addr: 1\n",
+        )
+        .unwrap();
+        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        assert_eq!(show.dmx_ports.len(), 1);
+        assert_eq!(show.dmx_buffers.len(), 1);
     }
 }

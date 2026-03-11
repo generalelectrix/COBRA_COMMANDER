@@ -20,6 +20,13 @@ impl ClockService {
     }
 }
 
+#[cfg(test)]
+impl ClockService {
+    pub fn test_new() -> Self {
+        Self(Arc::new(Mutex::new(SharedClockData::default())))
+    }
+}
+
 /// Prompt the user to start the clock service.
 /// If the user requests to start the service, browse briefly for services,
 /// and present options.  Connect to the service and return a mutex that wraps
