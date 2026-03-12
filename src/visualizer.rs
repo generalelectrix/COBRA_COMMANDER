@@ -12,7 +12,7 @@ use glow::HasContext;
 
 use crate::animation_service::{AnimationServiceState, start_service};
 
-slint::include_modules!();
+include!(concat!(env!("OUT_DIR"), "/visualizer.rs"));
 
 // ---------------------------------------------------------------------------
 // Shaders (GLSL 110 / ES 100 for maximum compatibility)

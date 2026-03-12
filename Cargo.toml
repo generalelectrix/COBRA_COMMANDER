@@ -53,8 +53,8 @@ typetag = "0.2"
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 
-# [patch.'https://github.com/generalelectrix/tunnels']
-# midi_harness = { path = "../tunnels/midi_harness" }
-# tunnels = { path = "../tunnels/tunnels" }
-# tunnels_lib = { path = "../tunnels/tunnels_lib" }
-# zero_configure = { path = "../tunnels/zero_configure" }
+[patch.'https://github.com/generalelectrix/tunnels']
+midi_harness = { path = "../tunnels/midi_harness" }
+tunnels = { path = "../tunnels/tunnels" }
+tunnels_lib = { path = "../tunnels/tunnels_lib" }
+zero_configure = { path = "../tunnels/zero_configure" }

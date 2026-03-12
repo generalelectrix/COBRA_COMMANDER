@@ -35,6 +35,7 @@ mod midi;
 mod osc;
 mod preview;
 mod show;
+mod gui;
 mod visualizer;
 mod strobe;
 mod util;
@@ -62,6 +63,10 @@ fn main() -> Result<()> {
 const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn run_show(args: RunArgs) -> Result<()> {
+    if args.gui {
+        return run_show_with_gui(args);
+    }
+
     let patch = Patch::from_file(&args.patch_file)?;
 
     let zmq_ctx = Context::new();
@@ -139,6 +144,8 @@ fn run_show(args: RunArgs) -> Result<()> {
         zmq_ctx,
     )?;
 
+    println!("Running show.");
+
     if !args.quickstart {
         let cli_client = command_client.clone();
         std::thread::spawn(move || {
@@ -148,11 +155,75 @@ fn run_show(args: RunArgs) -> Result<()> {
         });
     }
 
-    println!("Running show.");
-
     show.run();
 
     Ok(())
+}
+
+/// Run with the Slint config GUI on the main thread.
+/// Show and all its non-Send dependencies are constructed in a worker thread.
+fn run_show_with_gui(args: RunArgs) -> Result<()> {
+    // Parse the patch just to get universe_count for the GUI; the worker will
+    // parse it again for the actual Show (Patch is not Send).
+    let universe_count = Patch::from_file(&args.patch_file)?.universe_count();
+    println!("This show requires {universe_count} universe(s).");
+
+    // Channels and CommandClient are Send — create them here so both threads
+    // can use them.
+    let zmq_ctx = Context::new();
+    let (send_control_msg, recv_control_msg) = channel();
+    let command_client = CommandClient::new(send_control_msg.clone(), zmq_ctx.clone());
+
+    let patch_file = args.patch_file;
+    let osc_port = args.osc_receive_port;
+    let master_strobe = args.master_strobe_channel;
+
+    std::thread::spawn(move || {
+        let result = (|| -> Result<()> {
+            let patch = Patch::from_file(&patch_file)?;
+            let clocks = Clocks::internal(None);
+
+            match local_ip() {
+                Ok(ip) => println!("Listening for OSC at {}:{}.", ip, osc_port),
+                Err(e) => println!("Unable to fetch local IP address: {e}."),
+            }
+
+            install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
+
+            let controller = Controller::new(
+                osc_port,
+                vec![],
+                vec![],
+                send_control_msg,
+                recv_control_msg,
+            )?;
+
+            let dmx_ports: Vec<Box<dyn DmxPort>> = (0..patch.universe_count())
+                .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+                .collect();
+
+            let mut show = Show::new(
+                patch,
+                patch_file,
+                controller,
+                dmx_ports,
+                clocks,
+                None,
+                Previewer::default(),
+                master_strobe,
+                zmq_ctx,
+            )?;
+
+            println!("Running show.");
+            show.run();
+            Ok(())
+        })();
+        if let Err(e) = result {
+            error!("Show error: {e:#}");
+        }
+    });
+
+    gui::run_gui(command_client, universe_count)
 }
 
 fn check_patch(args: CheckArgs) -> Result<()> {

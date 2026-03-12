@@ -1,0 +1,93 @@
+import { Button, GroupBox, VerticalBox, HorizontalBox, StandardListView } from "std-widgets.slint";
+
+export struct ClockProviderInfo {
+    name: string,
+    host: string,
+    port: int,
+}
+
+export component ConfigPanel inherits Window {
+    title: "Cobra Commander";
+    preferred-width: 500px;
+    preferred-height: 400px;
+
+    // --- Clock provider model (populated by browse_clock_providers) ---
+    in-out property <[ClockProviderInfo]> clock-providers: [];
+    in-out property <string> clock-status: "Internal clocks";
+
+    // --- List view display models (StandardListViewItem has a text field) ---
+    in-out property <[StandardListViewItem]> clock-provider-items: [];
+    in-out property <[StandardListViewItem]> audio-device-items: [];
+
+    // --- Audio device model ---
+    in-out property <[string]> audio-devices: [];
+
+    // --- Status ---
+    in-out property <string> status-message: "";
+
+    // --- Callbacks ---
+    callback connect-clock-provider(int);  // index into clock-providers
+    callback scan-audio-devices();
+    callback select-audio-device(int);     // index into audio-devices
+
+    VerticalBox {
+        GroupBox {
+            title: "Clock Source";
+
+            VerticalBox {
+                Text { text: clock-status; }
+
+                Text { text: "Discovered providers:"; }
+
+                clock-list := StandardListView {
+                    model: clock-provider-items;
+                }
+
+                HorizontalBox {
+                    Button {
+                        text: "Connect";
+                        enabled: clock-list.current-item >= 0 && clock-list.current-item < clock-providers.length;
+                        clicked => {
+                            connect-clock-provider(clock-list.current-item);
+                        }
+                    }
+                }
+            }
+        }
+
+        GroupBox {
+            title: "Audio Input (Internal Clocks)";
+
+            VerticalBox {
+                HorizontalBox {
+                    Button {
+                        text: "Scan Devices";
+                        clicked => { scan-audio-devices(); }
+                    }
+                }
+
+                audio-list := StandardListView {
+                    model: audio-device-items;
+                }
+
+                HorizontalBox {
+                    Button {
+                        text: "Select";
+                        enabled: audio-list.current-item >= 0 && audio-list.current-item < audio-devices.length;
+                        clicked => {
+                            select-audio-device(audio-list.current-item);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Status bar
+        Rectangle {
+            height: 30px;
+            HorizontalBox {
+                Text { text: status-message; }
+            }
+        }
+    }
+}

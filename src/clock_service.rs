@@ -27,6 +27,31 @@ impl ClockService {
     }
 }
 
+/// Connect to a clock provider at the given address and start receiving clock data.
+pub fn connect_to_clock_provider(ctx: &Context, host: &str, port: u16) -> Result<ClockService> {
+    let mut receiver =
+        zero_configure::pub_sub::Receiver::<SharedClockData>::new(ctx, host, port, None)?;
+    let storage = Arc::new(Mutex::new(SharedClockData::default()));
+    let weak_handle = Arc::downgrade(&storage);
+    thread::spawn(move || {
+        loop {
+            let msg = match receiver.receive_msg(true) {
+                Err(e) => {
+                    error!("clock receive error: {e}");
+                    continue;
+                }
+                Ok(None) => continue,
+                Ok(Some(msg)) => msg,
+            };
+            let Some(storage) = weak_handle.upgrade() else {
+                break;
+            };
+            *storage.lock().unwrap() = msg;
+        }
+    });
+    Ok(ClockService(storage))
+}
+
 /// Prompt the user to start the clock service.
 /// If the user requests to start the service, browse briefly for services,
 /// and present options.  Connect to the service and return a mutex that wraps
@@ -63,16 +88,13 @@ pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> 
                     error!("clock receive error: {e}");
                     continue;
                 }
-                Ok(None) => {
-                    continue;
-                }
+                Ok(None) => continue,
                 Ok(Some(msg)) => msg,
             };
             let Some(storage) = weak_handle.upgrade() else {
                 break;
             };
-            let mut clock_state = storage.lock().unwrap();
-            *clock_state = msg;
+            *storage.lock().unwrap() = msg;
         }
     });
     println!("Connected to {provider}.");

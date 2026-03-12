@@ -67,6 +67,9 @@ pub(crate) struct RunArgs {
     #[arg(long)]
     pub cli_preview: bool,
 
+    /// Run the Slint configuration GUI instead of the interactive CLI.
+    #[arg(long)]
+    pub gui: bool,
 }
 
 #[derive(Args)]
@@ -122,14 +125,12 @@ fn offer_action<T>(
 
 fn prompt_configure_clocks(client: &CommandClient) -> Result<bool> {
     if let Some(service) = prompt_start_clock_service(client.zmq_ctx().clone())? {
-        client.send_command(MetaCommand::UseClockService(service))?
-            .map_err(|e| anyhow::anyhow!(e))?;
+        client.send_command(MetaCommand::UseClockService(service))?;
         return Ok(false);
     }
     // Internal clocks — optionally configure audio input.
     if let Some(device_name) = prompt_audio()? {
-        client.send_command(MetaCommand::SetAudioDevice(device_name))?
-            .map_err(|e| anyhow::anyhow!(e))?;
+        client.send_command(MetaCommand::SetAudioDevice(device_name))?;
     }
     Ok(true)
 }
@@ -168,8 +169,7 @@ fn prompt_configure_midi(
 
     for spec in midi_devices {
         let device_name = spec.device.to_string();
-        let response = client.send_command(MetaCommand::AddMidiDevice(spec))?;
-        match &response {
+        match client.send_command(MetaCommand::AddMidiDevice(spec)) {
             Ok(()) => println!("  Added {device_name}."),
             Err(e) => println!("  Error adding {device_name}: {e}"),
         }
@@ -193,8 +193,7 @@ fn prompt_assign_dmx_ports(
     for universe in 0..universe_count {
         println!("Assign port to universe {universe}:");
         let port = prompt_select_port(&mut ports)?;
-        let response = client.send_command(MetaCommand::AssignDmxPort { universe, port })?;
-        if let Err(e) = &response {
+        if let Err(e) = client.send_command(MetaCommand::AssignDmxPort { universe, port }) {
             println!("Error assigning universe {universe}: {e}");
         }
     }
@@ -237,6 +236,5 @@ fn prompt_start_animation_visualizer(client: &CommandClient) -> Result<()> {
     if !prompt_bool("Start animation visualizer?")? {
         return Ok(());
     }
-    client.send_command(MetaCommand::StartAnimationVisualizer)?
-        .map_err(|e| anyhow::anyhow!(e))
+    client.send_command(MetaCommand::StartAnimationVisualizer)
 }

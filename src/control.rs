@@ -212,12 +212,15 @@ impl CommandClient {
     }
 
     /// Send a command and block until the show responds.
-    pub fn send_command(&self, cmd: MetaCommand) -> Result<CommandResponse> {
+    pub fn send_command(&self, cmd: MetaCommand) -> Result<()> {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         self.send
             .send(ControlMessage::Meta(cmd, Some(reply_tx)))
             .map_err(|_| anyhow::anyhow!("show control channel disconnected"))?;
-        reply_rx.recv().context("show did not send a response")
+        reply_rx
+            .recv()
+            .context("show did not send a response")?
+            .map_err(|e| anyhow::anyhow!(e))
     }
 }
 

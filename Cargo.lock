@@ -3826,7 +3826,6 @@ dependencies = [
 [[package]]
 name = "midi_harness"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#32cdf9d21563f39cd62184e863567362002b6670"
 dependencies = [
  "anyhow",
  "coremidi-hotplug-notification",
@@ -7233,7 +7232,6 @@ dependencies = [
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#32cdf9d21563f39cd62184e863567362002b6670"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -7261,7 +7259,6 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#32cdf9d21563f39cd62184e863567362002b6670"
 dependencies = [
  "anyhow",
  "derive_more 2.0.1",
@@ -8884,7 +8881,6 @@ checksum = "6df3dc4292935e51816d896edcd52aa30bc297907c26167fec31e2b0c6a32524"
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#32cdf9d21563f39cd62184e863567362002b6670"
 dependencies = [
  "anyhow",
  "async-dnssd",
