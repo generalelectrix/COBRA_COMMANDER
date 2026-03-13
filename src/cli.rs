@@ -129,9 +129,8 @@ fn prompt_configure_clocks(client: &CommandClient) -> Result<bool> {
         return Ok(false);
     }
     // Internal clocks — optionally configure audio input.
-    if let Some(device_name) = prompt_audio()? {
-        client.send_command(MetaCommand::SetAudioDevice(device_name))?;
-    }
+    let audio_device = prompt_audio()?;
+    client.send_command(MetaCommand::UseInternalClocks(audio_device))?;
     Ok(true)
 }
 

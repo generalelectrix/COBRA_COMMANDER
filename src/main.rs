@@ -1,12 +1,12 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 use clocks::Clocks;
 use fixture::Patch;
 use local_ip_address::local_ip;
-use log::{error, LevelFilter};
+use log::{LevelFilter, error};
 use midi::Device;
 use midi_harness::install_midi_device_change_handler;
-use rust_dmx::{available_ports, DmxPort, OfflineDmxPort};
+use rust_dmx::{DmxPort, OfflineDmxPort, available_ports};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::sync::mpsc::channel;
 use std::time::Duration;

@@ -132,22 +132,22 @@ impl ClockPanel {
         ui.add_space(8.0);
 
         if ui.button("Apply").clicked() {
-            if !audio_devices.is_empty() {
-                let device_name = audio_devices[*selected_audio].clone();
-                match client.send_command(MetaCommand::SetAudioDevice(device_name.clone())) {
-                    Ok(()) => {
-                        return Some(ClockConfigState::Configured {
-                            description: format!("Internal clocks (audio: {device_name})"),
-                        });
-                    }
-                    Err(e) => {
-                        error!("SetAudioDevice failed: {e}");
-                    }
-                }
+            let device_name = if audio_devices.is_empty() {
+                None
             } else {
-                return Some(ClockConfigState::Configured {
-                    description: "Internal clocks (no audio)".to_string(),
-                });
+                Some(audio_devices[*selected_audio].clone())
+            };
+            match client.send_command(MetaCommand::UseInternalClocks(device_name.clone())) {
+                Ok(()) => {
+                    let description = match device_name {
+                        Some(name) => format!("Internal clocks (audio: {name})"),
+                        None => "Internal clocks (no audio)".to_string(),
+                    };
+                    return Some(ClockConfigState::Configured { description });
+                }
+                Err(e) => {
+                    error!("UseInternalClocks failed: {e}");
+                }
             }
         }
         None
@@ -347,6 +347,42 @@ mod tests {
 
         // Verify the provider appears.
         assert!(harness.query_by_label("clock-server-1").is_some());
+    }
+
+    #[test]
+    fn switch_remote_back_to_internal_apply_with_audio() {
+        let client = crate::show::test_support::test_show_client();
+        let mut harness = Harness::new_ui_state(
+            |ui, panel: &mut ClockPanel| {
+                panel.ui(ui, &client);
+            },
+            ClockPanel::test_new(
+                vec!["Built-in Mic".to_string()],
+                vec!["clock-server-1".to_string()],
+            ),
+        );
+
+        // Switch to Remote mode.
+        harness.get_by_label("Remote Clock Service").click();
+        harness.run();
+
+        // Switch back to Internal mode.
+        harness.get_by_label("Internal Clocks").click();
+        harness.run();
+
+        // Click Apply — should configure internal clock with audio device.
+        harness.get_by_label("Apply").click();
+        harness.run();
+
+        let panel = harness.state();
+        assert!(
+            matches!(&panel.state, ClockConfigState::Configured { description } if description.contains("Built-in Mic")),
+            "Expected Configured with audio device, got {:?}",
+            match &panel.state {
+                ClockConfigState::Choosing { mode, .. } => format!("Choosing(mode={:?})", mode == &ClockMode::Internal),
+                ClockConfigState::Configured { description } => format!("Configured({description})"),
+            }
+        );
     }
 
     #[test]

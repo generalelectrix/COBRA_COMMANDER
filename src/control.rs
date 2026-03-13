@@ -243,7 +243,7 @@ pub enum MetaCommand {
         slot_name: String,
     },
     UseClockService(crate::clock_service::ClockService),
-    SetAudioDevice(String),
+    UseInternalClocks(Option<String>),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -264,7 +264,7 @@ impl fmt::Debug for MetaCommand {
                 .finish(),
             Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
             Self::UseClockService(_) => write!(f, "UseClockService"),
-            Self::SetAudioDevice(name) => write!(f, "SetAudioDevice({name})"),
+            Self::UseInternalClocks(device) => write!(f, "UseInternalClocks({device:?})"),
         }
     }
 }

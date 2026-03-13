@@ -237,11 +237,12 @@ impl Show {
                 self.refresh_ui();
                 Ok(())
             }
-            MetaCommand::SetAudioDevice(device_name) => {
-                let Clocks::Internal { audio_input, .. } = &mut self.clocks else {
-                    bail!("cannot set audio device: not using internal clocks");
-                };
-                *audio_input = AudioInput::new(Some(device_name))?;
+            MetaCommand::UseInternalClocks(device_name) => {
+                let audio_input = device_name
+                    .map(|name| AudioInput::new(Some(name)))
+                    .transpose()?;
+                self.clocks = Clocks::internal(audio_input);
+                self.refresh_ui();
                 Ok(())
             }
             MetaCommand::StartAnimationVisualizer => {
@@ -507,13 +508,54 @@ impl From<Hsluv> for HsluvColor {
 }
 
 #[cfg(test)]
+pub mod test_support {
+    use super::*;
+    use crate::control::CommandClient;
+
+    /// Stand up a fully-contained test Show processing commands on a
+    /// background thread.  Returns a real `CommandClient` connected to it.
+    ///
+    /// The Show lives until the returned `CommandClient` (and any clones)
+    /// are dropped, at which point the background thread exits.
+    pub fn test_show_client() -> CommandClient {
+        let (send_tx, send_rx) = std::sync::mpsc::sync_channel(0);
+
+        std::thread::spawn(move || {
+            let dir = tempfile::tempdir().unwrap();
+            let patch_path = dir.path().join("patch.yaml");
+            std::fs::write(&patch_path, "- fixture: Dimmer\n  patches:\n    - addr: 1\n").unwrap();
+            let patch = Patch::from_file(&patch_path).unwrap();
+            let (mut show, send) = Show::test_new(patch, patch_path);
+            let zmq_ctx = show.zmq_ctx.clone();
+
+            // Send the client handle back to the calling thread.
+            send_tx.send(CommandClient::new(send, zmq_ctx)).unwrap();
+
+            // Process commands until the client is dropped.
+            loop {
+                match show.control(Duration::from_millis(100)) {
+                    Ok(()) => {}
+                    Err(e) if e.to_string().contains("disconnected") => break,
+                    Err(_) => {} // command errors are expected, keep running
+                }
+            }
+        });
+
+        send_rx.recv().unwrap()
+    }
+}
+
+#[cfg(test)]
 impl Show {
-    fn test_new(patch: Patch, patch_file_path: PathBuf) -> Self {
-        let (controller, _send) = Controller::test_new();
+    fn test_new(
+        patch: Patch,
+        patch_file_path: PathBuf,
+    ) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
+        let (controller, send) = Controller::test_new();
         let universe_count = patch.universe_count();
         let channels = Channels::from_iter(patch.channels().cloned());
         let initial_channel = channels.current_channel();
-        Self {
+        let show = Self {
             zmq_ctx: zmq::Context::new(),
             controller,
             dmx_buffers: vec![[0u8; 512]; universe_count],
@@ -529,7 +571,8 @@ impl Show {
             animation_service: None,
             preview: Previewer::Off,
             master_strobe_channel: false,
-        }
+        };
+        (show, send)
     }
 }
 
@@ -549,7 +592,7 @@ mod tests {
         let patch_path = dir.path().join("patch.yaml");
         std::fs::write(&patch_path, yaml).unwrap();
         let patch = Patch::from_file(&patch_path).unwrap();
-        let show = Show::test_new(patch, patch_path);
+        let (show, _send) = Show::test_new(patch, patch_path);
         (show, dir)
     }
 
