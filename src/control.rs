@@ -302,6 +302,17 @@ pub enum ControlMessage {
 pub mod mock {
     use super::*;
 
+    /// Create a CommandClient that auto-responds Ok(()) to every command.
+    pub fn auto_respond_client() -> CommandClient {
+        let (send, recv) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            while let Ok(ControlMessage::Meta(_, Some(reply))) = recv.recv() {
+                let _ = reply.send(Ok(()));
+            }
+        });
+        CommandClient::new(send, zmq::Context::new())
+    }
+
     /// An emitter that does nothing.
     ///
     /// Useful for tests, as well as occasional use as a shim when creating

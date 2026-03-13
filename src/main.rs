@@ -1,12 +1,12 @@
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use clap::Parser;
 use clocks::Clocks;
 use fixture::Patch;
 use local_ip_address::local_ip;
-use log::{LevelFilter, error};
+use log::{error, LevelFilter};
 use midi::Device;
 use midi_harness::install_midi_device_change_handler;
-use rust_dmx::{DmxPort, OfflineDmxPort, available_ports};
+use rust_dmx::{available_ports, DmxPort, OfflineDmxPort};
 use simplelog::{Config as LogConfig, SimpleLogger};
 use std::sync::mpsc::channel;
 use std::time::Duration;
@@ -91,7 +91,13 @@ fn run_show(args: RunArgs) -> Result<()> {
         config_gui::run_config_gui(gui_client, gui_zmq)?;
     } else {
         // Non-GUI path: existing behavior unchanged.
-        run_show_inline(args, command_client, send_control_msg, recv_control_msg, zmq_ctx)?;
+        run_show_inline(
+            args,
+            command_client,
+            send_control_msg,
+            recv_control_msg,
+            zmq_ctx,
+        )?;
     }
 
     Ok(())
