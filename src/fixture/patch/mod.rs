@@ -104,11 +104,6 @@ impl Patch {
         Ok(patch)
     }
 
-    /// Re-initialize a patch from a file.
-    pub fn repatch_from_file(&mut self, path: &Path) -> Result<()> {
-        self.repatch(&parse_file(path)?)
-    }
-
     /// Re-intialize a patch from new configs.
     ///
     /// This allows retaining all existing state for any groups that haven't
@@ -295,7 +290,7 @@ impl Patch {
     }
 }
 
-fn parse_file(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
+pub(crate) fn parse_file(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
     let patch_file = File::open(path)
         .with_context(|| format!("unable to read patch file \"{}\"", path.to_string_lossy()))?;
     Ok(serde_yaml::from_reader(patch_file)?)

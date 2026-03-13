@@ -102,13 +102,19 @@ impl Options {
     }
 
     /// Build Options programmatically from key-value pairs.
-    #[cfg(test)]
     pub fn from_entries(entries: impl IntoIterator<Item = (String, serde_yaml::Value)>) -> Self {
         let mut mapping = serde_yaml::Mapping::new();
         for (key, value) in entries {
             mapping.insert(serde_yaml::Value::String(key), value);
         }
         Self { value: mapping }
+    }
+
+    /// Get a string value by key.
+    pub fn get_string(&self, key: &str) -> Option<String> {
+        self.value
+            .get(Value::String(key.to_string()))
+            .map(string_value)
     }
 
     /// Return an error if the options are not empty.
@@ -119,6 +125,38 @@ impl Options {
             self.value.keys().map(string_value).join(", ")
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+impl Options {
+    /// Set a string value by key.
+    pub fn set_string(&mut self, key: &str, val: &str) {
+        self.value.insert(
+            Value::String(key.to_string()),
+            Value::String(val.to_string()),
+        );
+    }
+
+    /// Get a bool value by key.
+    pub fn get_bool(&self, key: &str) -> Option<bool> {
+        self.value
+            .get(Value::String(key.to_string()))
+            .and_then(|v| match v {
+                Value::Bool(b) => Some(*b),
+                _ => None,
+            })
+    }
+
+    /// Set a bool value by key.
+    pub fn set_bool(&mut self, key: &str, val: bool) {
+        self.value
+            .insert(Value::String(key.to_string()), Value::Bool(val));
+    }
+
+    /// Remove a key from the options.
+    pub fn remove(&mut self, key: &str) {
+        self.value.remove(Value::String(key.to_string()));
     }
 }
 
@@ -175,5 +213,38 @@ mod test {
     fn test_missing_fields() {
         assert_fail_parse("- foobar: Baz", "missing field `fixture`");
         assert_fail_parse("- fixture: Foo", "missing field `patches`");
+    }
+
+    #[test]
+    fn options_string_round_trip() {
+        let mut opts = Options::default();
+        assert_eq!(opts.get_string("foo"), None);
+        opts.set_string("foo", "bar");
+        assert_eq!(opts.get_string("foo").as_deref(), Some("bar"));
+    }
+
+    #[test]
+    fn options_bool_round_trip() {
+        let mut opts = Options::default();
+        assert_eq!(opts.get_bool("flag"), None);
+        opts.set_bool("flag", true);
+        assert_eq!(opts.get_bool("flag"), Some(true));
+        opts.set_bool("flag", false);
+        assert_eq!(opts.get_bool("flag"), Some(false));
+    }
+
+    #[test]
+    fn options_remove() {
+        let mut opts = Options::default();
+        opts.set_string("key", "value");
+        assert!(opts.get_string("key").is_some());
+        opts.remove("key");
+        assert_eq!(opts.get_string("key"), None);
+    }
+
+    #[test]
+    fn options_remove_missing_key_is_noop() {
+        let mut opts = Options::default();
+        opts.remove("nonexistent"); // should not panic
     }
 }

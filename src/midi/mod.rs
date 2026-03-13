@@ -6,8 +6,8 @@ use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use enum_dispatch::enum_dispatch;
 use log::error;
 use midi_harness::{
-    DeviceChange, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice, MidiPortSpec,
-    Output,
+    DeviceChange, DeviceId, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice,
+    MidiPortSpec, Output, SlotStatus,
 };
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
@@ -25,8 +25,9 @@ use tunnels::{
 
 use crate::control::ControlMessage;
 
-mod device;
+pub(crate) mod device;
 mod mapping;
+pub mod slots;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[enum_dispatch(MidiHandler)]
@@ -201,15 +202,43 @@ impl MidiController {
             .add_from_spec(spec.device, spec.input_id, spec.output_id)
     }
 
+    /// Add a slot without connecting hardware.
+    pub fn add_slot(&mut self, name: String, model: Device) -> Result<()> {
+        self.0.borrow_mut().add_slot(name, model)
+    }
+
+    /// Remove a slot by name.
+    pub fn remove_slot(&mut self, name: &str) -> Result<()> {
+        self.0.borrow_mut().remove_slot(name)
+    }
+
+    /// Connect a MIDI port to a slot.
+    pub fn connect_port(
+        &mut self,
+        slot_name: &str,
+        device_id: DeviceId,
+        kind: DeviceKind,
+    ) -> Result<()> {
+        let mut mgr = self.0.borrow_mut();
+        match kind {
+            DeviceKind::Input => mgr.connect_input(slot_name, device_id),
+            DeviceKind::Output => mgr.connect_output(slot_name, device_id),
+        }
+    }
+
     /// Clear the device assignment from the named slot.
     pub fn clear_device(&mut self, slot_name: &str) -> Result<()> {
         self.0.borrow_mut().clear_slot(slot_name)
     }
 
     /// Return the names of all device slots.
-    #[expect(unused)]
     pub fn device_names(&self) -> Vec<String> {
         self.0.borrow().slot_names()
+    }
+
+    /// Return a snapshot of the status of every slot.
+    pub fn slot_statuses(&self) -> Vec<SlotStatus> {
+        self.0.borrow().slot_statuses()
     }
 
     /// Handle a device appearing or disappearing.

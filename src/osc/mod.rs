@@ -4,7 +4,7 @@ use crate::control::ControlMessage;
 use crate::control::EmitControlMessage;
 use crate::midi::{EmitMidiAnimationMessage, EmitMidiMasterMessage};
 use crate::osc::listener::OscListener;
-use crate::osc::sender::{OscSender, OscSenderCommand};
+use crate::osc::sender::OscSender;
 use anyhow::Result;
 use anyhow::{Context, bail};
 use log::error;
@@ -37,6 +37,7 @@ mod sender;
 mod unipolar_array;
 
 pub use control_message::OscControlMessage;
+pub use sender::OscClientListener;
 
 /// Emit an implicitly-scoped OSC message.
 pub trait EmitScopedOscMessage {
@@ -56,7 +57,8 @@ pub trait EmitOscMessage {
 }
 
 pub struct OscController {
-    send: Sender<OscSenderCommand>,
+    send: Sender<OscControlResponse>,
+    client_manager: sender::OscClientManager,
 }
 
 impl OscController {
@@ -67,7 +69,9 @@ impl OscController {
     ) -> Result<Self> {
         let recv_addr = SocketAddr::from_str(&format!("0.0.0.0:{receive_port}"))?;
 
-        let mut listener = OscListener::new(send_addrs.clone(), recv_addr, send)
+        let (client_manager, initial_listener) = sender::OscClientManager::new(send_addrs);
+
+        let mut listener = OscListener::new(client_manager.listener(), recv_addr, send)
             .context("failed to start OSC listener")?;
 
         thread::spawn(move || {
@@ -75,7 +79,7 @@ impl OscController {
         });
 
         let (mut sender, response_send) =
-            OscSender::new(send_addrs).context("failed to start OSC sender")?;
+            OscSender::new(initial_listener).context("failed to start OSC sender")?;
 
         thread::spawn(move || {
             sender.run();
@@ -83,44 +87,45 @@ impl OscController {
 
         Ok(Self {
             send: response_send,
+            client_manager,
         })
     }
 
     /// Send an OSC message to all clients.
     pub fn send(&self, msg: OscControlResponse) {
-        if self.send.send(OscSenderCommand::SendMessage(msg)).is_err() {
+        if self.send.send(msg).is_err() {
             error!("OSC send channel is disconnected.");
         }
     }
 
     /// Register an OSC client.
     pub fn register(&self, client_id: OscClientId) {
-        if self
-            .send
-            .send(OscSenderCommand::Register(client_id))
-            .is_err()
-        {
-            error!("OSC send channel is disconnected.");
-        }
+        self.client_manager.register(client_id);
     }
 
     /// Deregister an OSC client.
     pub fn deregister(&self, client_id: OscClientId) {
-        if self
-            .send
-            .send(OscSenderCommand::Deregister(client_id))
-            .is_err()
-        {
-            error!("OSC send channel is disconnected.");
-        }
+        self.client_manager.deregister(client_id);
+    }
+
+    /// Get a listener handle for the shared client list.
+    pub fn client_listener(&self) -> OscClientListener {
+        self.client_manager.listener()
     }
 }
 
 #[cfg(test)]
 impl OscController {
-    pub fn test_new() -> (Self, std::sync::mpsc::Receiver<OscSenderCommand>) {
+    pub fn test_new() -> (Self, std::sync::mpsc::Receiver<OscControlResponse>) {
         let (send, recv) = std::sync::mpsc::channel();
-        (Self { send }, recv)
+        let (client_manager, _) = sender::OscClientManager::new(vec![]);
+        (
+            Self {
+                send,
+                client_manager,
+            },
+            recv,
+        )
     }
 }
 
@@ -198,6 +203,11 @@ impl OscClientId {
     #[cfg(test)]
     pub fn example() -> Self {
         Self(SocketAddr::from_str("127.0.0.1:9999").unwrap())
+    }
+
+    #[cfg(test)]
+    pub fn from_addr(addr: SocketAddr) -> Self {
+        Self(addr)
     }
 }
 

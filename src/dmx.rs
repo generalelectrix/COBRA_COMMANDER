@@ -12,6 +12,11 @@ use serde::{Deserialize, Serialize};
 pub struct DmxAddr(usize);
 
 impl DmxAddr {
+    /// Create a new DMX address from a 1-indexed value.
+    pub fn new(addr: usize) -> Self {
+        Self(addr)
+    }
+
     /// Get the DMX buffer index of this address (indexed from 0).
     pub fn dmx_index(&self) -> usize {
         self.0 - 1
@@ -46,6 +51,35 @@ pub type DmxBuffer = [u8; 512];
 
 /// Index into the DMX universes.
 pub type UniverseIdx = usize;
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn dmx_addr_new() {
+        let addr = DmxAddr::new(1);
+        assert_eq!(addr.dmx_index(), 0);
+
+        let addr = DmxAddr::new(512);
+        assert_eq!(addr.dmx_index(), 511);
+        addr.validate().unwrap();
+    }
+
+    #[test]
+    fn dmx_addr_validate_boundaries() {
+        DmxAddr::new(1).validate().unwrap();
+        DmxAddr::new(512).validate().unwrap();
+        DmxAddr::new(0).validate().unwrap_err();
+        DmxAddr::new(513).validate().unwrap_err();
+    }
+
+    #[test]
+    fn dmx_addr_add() {
+        let addr = DmxAddr::new(10) + 3;
+        assert_eq!(addr.dmx_index(), 12); // 13 - 1
+    }
+}
 
 #[cfg(test)]
 pub(crate) mod mock {

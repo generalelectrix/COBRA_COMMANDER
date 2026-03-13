@@ -68,10 +68,19 @@ impl AsPatchOption for bool {
     }
 }
 
-// TODO: make optionality explicit
 impl<T: AsPatchOption> AsPatchOption for Option<T> {
     fn as_patch_option() -> PatchOption {
-        T::as_patch_option()
+        // Recursively unwrap any nested Optional to a single Optional(leaf).
+        // Bool is special-cased: Option<bool> stays as Bool since a checkbox
+        // naturally represents absent/false without needing a three-state widget.
+        fn flatten(opt: PatchOption) -> PatchOption {
+            match opt {
+                PatchOption::Optional(inner) => flatten(*inner),
+                PatchOption::Bool => PatchOption::Bool,
+                other => PatchOption::Optional(Box::new(other)),
+            }
+        }
+        flatten(T::as_patch_option())
     }
 }
 
@@ -99,6 +108,8 @@ pub enum PatchOption {
     Url,
     /// A boolean option.
     Bool,
+    /// An optional value. The inner type describes the value when present.
+    Optional(Box<PatchOption>),
 }
 
 #[cfg(test)]
@@ -111,6 +122,7 @@ impl PatchOption {
             PatchOption::Select(opts) => Value::String(opts[0].clone()),
             PatchOption::SocketAddr => Value::String("127.0.0.1:9999".into()),
             PatchOption::Url => Value::String("http://127.0.0.1:9999".into()),
+            PatchOption::Optional(inner) => inner.example_value(),
         }
     }
 }
@@ -123,6 +135,7 @@ impl Display for PatchOption {
             Self::SocketAddr => f.write_str("<socket address>"),
             Self::Url => f.write_str("<url>"),
             Self::Bool => f.write_str("true, false"),
+            Self::Optional(inner) => write!(f, "{inner} (optional)"),
         }
     }
 }
