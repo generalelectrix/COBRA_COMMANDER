@@ -7,21 +7,34 @@ use crate::control::CommandClient;
 use crate::ui_util::CloseHandler;
 use clock_panel::ClockPanel;
 
+#[derive(Default, PartialEq)]
+enum Tab {
+    #[default]
+    Config,
+}
+
 struct ConfigApp {
     client: CommandClient,
     clock_panel: ClockPanel,
     close_handler: CloseHandler,
+    active_tab: Tab,
 }
 
 impl eframe::App for ConfigApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.close_handler
-            .update("Close configuration?", ctx);
+            .update("Quit Cobra Commander?", ctx);
+
+        egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.active_tab, Tab::Config, "Config");
+            });
+        });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Show Configuration");
-            ui.separator();
-            self.clock_panel.ui(ui, &self.client);
+            match self.active_tab {
+                Tab::Config => self.clock_panel.ui(ui, &self.client),
+            }
         });
     }
 }
@@ -32,13 +45,14 @@ pub fn run_config_gui(client: CommandClient, zmq_ctx: zmq::Context) -> Result<()
         ..Default::default()
     };
     eframe::run_native(
-        "Cobra Commander Configuration",
+        "Cobra Commander",
         options,
         Box::new(move |_cc| {
             Ok(Box::new(ConfigApp {
                 clock_panel: ClockPanel::new(zmq_ctx),
                 client,
                 close_handler: CloseHandler::default(),
+                active_tab: Tab::default(),
             }))
         }),
     )
