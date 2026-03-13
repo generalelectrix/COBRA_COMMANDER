@@ -28,6 +28,7 @@ mod clock_service;
 mod clocks;
 mod color;
 mod config;
+mod config_gui;
 mod control;
 mod dmx;
 mod fixture;
@@ -37,6 +38,7 @@ mod osc;
 mod preview;
 mod show;
 mod strobe;
+mod ui_util;
 mod util;
 mod wled;
 
@@ -62,11 +64,7 @@ fn main() -> Result<()> {
 const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn run_show(args: RunArgs) -> Result<()> {
-    let patch = Patch::from_file(&args.patch_file)?;
-
     let zmq_ctx = Context::new();
-
-    let clocks = Clocks::internal(None);
 
     match local_ip() {
         Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
@@ -78,6 +76,37 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     // NOTE: this MUST be called before any other MIDI functions.
     install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
+
+    if args.gui && !args.quickstart {
+        // GUI mode: egui on main thread, Show on worker thread.
+        let gui_client = command_client.clone();
+        let gui_zmq = zmq_ctx.clone();
+
+        std::thread::spawn(move || {
+            if let Err(e) = run_show_worker(args, send_control_msg, recv_control_msg, zmq_ctx) {
+                error!("Show worker error: {e:#}");
+            }
+        });
+
+        config_gui::run_config_gui(gui_client, gui_zmq)?;
+    } else {
+        // Non-GUI path: existing behavior unchanged.
+        run_show_inline(args, command_client, send_control_msg, recv_control_msg, zmq_ctx)?;
+    }
+
+    Ok(())
+}
+
+/// Build and run the show on the current thread (non-GUI path).
+fn run_show_inline(
+    args: RunArgs,
+    command_client: CommandClient,
+    send_control_msg: std::sync::mpsc::Sender<crate::control::ControlMessage>,
+    recv_control_msg: std::sync::mpsc::Receiver<crate::control::ControlMessage>,
+    zmq_ctx: Context,
+) -> Result<()> {
+    let patch = Patch::from_file(&args.patch_file)?;
+    let clocks = Clocks::internal(None);
 
     let midi_devices = if args.quickstart {
         let (midi_inputs, midi_outputs) = list_ports()?;
@@ -149,7 +178,49 @@ fn run_show(args: RunArgs) -> Result<()> {
     }
 
     println!("Running show.");
+    show.run();
 
+    Ok(())
+}
+
+/// Build and run the show on a worker thread (GUI path).
+fn run_show_worker(
+    args: RunArgs,
+    send_control_msg: std::sync::mpsc::Sender<crate::control::ControlMessage>,
+    recv_control_msg: std::sync::mpsc::Receiver<crate::control::ControlMessage>,
+    zmq_ctx: Context,
+) -> Result<()> {
+    let patch = Patch::from_file(&args.patch_file)?;
+    let clocks = Clocks::internal(None);
+
+    let controller = Controller::new(
+        args.osc_receive_port,
+        vec![],
+        vec![],
+        send_control_msg,
+        recv_control_msg,
+    )?;
+
+    let universe_count = patch.universe_count();
+    println!("This show requires {universe_count} universe(s).");
+
+    let dmx_ports: Vec<Box<dyn DmxPort>> = (0..universe_count)
+        .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+        .collect();
+
+    let mut show = Show::new(
+        patch,
+        args.patch_file,
+        controller,
+        dmx_ports,
+        clocks,
+        None,
+        Previewer::default(),
+        args.master_strobe_channel,
+        zmq_ctx,
+    )?;
+
+    println!("Running show.");
     show.run();
 
     Ok(())
