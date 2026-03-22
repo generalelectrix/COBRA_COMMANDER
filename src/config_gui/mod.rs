@@ -6,7 +6,7 @@ use eframe::egui;
 
 use crate::control::CommandClient;
 use crate::gui_state::SharedGuiState;
-use crate::ui_util::CloseHandler;
+use crate::ui_util::{CloseHandler, ErrorModal};
 use clock_panel::ClockPanel;
 
 #[derive(Default, PartialEq)]
@@ -20,6 +20,7 @@ struct ConfigApp {
     client: CommandClient,
     clock_panel: ClockPanel,
     close_handler: CloseHandler,
+    error_modal: ErrorModal,
     active_tab: Tab,
     gui_state: SharedGuiState,
 }
@@ -38,12 +39,17 @@ impl eframe::App for ConfigApp {
         let clock_status = self.gui_state.clock_status.load();
 
         egui::CentralPanel::default().show(ctx, |ui| match self.active_tab {
-            Tab::Config => self.clock_panel.ui(ui, &self.client, &clock_status),
+            Tab::Config => {
+                self.clock_panel
+                    .ui(ui, &self.client, &clock_status, &mut self.error_modal);
+            }
             Tab::Midi => {
                 let midi_slots = self.gui_state.midi_slots.load();
                 midi_panel::ui(ui, &midi_slots);
             }
         });
+
+        self.error_modal.ui(ctx);
     }
 }
 
@@ -56,14 +62,16 @@ pub fn run_config_gui(
         viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 300.0]),
         ..Default::default()
     };
+    let initial_clock_status = gui_state.clock_status.load();
     eframe::run_native(
         "Cobra Commander",
         options,
         Box::new(move |_cc| {
             Ok(Box::new(ConfigApp {
-                clock_panel: ClockPanel::new(zmq_ctx),
+                clock_panel: ClockPanel::new(zmq_ctx, &initial_clock_status),
                 client,
                 close_handler: CloseHandler::default(),
+                error_modal: ErrorModal::default(),
                 active_tab: Tab::default(),
                 gui_state,
             }))

@@ -1,5 +1,33 @@
 use eframe::egui;
 
+/// Displays a modal error dialog that blocks interaction until dismissed.
+#[derive(Default)]
+pub struct ErrorModal {
+    message: Option<String>,
+}
+
+impl ErrorModal {
+    pub fn show(&mut self, error: String) {
+        self.message = Some(error);
+    }
+
+    pub fn ui(&mut self, ctx: &egui::Context) {
+        let Some(message) = &self.message else { return };
+        let modal_response = egui::Modal::new(egui::Id::new("error_modal")).show(ctx, |ui| {
+            ui.set_width(300.0);
+            ui.heading("Error");
+            ui.label(message.as_str());
+            ui.add_space(8.0);
+            if ui.button("OK").clicked() {
+                ui.close();
+            }
+        });
+        if modal_response.should_close() {
+            self.message = None;
+        }
+    }
+}
+
 /// Handles window close confirmation for egui apps.
 ///
 /// Intercepts the viewport close request, shows a confirmation dialog,
