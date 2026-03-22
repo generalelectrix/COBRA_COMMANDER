@@ -50,7 +50,7 @@ owo-colors = "4.2.3"
 [dev-dependencies]
 typetag = "0.2"
 tempfile = "3"
-egui_kittest = "0.32"
+egui_kittest = { version = "0.32", features = ["wgpu", "snapshot"] }
 
 [patch.'https://github.com/generalelectrix/tunnels']
 midi_harness = { path = "../tunnels/midi_harness" }

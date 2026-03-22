@@ -74,6 +74,53 @@ mod tests {
     }
 
     #[test]
+    fn render_empty_slots() {
+        let slots: Vec<SlotStatus> = vec![];
+        let mut harness = Harness::new_ui(|ui| {
+            super::ui(ui, &slots);
+        });
+        harness.run();
+        harness.snapshot("midi_panel_empty");
+    }
+
+    #[test]
+    fn render_populated_slots() {
+        let slots = vec![
+            SlotStatus {
+                name: "Submaster Wing 1".to_string(),
+                model: "Launch Control XL".to_string(),
+                input: PortStatus::Connected {
+                    name: "LXCL Input".to_string(),
+                },
+                output: PortStatus::Disconnected {
+                    name: "LXCL Output".to_string(),
+                },
+            },
+            SlotStatus {
+                name: "Clock Wing".to_string(),
+                model: "CMD MM-1".to_string(),
+                input: PortStatus::Unassigned,
+                output: PortStatus::Unassigned,
+            },
+            SlotStatus {
+                name: "Fader Wing".to_string(),
+                model: "nanoKONTROL2".to_string(),
+                input: PortStatus::Connected {
+                    name: "nanoKONTROL2 MIDI In".to_string(),
+                },
+                output: PortStatus::Connected {
+                    name: "nanoKONTROL2 MIDI Out".to_string(),
+                },
+            },
+        ];
+        let mut harness = Harness::new_ui(|ui| {
+            super::ui(ui, &slots);
+        });
+        harness.run();
+        harness.snapshot("midi_panel_populated");
+    }
+
+    #[test]
     fn populated_slots_shows_names_and_status() {
         let slots = vec![
             SlotStatus {

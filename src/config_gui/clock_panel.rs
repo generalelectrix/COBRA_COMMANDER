@@ -296,6 +296,99 @@ mod tests {
     }
 
     #[test]
+    fn render_internal_mode() {
+        let client = auto_respond_client();
+        let clock_status = ClockStatus::Internal {
+            audio_device: "Built-in Microphone".into(),
+        };
+        let mut error_modal = ErrorModal::default();
+        let mut harness = Harness::new_ui_state(
+            |ui, state: &mut ClockPanelState| {
+                ClockPanel {
+                    ctx: GuiContext {
+                        error_modal: &mut error_modal,
+                        client: &client,
+                    },
+                    state,
+                    clock_status: &clock_status,
+                }
+                .ui(ui);
+            },
+            ClockPanelState::test_new(
+                vec![
+                    "Built-in Microphone".to_string(),
+                    "USB Audio Interface".to_string(),
+                ],
+                vec!["clock-server-1".to_string()],
+                &clock_status,
+            ),
+        );
+        harness.run();
+        harness.snapshot("clock_panel_internal");
+    }
+
+    #[test]
+    fn render_remote_mode() {
+        let client = auto_respond_client();
+        let clock_status = ClockStatus::Remote {
+            provider: "studio-clock".into(),
+        };
+        let mut error_modal = ErrorModal::default();
+        let mut harness = Harness::new_ui_state(
+            |ui, state: &mut ClockPanelState| {
+                ClockPanel {
+                    ctx: GuiContext {
+                        error_modal: &mut error_modal,
+                        client: &client,
+                    },
+                    state,
+                    clock_status: &clock_status,
+                }
+                .ui(ui);
+            },
+            ClockPanelState::test_new(
+                vec!["Built-in Microphone".to_string()],
+                vec![
+                    "studio-clock".to_string(),
+                    "backup-clock".to_string(),
+                ],
+                &clock_status,
+            ),
+        );
+        harness.run();
+        harness.snapshot("clock_panel_remote");
+    }
+
+    #[test]
+    fn render_offline_status() {
+        let client = auto_respond_client();
+        let clock_status = ClockStatus::Internal {
+            audio_device: "Offline".into(),
+        };
+        let mut error_modal = ErrorModal::default();
+        let mut harness = Harness::new_ui_state(
+            |ui, state: &mut ClockPanelState| {
+                ClockPanel {
+                    ctx: GuiContext {
+                        error_modal: &mut error_modal,
+                        client: &client,
+                    },
+                    state,
+                    clock_status: &clock_status,
+                }
+                .ui(ui);
+            },
+            ClockPanelState::test_new(
+                vec!["Built-in Microphone".to_string()],
+                vec![],
+                &clock_status,
+            ),
+        );
+        harness.run();
+        harness.snapshot("clock_panel_offline");
+    }
+
+    #[test]
     fn switch_to_internal_fires_command() {
         let client = auto_respond_client();
         let clock_status = test_clock_status();
