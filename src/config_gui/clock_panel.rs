@@ -6,6 +6,7 @@ use zero_configure::pub_sub::SubscriberService;
 
 use crate::clock_service::{ClockService, browse_clock_providers, connect_to_provider};
 use crate::control::{CommandClient, MetaCommand};
+use crate::gui_state::ClockStatus;
 
 /// Abstraction over clock provider discovery and connection.
 pub(crate) trait ClockBrowser {
@@ -30,19 +31,15 @@ enum ClockMode {
     Remote,
 }
 
-enum ClockConfigState {
-    /// User is choosing clock mode and options.
-    Choosing {
-        mode: ClockMode,
-        selected_audio: usize,
-        selected_provider: Option<usize>,
-    },
-    /// Successfully configured.
-    Configured { description: String },
+struct ChoosingState {
+    mode: ClockMode,
+    selected_audio: usize,
+    selected_provider: Option<usize>,
 }
 
 pub struct ClockPanel {
-    state: ClockConfigState,
+    /// None = configured (read status from SharedGuiState), Some = user is choosing.
+    state: Option<ChoosingState>,
     /// Persistent — created at launch, browses forever.
     clock_browser: Box<dyn ClockBrowser>,
     /// Available audio input devices, populated once at construction.
@@ -57,65 +54,76 @@ impl ClockPanel {
         });
 
         Self {
-            state: ClockConfigState::Configured {
-                description: "Internal clocks (no audio)".to_string(),
-            },
+            state: None,
             clock_browser: Box::new(ZeroConfClockBrowser(browse_clock_providers(zmq_ctx))),
             audio_devices,
         }
     }
 
-    pub fn ui(&mut self, ui: &mut egui::Ui, client: &CommandClient) {
+    pub fn ui(&mut self, ui: &mut egui::Ui, client: &CommandClient, clock_status: &ClockStatus) {
         ui.heading("Clocks");
         ui.separator();
 
         // Helpers return an optional state transition to avoid double-mutable-borrow.
         let transition = match &mut self.state {
-            ClockConfigState::Choosing {
-                mode,
-                selected_audio,
-                selected_provider,
-            } => {
-                ui.radio_value(mode, ClockMode::Internal, "Internal Clocks");
-                ui.radio_value(mode, ClockMode::Remote, "Remote Clock Service");
+            Some(choosing) => {
+                ui.radio_value(&mut choosing.mode, ClockMode::Internal, "Internal Clocks");
+                ui.radio_value(&mut choosing.mode, ClockMode::Remote, "Remote Clock Service");
                 ui.add_space(8.0);
 
-                match *mode {
+                match choosing.mode {
                     ClockMode::Internal => {
-                        Self::ui_internal(ui, client, &self.audio_devices, selected_audio)
+                        Self::ui_internal(ui, client, &self.audio_devices, &mut choosing.selected_audio)
                     }
                     ClockMode::Remote => {
-                        Self::ui_remote(ui, client, &*self.clock_browser, selected_provider)
+                        Self::ui_remote(ui, client, &*self.clock_browser, &mut choosing.selected_provider)
                     }
                 }
             }
-            ClockConfigState::Configured { description } => {
-                ui.colored_label(egui::Color32::GREEN, format!("Configured: {description}"));
+            None => {
+                let label = match clock_status {
+                    ClockStatus::Internal { audio_device } => {
+                        format!("Internal clocks (audio: {audio_device})")
+                    }
+                    ClockStatus::Remote { provider } => {
+                        format!("Remote clock service ({provider})")
+                    }
+                };
+                ui.colored_label(egui::Color32::GREEN, label);
                 if ui.button("Reconfigure").clicked() {
-                    Some(ClockConfigState::Choosing {
-                        mode: ClockMode::Internal,
-                        selected_audio: 0,
-                        selected_provider: None,
-                    })
+                    Some(true)
                 } else {
                     None
                 }
             }
         };
 
-        if let Some(new_state) = transition {
-            self.state = new_state;
+        match transition {
+            // Reconfigure clicked — enter choosing state.
+            Some(true) => {
+                self.state = Some(ChoosingState {
+                    mode: ClockMode::Internal,
+                    selected_audio: 0,
+                    selected_provider: None,
+                });
+            }
+            // Successfully applied — return to configured state.
+            Some(false) => {
+                self.state = None;
+            }
+            None => {}
         }
     }
 }
 
 impl ClockPanel {
+    /// Returns Some(false) on successful apply (transition to configured).
     fn ui_internal(
         ui: &mut egui::Ui,
         client: &CommandClient,
         audio_devices: &[String],
         selected_audio: &mut usize,
-    ) -> Option<ClockConfigState> {
+    ) -> Option<bool> {
         if audio_devices.is_empty() {
             ui.label("No audio input devices found.");
         } else {
@@ -137,13 +145,9 @@ impl ClockPanel {
             } else {
                 Some(audio_devices[*selected_audio].clone())
             };
-            match client.send_command(MetaCommand::UseInternalClocks(device_name.clone())) {
+            match client.send_command(MetaCommand::UseInternalClocks(device_name)) {
                 Ok(()) => {
-                    let description = match device_name {
-                        Some(name) => format!("Internal clocks (audio: {name})"),
-                        None => "Internal clocks (no audio)".to_string(),
-                    };
-                    return Some(ClockConfigState::Configured { description });
+                    return Some(false);
                 }
                 Err(e) => {
                     error!("UseInternalClocks failed: {e}");
@@ -153,12 +157,13 @@ impl ClockPanel {
         None
     }
 
+    /// Returns Some(false) on successful connect (transition to configured).
     fn ui_remote(
         ui: &mut egui::Ui,
         client: &CommandClient,
         clock_browser: &dyn ClockBrowser,
         selected_provider: &mut Option<usize>,
-    ) -> Option<ClockConfigState> {
+    ) -> Option<bool> {
         let providers = clock_browser.list();
 
         if providers.is_empty() {
@@ -199,9 +204,7 @@ impl ClockPanel {
                 .and_then(|service| client.send_command(MetaCommand::UseClockService(service)))
             {
                 Ok(()) => {
-                    return Some(ClockConfigState::Configured {
-                        description: format!("Remote clock service ({provider_name})"),
-                    });
+                    return Some(false);
                 }
                 Err(e) => {
                     error!("Failed to connect to clock provider: {e}");
@@ -234,23 +237,28 @@ mod tests {
     impl ClockPanel {
         fn test_new(audio_devices: Vec<String>, providers: Vec<String>) -> Self {
             Self {
-                state: ClockConfigState::Choosing {
+                state: Some(ChoosingState {
                     mode: ClockMode::Internal,
                     selected_audio: 0,
                     selected_provider: None,
-                },
+                }),
                 clock_browser: Box::new(MockClockBrowser { providers }),
                 audio_devices,
             }
         }
     }
 
+    fn test_clock_status() -> ClockStatus {
+        ClockStatus::Internal { audio_device: "Offline".into() }
+    }
+
     #[test]
     fn internal_apply_no_audio_transitions_to_configured() {
         let client = auto_respond_client();
+        let clock_status = test_clock_status();
         let mut harness = Harness::new_ui_state(
             |ui, panel: &mut ClockPanel| {
-                panel.ui(ui, &client);
+                panel.ui(ui, &client, &clock_status);
             },
             ClockPanel::test_new(vec![], vec![]),
         );
@@ -259,17 +267,16 @@ mod tests {
         harness.run();
 
         let panel = harness.state();
-        assert!(
-            matches!(&panel.state, ClockConfigState::Configured { description } if description.contains("no audio")),
-        );
+        assert!(panel.state.is_none());
     }
 
     #[test]
     fn internal_apply_with_audio_transitions_to_configured() {
         let client = auto_respond_client();
+        let clock_status = test_clock_status();
         let mut harness = Harness::new_ui_state(
             |ui, panel: &mut ClockPanel| {
-                panel.ui(ui, &client);
+                panel.ui(ui, &client, &clock_status);
             },
             ClockPanel::test_new(vec!["Built-in Mic".to_string()], vec![]),
         );
@@ -278,22 +285,19 @@ mod tests {
         harness.run();
 
         let panel = harness.state();
-        assert!(
-            matches!(&panel.state, ClockConfigState::Configured { description } if description.contains("Built-in Mic")),
-        );
+        assert!(panel.state.is_none());
     }
 
     #[test]
     fn configured_reconfigure_returns_to_choosing() {
         let client = auto_respond_client();
+        let clock_status = ClockStatus::Internal { audio_device: "test config".into() };
         let mut harness = Harness::new_ui_state(
             |ui, panel: &mut ClockPanel| {
-                panel.ui(ui, &client);
+                panel.ui(ui, &client, &clock_status);
             },
             ClockPanel {
-                state: ClockConfigState::Configured {
-                    description: "test config".to_string(),
-                },
+                state: None,
                 clock_browser: Box::new(MockClockBrowser { providers: vec![] }),
                 audio_devices: vec![],
             },
@@ -303,15 +307,16 @@ mod tests {
         harness.run();
 
         let panel = harness.state();
-        assert!(matches!(&panel.state, ClockConfigState::Choosing { .. }));
+        assert!(panel.state.is_some());
     }
 
     #[test]
     fn remote_no_providers_shows_searching() {
         let client = auto_respond_client();
+        let clock_status = test_clock_status();
         let mut harness = Harness::new_ui_state(
             |ui, panel: &mut ClockPanel| {
-                panel.ui(ui, &client);
+                panel.ui(ui, &client, &clock_status);
             },
             ClockPanel::test_new(vec![], vec![]),
         );
@@ -332,9 +337,10 @@ mod tests {
     #[test]
     fn remote_providers_listed_as_radio_buttons() {
         let client = auto_respond_client();
+        let clock_status = test_clock_status();
         let mut harness = Harness::new_ui_state(
             |ui, panel: &mut ClockPanel| {
-                panel.ui(ui, &client);
+                panel.ui(ui, &client, &clock_status);
             },
             ClockPanel::test_new(vec![], vec!["clock-server-1".to_string()]),
         );
@@ -350,9 +356,10 @@ mod tests {
     #[test]
     fn switch_remote_back_to_internal_apply_with_audio() {
         let client = crate::show::test_support::test_show_client();
+        let clock_status = test_clock_status();
         let mut harness = Harness::new_ui_state(
             |ui, panel: &mut ClockPanel| {
-                panel.ui(ui, &client);
+                panel.ui(ui, &client, &clock_status);
             },
             ClockPanel::test_new(
                 vec!["Built-in Mic".to_string()],
@@ -374,23 +381,18 @@ mod tests {
 
         let panel = harness.state();
         assert!(
-            matches!(&panel.state, ClockConfigState::Configured { description } if description.contains("Built-in Mic")),
-            "Expected Configured with audio device, got {:?}",
-            match &panel.state {
-                ClockConfigState::Choosing { mode, .. } =>
-                    format!("Choosing(mode={:?})", mode == &ClockMode::Internal),
-                ClockConfigState::Configured { description } =>
-                    format!("Configured({description})"),
-            }
+            panel.state.is_none(),
+            "Expected configured (state=None) after Apply"
         );
     }
 
     #[test]
     fn remote_connect_disabled_until_selection() {
         let client = auto_respond_client();
+        let clock_status = test_clock_status();
         let mut harness = Harness::new_ui_state(
             |ui, panel: &mut ClockPanel| {
-                panel.ui(ui, &client);
+                panel.ui(ui, &client, &clock_status);
             },
             ClockPanel::test_new(vec![], vec!["clock-server-1".to_string()]),
         );
@@ -406,6 +408,6 @@ mod tests {
 
         // Still in Choosing state — the disabled button did nothing.
         let panel = harness.state();
-        assert!(matches!(&panel.state, ClockConfigState::Choosing { .. }));
+        assert!(panel.state.is_some());
     }
 }

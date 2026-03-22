@@ -12,19 +12,29 @@ use tunnels_lib::prompt::{prompt_bool, prompt_parse};
 use zero_configure::pub_sub::SubscriberService;
 use zmq::Context;
 
-pub struct ClockService(Arc<Mutex<SharedClockData>>);
+pub struct ClockService {
+    data: Arc<Mutex<SharedClockData>>,
+    provider: String,
+}
 
 impl ClockService {
     pub fn get(&self) -> SharedClockData {
-        let val = self.0.lock().unwrap();
+        let val = self.data.lock().unwrap();
         (*val).clone()
+    }
+
+    pub fn provider(&self) -> &str {
+        &self.provider
     }
 }
 
 #[cfg(test)]
 impl ClockService {
     pub fn test_new() -> Self {
-        Self(Arc::new(Mutex::new(SharedClockData::default())))
+        Self {
+            data: Arc::new(Mutex::new(SharedClockData::default())),
+            provider: "test".to_string(),
+        }
     }
 }
 
@@ -67,7 +77,10 @@ pub fn connect_to_provider(
             *clock_state = msg;
         }
     });
-    Ok(ClockService(storage))
+    Ok(ClockService {
+        data: storage,
+        provider: provider.to_string(),
+    })
 }
 
 /// Prompt the user to start the clock service.

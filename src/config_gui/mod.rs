@@ -35,8 +35,10 @@ impl eframe::App for ConfigApp {
             });
         });
 
+        let clock_status = self.gui_state.clock_status.load();
+
         egui::CentralPanel::default().show(ctx, |ui| match self.active_tab {
-            Tab::Config => self.clock_panel.ui(ui, &self.client),
+            Tab::Config => self.clock_panel.ui(ui, &self.client, &clock_status),
             Tab::Midi => {
                 let midi_slots = self.gui_state.midi_slots.load();
                 midi_panel::ui(ui, &midi_slots);

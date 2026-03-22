@@ -17,7 +17,7 @@ use zmq::Context;
 use crate::animation_visualizer::run_animation_visualizer;
 use crate::cli::*;
 use crate::control::{CommandClient, Controller};
-use crate::gui_state::{GuiState, SharedGuiState};
+use crate::gui_state::{ClockStatus, GuiState, SharedGuiState};
 use crate::midi::ControlHandler;
 use crate::preview::Previewer;
 use crate::show::Show;
@@ -84,7 +84,10 @@ fn run_show(args: RunArgs) -> Result<()> {
         // GUI mode: egui on main thread, Show on worker thread.
         let gui_client = command_client.clone();
         let gui_zmq = zmq_ctx.clone();
-        let gui_state: SharedGuiState = Arc::new(GuiState::new());
+        let gui_state: SharedGuiState = Arc::new(GuiState::new(
+            vec![],
+            ClockStatus::Internal { audio_device: "Offline".into() },
+        ));
         let show_gui_state = gui_state.clone();
 
         std::thread::spawn(move || {
@@ -171,7 +174,10 @@ fn run_show_inline(
             .collect()
     };
 
-    let gui_state: SharedGuiState = Arc::new(GuiState::new());
+    let gui_state: SharedGuiState = Arc::new(GuiState::new(
+        vec![],
+        clocks.status(),
+    ));
 
     let mut show = Show::new(
         patch,

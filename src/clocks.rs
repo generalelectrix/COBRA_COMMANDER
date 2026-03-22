@@ -10,6 +10,7 @@ use tunnels::{
 use crate::{
     clock_service::ClockService,
     control::Controller,
+    gui_state::ClockStatus,
     osc::{GroupControlMap, OscControlMessage},
 };
 
@@ -39,6 +40,18 @@ impl Clocks {
         match self {
             Self::Internal { .. } => true,
             Self::Service(_) => false,
+        }
+    }
+
+    /// Return the current clock status for GUI display.
+    pub fn status(&self) -> ClockStatus {
+        match self {
+            Self::Service(service) => ClockStatus::Remote {
+                provider: service.provider().to_string(),
+            },
+            Self::Internal { audio_input, .. } => ClockStatus::Internal {
+                audio_device: audio_input.device_name().to_string(),
+            },
         }
     }
 

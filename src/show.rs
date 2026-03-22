@@ -254,7 +254,7 @@ impl Show {
                 self.clocks = Clocks::Service(service);
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
-                Ok(GuiDirty::MIDI_SLOTS)
+                Ok(GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE)
             }
             MetaCommand::UseInternalClocks(device_name) => {
                 let audio_input = device_name
@@ -263,7 +263,7 @@ impl Show {
                 self.clocks = Clocks::internal(audio_input);
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
-                Ok(GuiDirty::MIDI_SLOTS)
+                Ok(GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE)
             }
             MetaCommand::StartAnimationVisualizer => {
                 if self.animation_service.is_none() {
@@ -408,6 +408,11 @@ impl Show {
             self.gui_state
                 .midi_slots
                 .store(Arc::new(self.controller.midi_slot_statuses()));
+        }
+        if dirty.contains(GuiDirty::CLOCK_STATE) {
+            self.gui_state
+                .clock_status
+                .store(Arc::new(self.clocks.status()));
         }
     }
 
@@ -621,7 +626,12 @@ impl Show {
         let universe_count = patch.universe_count();
         let channels = Channels::from_iter(patch.channels().cloned());
         let initial_channel = channels.current_channel();
-        let gui_state: SharedGuiState = Arc::new(crate::gui_state::GuiState::new());
+        let clocks = Clocks::test_new();
+        let initial_clock_status = clocks.status();
+        let gui_state: SharedGuiState = Arc::new(crate::gui_state::GuiState::new(
+            vec![],
+            initial_clock_status,
+        ));
         let mut show = Self {
             zmq_ctx: zmq::Context::new(),
             controller,
@@ -634,7 +644,7 @@ impl Show {
             channels,
             master_controls: Default::default(),
             animation_ui_state: AnimationUIState::new(initial_channel),
-            clocks: Clocks::test_new(),
+            clocks,
             animation_service: None,
             preview: Previewer::Off,
             master_strobe_channel: false,
