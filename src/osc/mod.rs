@@ -37,6 +37,7 @@ mod sender;
 mod unipolar_array;
 
 pub use control_message::OscControlMessage;
+pub use sender::OscClientReader;
 
 /// Emit an implicitly-scoped OSC message.
 pub trait EmitScopedOscMessage {
@@ -57,6 +58,7 @@ pub trait EmitOscMessage {
 
 pub struct OscController {
     send: Sender<OscSenderCommand>,
+    client_reader: OscClientReader,
 }
 
 impl OscController {
@@ -74,7 +76,7 @@ impl OscController {
             listener.run();
         });
 
-        let (mut sender, response_send) =
+        let (mut sender, response_send, client_reader) =
             OscSender::new(send_addrs).context("failed to start OSC sender")?;
 
         thread::spawn(move || {
@@ -83,6 +85,7 @@ impl OscController {
 
         Ok(Self {
             send: response_send,
+            client_reader,
         })
     }
 
@@ -104,6 +107,11 @@ impl OscController {
         }
     }
 
+    /// Get a reader handle for the shared client list.
+    pub fn client_reader(&self) -> OscClientReader {
+        self.client_reader.clone()
+    }
+
     /// Deregister an OSC client.
     pub fn deregister(&self, client_id: OscClientId) {
         if self
@@ -120,7 +128,8 @@ impl OscController {
 impl OscController {
     pub fn test_new() -> (Self, std::sync::mpsc::Receiver<OscSenderCommand>) {
         let (send, recv) = std::sync::mpsc::channel();
-        (Self { send }, recv)
+        let (_writer, client_reader) = sender::OscClientWriter::new(vec![]);
+        (Self { send, client_reader }, recv)
     }
 }
 
@@ -198,6 +207,11 @@ impl OscClientId {
     #[cfg(test)]
     pub fn example() -> Self {
         Self(SocketAddr::from_str("127.0.0.1:9999").unwrap())
+    }
+
+    #[cfg(test)]
+    pub fn from_addr(addr: SocketAddr) -> Self {
+        Self(addr)
     }
 }
 

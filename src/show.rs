@@ -158,17 +158,6 @@ impl Show {
         };
 
         match msg {
-            ControlMessage::RegisterClient(client_id) => {
-                println!("Registering new OSC client at {client_id}.");
-                self.controller.register_osc_client(client_id);
-                self.refresh_ui();
-                Ok(GuiDirty::CLEAN)
-            }
-            ControlMessage::DeregisterClient(client_id) => {
-                println!("Deregistering OSC client at {}.", client_id);
-                self.controller.deregister_osc_client(client_id);
-                Ok(GuiDirty::CLEAN)
-            }
             ControlMessage::MidiDeviceChange(change) => {
                 let needs_ui_refresh = self.controller.handle_device_change(change)?;
                 if needs_ui_refresh {
@@ -264,6 +253,17 @@ impl Show {
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
                 Ok(GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE)
+            }
+            MetaCommand::RegisterOscClient(client_id) => {
+                println!("Registering new OSC client at {client_id}.");
+                self.controller.register_osc_client(client_id);
+                self.refresh_ui();
+                Ok(GuiDirty::CLEAN)
+            }
+            MetaCommand::DropOscClient(client_id) => {
+                println!("Deregistering OSC client at {client_id}.");
+                self.controller.deregister_osc_client(client_id);
+                Ok(GuiDirty::CLEAN)
             }
             MetaCommand::StartAnimationVisualizer => {
                 if self.animation_service.is_none() {
@@ -631,6 +631,8 @@ impl Show {
         let gui_state: SharedGuiState = Arc::new(crate::gui_state::GuiState::new(
             vec![],
             initial_clock_status,
+            String::new(),
+            controller.osc_client_reader(),
         ));
         let mut show = Self {
             zmq_ctx: zmq::Context::new(),

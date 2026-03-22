@@ -84,17 +84,33 @@ fn run_show(args: RunArgs) -> Result<()> {
         // GUI mode: egui on main thread, Show on worker thread.
         let gui_client = command_client.clone();
         let gui_zmq = zmq_ctx.clone();
+
+        let osc_listen_addr = match local_ip() {
+            Ok(ip) => format!("{ip}:{}", args.osc_receive_port),
+            Err(_) => format!("0.0.0.0:{}", args.osc_receive_port),
+        };
+
+        let controller = Controller::new(
+            args.osc_receive_port,
+            vec![],
+            vec![],
+            send_control_msg,
+            recv_control_msg,
+        )?;
+        let osc_client_reader = controller.osc_client_reader();
+
         let gui_state: SharedGuiState = Arc::new(GuiState::new(
             vec![],
             ClockStatus::Internal { audio_device: "Offline".into() },
+            osc_listen_addr,
+            osc_client_reader,
         ));
         let show_gui_state = gui_state.clone();
 
         std::thread::spawn(move || {
             if let Err(e) = run_show_worker(
                 args,
-                send_control_msg,
-                recv_control_msg,
+                controller,
                 zmq_ctx,
                 show_gui_state,
             ) {
@@ -174,9 +190,17 @@ fn run_show_inline(
             .collect()
     };
 
+    let osc_listen_addr = match local_ip() {
+        Ok(ip) => format!("{ip}:{}", args.osc_receive_port),
+        Err(_) => format!("0.0.0.0:{}", args.osc_receive_port),
+    };
+    let osc_client_reader = controller.osc_client_reader();
+
     let gui_state: SharedGuiState = Arc::new(GuiState::new(
         vec![],
         clocks.status(),
+        osc_listen_addr,
+        osc_client_reader,
     ));
 
     let mut show = Show::new(
@@ -212,21 +236,12 @@ fn run_show_inline(
 /// Build and run the show on a worker thread (GUI path).
 fn run_show_worker(
     args: RunArgs,
-    send_control_msg: std::sync::mpsc::Sender<crate::control::ControlMessage>,
-    recv_control_msg: std::sync::mpsc::Receiver<crate::control::ControlMessage>,
+    controller: Controller,
     zmq_ctx: Context,
     gui_state: SharedGuiState,
 ) -> Result<()> {
     let patch = Patch::from_file(&args.patch_file)?;
     let clocks = Clocks::internal(None);
-
-    let controller = Controller::new(
-        args.osc_receive_port,
-        vec![],
-        vec![],
-        send_control_msg,
-        recv_control_msg,
-    )?;
 
     let universe_count = patch.universe_count();
     println!("This show requires {universe_count} universe(s).");

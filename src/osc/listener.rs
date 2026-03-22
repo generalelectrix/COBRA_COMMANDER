@@ -1,6 +1,6 @@
 //! Listen for incoming OSC messages, process them, and forward them along.
 
-use crate::control::ControlMessage;
+use crate::control::{ControlMessage, MetaCommand};
 use crate::osc::{OscClientId, OscControlMessage, OscError};
 use anyhow::Result;
 use log::error;
@@ -56,7 +56,10 @@ impl OscListener {
                 if m.addr == "/deregister" {
                     self.clients.retain(|c| *c != client_id);
                     self.send
-                        .send(ControlMessage::DeregisterClient(client_id))
+                        .send(ControlMessage::Meta(
+                            MetaCommand::DropOscClient(client_id),
+                            None,
+                        ))
                         .unwrap();
                     return Ok(());
                 }
@@ -87,7 +90,10 @@ impl OscListener {
             if !self.clients.contains(&client_id) {
                 self.clients.push(client_id);
                 self.send
-                    .send(ControlMessage::RegisterClient(client_id))
+                    .send(ControlMessage::Meta(
+                        MetaCommand::RegisterOscClient(client_id),
+                        None,
+                    ))
                     .unwrap();
             }
 

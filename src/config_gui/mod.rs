@@ -1,5 +1,23 @@
+//! GUI configuration panels for Cobra Commander.
+//!
+//! # Panel patterns
+//!
+//! Panels follow a complexity gradient:
+//!
+//! - **Read-only**: bare function `fn ui(ui, &Data)`
+//! - **Read + commands**: function taking `GuiContext`
+//! - **Stateful + commands**: `FooPanelState` + `FooPanel<'a>` render wrapper
+//!
+//! # State flow
+//!
+//! - Show → GUI: `ArcSwap` fields on `SharedGuiState` (lock-free reads)
+//! - GUI → Show: `MetaCommand` via `GuiContext::send_command()` (blocking with error modal)
+//! - Panel-local UI state (combo box selections, etc.) lives in `FooPanelState`
+//!   and syncs from the authoritative Show state via `sync_from_status()`
+
 mod clock_panel;
 mod midi_panel;
+mod osc_panel;
 
 use anyhow::Result;
 use eframe::egui;
@@ -14,6 +32,7 @@ enum Tab {
     #[default]
     Config,
     Midi,
+    Osc,
 }
 
 struct ConfigApp {
@@ -33,6 +52,7 @@ impl eframe::App for ConfigApp {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.active_tab, Tab::Config, "Config");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
+                ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
             });
         });
 
@@ -53,6 +73,14 @@ impl eframe::App for ConfigApp {
             Tab::Midi => {
                 let midi_slots = self.gui_state.midi_slots.load();
                 midi_panel::ui(ui, &midi_slots);
+            }
+            Tab::Osc => {
+                let clients = self.gui_state.osc_clients.load();
+                let mut ctx = GuiContext {
+                    error_modal: &mut self.error_modal,
+                    client: &self.client,
+                };
+                osc_panel::ui(ui, &mut ctx, &self.gui_state.osc_listen_addr, &clients);
             }
         });
 

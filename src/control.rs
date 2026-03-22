@@ -17,8 +17,8 @@ use crate::{
         MidiControlMessage, MidiController,
     },
     osc::{
-        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscControlMessage, OscControlResponse,
-        OscController, ScopedControlEmitter, TalkbackMode,
+        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscClientReader, OscControlMessage,
+        OscControlResponse, OscController, ScopedControlEmitter, TalkbackMode,
     },
 };
 
@@ -80,6 +80,11 @@ impl Controller {
     /// Deregister an OSC client.
     pub fn deregister_osc_client(&mut self, client_id: OscClientId) {
         self.osc.deregister(client_id);
+    }
+
+    /// Get a reader handle for the shared OSC client list.
+    pub fn osc_client_reader(&self) -> OscClientReader {
+        self.osc.client_reader()
     }
 
     /// Add a MIDI device.
@@ -305,6 +310,8 @@ pub enum MetaCommand {
     },
     UseClockService(crate::clock_service::ClockService),
     UseInternalClocks(Option<String>),
+    RegisterOscClient(OscClientId),
+    DropOscClient(OscClientId),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -326,6 +333,8 @@ impl fmt::Debug for MetaCommand {
             Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
             Self::UseClockService(_) => write!(f, "UseClockService"),
             Self::UseInternalClocks(device) => write!(f, "UseInternalClocks({device:?})"),
+            Self::RegisterOscClient(id) => write!(f, "RegisterOscClient({id})"),
+            Self::DropOscClient(id) => write!(f, "DropOscClient({id})"),
         }
     }
 }
@@ -350,8 +359,6 @@ pub fn meta_command_from_osc(msg: &OscControlMessage) -> Result<Option<MetaComma
 }
 
 pub enum ControlMessage {
-    RegisterClient(OscClientId),
-    DeregisterClient(OscClientId),
     MidiDeviceChange(DeviceChange),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
