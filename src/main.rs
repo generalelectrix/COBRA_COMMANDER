@@ -8,6 +8,7 @@ use midi::Device;
 use midi_harness::install_midi_device_change_handler;
 use rust_dmx::{DmxPort, OfflineDmxPort, available_ports};
 use simplelog::{Config as LogConfig, SimpleLogger};
+use std::sync::Arc;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 use tunnels::midi::list_ports;
@@ -16,6 +17,7 @@ use zmq::Context;
 use crate::animation_visualizer::run_animation_visualizer;
 use crate::cli::*;
 use crate::control::{CommandClient, Controller};
+use crate::gui_state::{GuiState, SharedGuiState};
 use crate::midi::ControlHandler;
 use crate::preview::Previewer;
 use crate::show::Show;
@@ -32,6 +34,7 @@ mod config_gui;
 mod control;
 mod dmx;
 mod fixture;
+mod gui_state;
 mod master;
 mod midi;
 mod osc;
@@ -81,14 +84,22 @@ fn run_show(args: RunArgs) -> Result<()> {
         // GUI mode: egui on main thread, Show on worker thread.
         let gui_client = command_client.clone();
         let gui_zmq = zmq_ctx.clone();
+        let gui_state: SharedGuiState = Arc::new(GuiState::new());
+        let show_gui_state = gui_state.clone();
 
         std::thread::spawn(move || {
-            if let Err(e) = run_show_worker(args, send_control_msg, recv_control_msg, zmq_ctx) {
+            if let Err(e) = run_show_worker(
+                args,
+                send_control_msg,
+                recv_control_msg,
+                zmq_ctx,
+                show_gui_state,
+            ) {
                 error!("Show worker error: {e:#}");
             }
         });
 
-        config_gui::run_config_gui(gui_client, gui_zmq)?;
+        config_gui::run_config_gui(gui_client, gui_zmq, gui_state)?;
     } else {
         // Non-GUI path: existing behavior unchanged.
         run_show_inline(
@@ -160,6 +171,8 @@ fn run_show_inline(
             .collect()
     };
 
+    let gui_state: SharedGuiState = Arc::new(GuiState::new());
+
     let mut show = Show::new(
         patch,
         args.patch_file,
@@ -172,6 +185,7 @@ fn run_show_inline(
             .unwrap_or_default(),
         args.master_strobe_channel,
         zmq_ctx,
+        gui_state,
     )?;
 
     if !args.quickstart {
@@ -195,6 +209,7 @@ fn run_show_worker(
     send_control_msg: std::sync::mpsc::Sender<crate::control::ControlMessage>,
     recv_control_msg: std::sync::mpsc::Receiver<crate::control::ControlMessage>,
     zmq_ctx: Context,
+    gui_state: SharedGuiState,
 ) -> Result<()> {
     let patch = Patch::from_file(&args.patch_file)?;
     let clocks = Clocks::internal(None);
@@ -224,6 +239,7 @@ fn run_show_worker(
         Previewer::default(),
         args.master_strobe_channel,
         zmq_ctx,
+        gui_state,
     )?;
 
     println!("Running show.");

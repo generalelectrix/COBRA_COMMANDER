@@ -7,7 +7,7 @@ use enum_dispatch::enum_dispatch;
 use log::error;
 use midi_harness::{
     DeviceChange, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice, MidiPortSpec,
-    Output,
+    Output, SlotStatus,
 };
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
@@ -220,6 +220,11 @@ impl MidiController {
     /// Return the names of all device slots.
     pub fn device_names(&self) -> Vec<String> {
         self.0.borrow().slot_names()
+    }
+
+    /// Return a snapshot of the status of every slot.
+    pub fn slot_statuses(&self) -> Vec<SlotStatus> {
+        self.0.borrow().slot_statuses()
     }
 
     /// Handle a device appearing or disappearing.

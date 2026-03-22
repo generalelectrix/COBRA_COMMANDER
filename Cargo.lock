@@ -268,6 +268,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a07d1f37ff60921c83bdfc7407723bdefe89b44b98a9b772f225c8f9d67141a6"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -895,6 +904,8 @@ version = "0.1.0"
 dependencies = [
  "ansi-escapes",
  "anyhow",
+ "arc-swap",
+ "bitflags 2.11.0",
  "clap",
  "color_organ",
  "eframe",
@@ -3051,7 +3062,6 @@ dependencies = [
 [[package]]
 name = "midi_harness"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#ceacbc9b3dcfbab4e69dc87c45f579776884037e"
 dependencies = [
  "anyhow",
  "coremidi-hotplug-notification",
@@ -5776,7 +5786,6 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#ceacbc9b3dcfbab4e69dc87c45f579776884037e"
 dependencies = [
  "anyhow",
  "audio-processor-analysis",
@@ -5804,7 +5813,6 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#ceacbc9b3dcfbab4e69dc87c45f579776884037e"
 dependencies = [
  "anyhow",
  "derive_more 2.1.1",
@@ -7460,7 +7468,6 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#ceacbc9b3dcfbab4e69dc87c45f579776884037e"
 dependencies = [
  "anyhow",
  "async-dnssd",

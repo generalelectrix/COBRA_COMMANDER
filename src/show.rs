@@ -1,5 +1,6 @@
 use std::{
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -17,6 +18,7 @@ use crate::{
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
+    gui_state::{GuiDirty, SharedGuiState},
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
     osc::{OscControlMessage, ScopedControlEmitter},
@@ -45,6 +47,7 @@ pub struct Show {
     animation_service: Option<AnimationPublisher>,
     preview: Previewer,
     master_strobe_channel: bool,
+    gui_state: SharedGuiState,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -66,6 +69,7 @@ impl Show {
         preview: Previewer,
         master_strobe_channel: bool,
         zmq_ctx: zmq::Context,
+        gui_state: SharedGuiState,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
 
@@ -92,10 +96,12 @@ impl Show {
             animation_service,
             preview,
             master_strobe_channel,
+            gui_state,
         };
         show.reconcile_submaster_wings()?;
         show.reconcile_clock_wing()?;
         show.refresh_ui();
+        show.snapshot_gui_state(GuiDirty::all());
         Ok(show)
     }
 
@@ -105,8 +111,13 @@ impl Show {
 
         loop {
             // Process a control event if one is pending.
-            if let Err(err) = self.control(CONTROL_TIMEOUT) {
-                error!("A control error occurred: {err:#}.");
+            match self.control(CONTROL_TIMEOUT) {
+                Ok(dirty) => {
+                    if !dirty.is_empty() {
+                        self.snapshot_gui_state(dirty);
+                    }
+                }
+                Err(err) => error!("A control error occurred: {err:#}."),
             }
 
             // Compute updates until we're current.
@@ -138,11 +149,11 @@ impl Show {
     /// Handle at most one control message.
     ///
     /// Wait for the provided duration for a message to appear.
-    fn control(&mut self, timeout: Duration) -> Result<()> {
+    fn control(&mut self, timeout: Duration) -> Result<GuiDirty> {
         let msg = match self.controller.recv(timeout)? {
             Some(m) => m,
             None => {
-                return Ok(());
+                return Ok(GuiDirty::CLEAN);
             }
         };
 
@@ -151,26 +162,29 @@ impl Show {
                 println!("Registering new OSC client at {client_id}.");
                 self.controller.register_osc_client(client_id);
                 self.refresh_ui();
-                Ok(())
+                Ok(GuiDirty::CLEAN)
             }
             ControlMessage::DeregisterClient(client_id) => {
                 println!("Deregistering OSC client at {}.", client_id);
                 self.controller.deregister_osc_client(client_id);
-                Ok(())
+                Ok(GuiDirty::CLEAN)
             }
             ControlMessage::MidiDeviceChange(change) => {
                 let needs_ui_refresh = self.controller.handle_device_change(change)?;
                 if needs_ui_refresh {
                     self.refresh_ui();
                 }
-                Ok(())
+                Ok(GuiDirty::MIDI_SLOTS)
             }
-            ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
+            ControlMessage::Midi(msg) => {
+                self.handle_midi_message(&msg)?;
+                Ok(GuiDirty::CLEAN)
+            }
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
             ControlMessage::Meta(cmd, reply) => {
                 let result = self.handle_meta_command(cmd);
                 if let Some(reply) = reply {
-                    let _ = reply.send(result.as_ref().map_err(|e| format!("{e:#}")).copied());
+                    let _ = reply.send(result.as_ref().map(|_| ()).map_err(|e| format!("{e:#}")));
                 }
                 result
             }
@@ -178,7 +192,7 @@ impl Show {
     }
 
     /// Handle a meta-command.
-    fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<()> {
+    fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<GuiDirty> {
         match cmd {
             MetaCommand::ReloadPatch => {
                 self.patch.repatch_from_file(&self.patch_file_path)?;
@@ -209,37 +223,38 @@ impl Show {
                 for buf in &mut self.dmx_buffers {
                     buf.fill(0);
                 }
-                Ok(())
+                Ok(GuiDirty::MIDI_SLOTS)
             }
             MetaCommand::RefreshUI => {
                 self.refresh_ui();
-                Ok(())
+                Ok(GuiDirty::all())
             }
             MetaCommand::ResetAllAnimations => {
                 for group in self.patch.iter_mut() {
                     group.reset_animations();
                 }
                 self.refresh_ui();
-                Ok(())
+                Ok(GuiDirty::CLEAN)
             }
             MetaCommand::AssignDmxPort { universe, port } => {
-                assign_dmx_port(&mut self.dmx_ports, &mut self.dmx_buffers, universe, port)
+                assign_dmx_port(&mut self.dmx_ports, &mut self.dmx_buffers, universe, port)?;
+                Ok(GuiDirty::CLEAN)
             }
             MetaCommand::AddMidiDevice(spec) => {
                 self.controller.add_midi_device(spec)?;
                 self.refresh_ui();
-                Ok(())
+                Ok(GuiDirty::MIDI_SLOTS)
             }
             MetaCommand::ClearMidiDevice { slot_name } => {
                 self.controller.clear_midi_device(&slot_name)?;
                 self.refresh_ui();
-                Ok(())
+                Ok(GuiDirty::MIDI_SLOTS)
             }
             MetaCommand::UseClockService(service) => {
                 self.clocks = Clocks::Service(service);
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
-                Ok(())
+                Ok(GuiDirty::MIDI_SLOTS)
             }
             MetaCommand::UseInternalClocks(device_name) => {
                 let audio_input = device_name
@@ -248,7 +263,7 @@ impl Show {
                 self.clocks = Clocks::internal(audio_input);
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
-                Ok(())
+                Ok(GuiDirty::MIDI_SLOTS)
             }
             MetaCommand::StartAnimationVisualizer => {
                 if self.animation_service.is_none() {
@@ -260,7 +275,7 @@ impl Show {
                     .arg(Command::Viz.to_string())
                     .spawn()
                     .context("failed to start animation visualizer")?;
-                Ok(())
+                Ok(GuiDirty::CLEAN)
             }
         }
     }
@@ -323,7 +338,7 @@ impl Show {
     }
 
     /// Handle a single OSC message.
-    fn handle_osc_message(&mut self, msg: &OscControlMessage) -> Result<()> {
+    fn handle_osc_message(&mut self, msg: &OscControlMessage) -> Result<GuiDirty> {
         let sender = self.controller.sender_with_metadata(Some(&msg.client_id));
 
         match msg.group() {
@@ -331,13 +346,21 @@ impl Show {
                 if let Some(cmd) = meta_command_from_osc(msg)? {
                     self.handle_meta_command(cmd)
                 } else {
-                    Ok(())
+                    Ok(GuiDirty::CLEAN)
                 }
             }
-            crate::master::GROUP => self.master_controls.control_osc(msg, &sender),
+            crate::master::GROUP => {
+                self.master_controls.control_osc(msg, &sender)?;
+                Ok(GuiDirty::CLEAN)
+            }
             crate::osc::channels::GROUP => {
-                self.channels
-                    .control_osc(msg, &mut self.patch, &self.animation_ui_state, &sender)
+                self.channels.control_osc(
+                    msg,
+                    &mut self.patch,
+                    &self.animation_ui_state,
+                    &sender,
+                )?;
+                Ok(GuiDirty::CLEAN)
             }
             crate::osc::animation::GROUP => {
                 let Some(channel) = self.channels.current_channel() else {
@@ -354,15 +377,37 @@ impl Show {
                         entity: crate::osc::animation::GROUP,
                         emitter: &sender,
                     },
-                )
+                )?;
+                Ok(GuiDirty::CLEAN)
             }
-            crate::osc::audio::GROUP => self.clocks.control_audio_osc(msg, &mut self.controller),
-            crate::osc::clock::GROUP => self.clocks.control_clock_osc(msg, &mut self.controller),
+            crate::osc::audio::GROUP => {
+                self.clocks.control_audio_osc(msg, &mut self.controller)?;
+                Ok(GuiDirty::CLEAN)
+            }
+            crate::osc::clock::GROUP => {
+                self.clocks.control_clock_osc(msg, &mut self.controller)?;
+                Ok(GuiDirty::CLEAN)
+            }
             // Assume any other control group is referring to a fixture group.
-            fixture_group => self.patch.get_mut(fixture_group)?.control(
-                msg,
-                ChannelStateEmitter::new(self.channels.channel_for_fixture(fixture_group), &sender),
-            ),
+            fixture_group => {
+                self.patch.get_mut(fixture_group)?.control(
+                    msg,
+                    ChannelStateEmitter::new(
+                        self.channels.channel_for_fixture(fixture_group),
+                        &sender,
+                    ),
+                )?;
+                Ok(GuiDirty::CLEAN)
+            }
+        }
+    }
+
+    /// Selectively snapshot GUI state for the dirty domains.
+    fn snapshot_gui_state(&self, dirty: GuiDirty) {
+        if dirty.contains(GuiDirty::MIDI_SLOTS) {
+            self.gui_state
+                .midi_slots
+                .store(Arc::new(self.controller.midi_slot_statuses()));
         }
     }
 
@@ -540,7 +585,11 @@ pub mod test_support {
         std::thread::spawn(move || {
             let dir = tempfile::tempdir().unwrap();
             let patch_path = dir.path().join("patch.yaml");
-            std::fs::write(&patch_path, "- fixture: Dimmer\n  patches:\n    - addr: 1\n").unwrap();
+            std::fs::write(
+                &patch_path,
+                "- fixture: Dimmer\n  patches:\n    - addr: 1\n",
+            )
+            .unwrap();
             let patch = Patch::from_file(&patch_path).unwrap();
             let (mut show, send) = Show::test_new(patch, patch_path);
             let zmq_ctx = show.zmq_ctx.clone();
@@ -551,7 +600,7 @@ pub mod test_support {
             // Process commands until the client is dropped.
             loop {
                 match show.control(Duration::from_millis(100)) {
-                    Ok(()) => {}
+                    Ok(_dirty) => {}
                     Err(e) if e.to_string().contains("disconnected") => break,
                     Err(_) => {} // command errors are expected, keep running
                 }
@@ -572,6 +621,7 @@ impl Show {
         let universe_count = patch.universe_count();
         let channels = Channels::from_iter(patch.channels().cloned());
         let initial_channel = channels.current_channel();
+        let gui_state: SharedGuiState = Arc::new(crate::gui_state::GuiState::new());
         let mut show = Self {
             zmq_ctx: zmq::Context::new(),
             controller,
@@ -588,6 +638,7 @@ impl Show {
             animation_service: None,
             preview: Previewer::Off,
             master_strobe_channel: false,
+            gui_state,
         };
         show.reconcile_submaster_wings().unwrap();
         show.reconcile_clock_wing().unwrap();
@@ -648,7 +699,12 @@ mod tests {
             port: Box::new(MockDmxPort::failing()),
         });
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("failed to open port"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("failed to open port")
+        );
     }
 
     #[test]
@@ -686,5 +742,4 @@ mod tests {
         assert_eq!(show.dmx_ports.len(), 1);
         assert_eq!(show.dmx_buffers.len(), 1);
     }
-
 }

@@ -4,7 +4,7 @@ use log::error;
 use tunnels::clock_server::SharedClockData;
 use zero_configure::pub_sub::SubscriberService;
 
-use crate::clock_service::{browse_clock_providers, connect_to_provider, ClockService};
+use crate::clock_service::{ClockService, browse_clock_providers, connect_to_provider};
 use crate::control::{CommandClient, MetaCommand};
 
 /// Abstraction over clock provider discovery and connection.
@@ -196,15 +196,11 @@ impl ClockPanel {
             let provider_name = &providers[sel];
             match clock_browser
                 .connect(provider_name)
-                .and_then(|service| {
-                    client.send_command(MetaCommand::UseClockService(service))
-                })
+                .and_then(|service| client.send_command(MetaCommand::UseClockService(service)))
             {
                 Ok(()) => {
                     return Some(ClockConfigState::Configured {
-                        description: format!(
-                            "Remote clock service ({provider_name})"
-                        ),
+                        description: format!("Remote clock service ({provider_name})"),
                     });
                 }
                 Err(e) => {
@@ -298,9 +294,7 @@ mod tests {
                 state: ClockConfigState::Configured {
                     description: "test config".to_string(),
                 },
-                clock_browser: Box::new(MockClockBrowser {
-                    providers: vec![],
-                }),
+                clock_browser: Box::new(MockClockBrowser { providers: vec![] }),
                 audio_devices: vec![],
             },
         );
@@ -328,7 +322,11 @@ mod tests {
         harness.step();
 
         // Verify searching message is shown.
-        assert!(harness.query_by_label("Searching for providers...").is_some());
+        assert!(
+            harness
+                .query_by_label("Searching for providers...")
+                .is_some()
+        );
     }
 
     #[test]
@@ -379,8 +377,10 @@ mod tests {
             matches!(&panel.state, ClockConfigState::Configured { description } if description.contains("Built-in Mic")),
             "Expected Configured with audio device, got {:?}",
             match &panel.state {
-                ClockConfigState::Choosing { mode, .. } => format!("Choosing(mode={:?})", mode == &ClockMode::Internal),
-                ClockConfigState::Configured { description } => format!("Configured({description})"),
+                ClockConfigState::Choosing { mode, .. } =>
+                    format!("Choosing(mode={:?})", mode == &ClockMode::Internal),
+                ClockConfigState::Configured { description } =>
+                    format!("Configured({description})"),
             }
         );
     }

@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use midi_harness::DeviceChange;
+use midi_harness::{DeviceChange, SlotStatus};
 use rosc::OscMessage;
 use tunnels::midi::DeviceSpec;
 
@@ -107,6 +107,11 @@ impl Controller {
         self.midi.device_names()
     }
 
+    /// Return a snapshot of the status of every MIDI device slot.
+    pub fn midi_slot_statuses(&self) -> Vec<SlotStatus> {
+        self.midi.slot_statuses()
+    }
+
     /// Ensure the correct number of submaster wing slots exist for the
     /// given channel count.
     pub fn reconcile_submaster_wings(&mut self, channel_count: usize) -> Result<()> {
@@ -133,10 +138,7 @@ impl Controller {
 
     /// Ensure the clock wing slot exists iff `needs_clock_wing` is true.
     pub fn reconcile_clock_wing(&mut self, needs_clock_wing: bool) -> Result<()> {
-        use crate::midi::{
-            device::cmd_mm1::BehringerCmdMM1,
-            slots::CLOCK_WING_SLOT,
-        };
+        use crate::midi::{device::cmd_mm1::BehringerCmdMM1, slots::CLOCK_WING_SLOT};
 
         let has = self.midi_slot_names().iter().any(|n| n == CLOCK_WING_SLOT);
 

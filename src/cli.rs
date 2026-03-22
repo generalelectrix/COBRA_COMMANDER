@@ -10,8 +10,8 @@ use tunnels_lib::prompt::prompt_bool;
 
 use crate::clock_service::prompt_start_clock_service;
 use crate::control::{CommandClient, MetaCommand};
-use tunnels::audio::prompt_audio;
 use crate::midi::Device;
+use tunnels::audio::prompt_audio;
 
 #[derive(Parser)]
 #[command(about)]
@@ -93,10 +93,7 @@ pub(crate) struct FixArgs {
 }
 
 /// Interactive CLI configuration, running against a live show.
-pub(crate) fn run_cli_configuration(
-    client: CommandClient,
-    universe_count: usize,
-) -> Result<()> {
+pub(crate) fn run_cli_configuration(client: CommandClient, universe_count: usize) -> Result<()> {
     let internal_clocks = offer_action(&client, prompt_configure_clocks)?;
     offer_action(&client, |c| prompt_configure_midi(c, internal_clocks))?;
     offer_action(&client, |c| prompt_assign_dmx_ports(c, universe_count))?;
@@ -134,10 +131,7 @@ fn prompt_configure_clocks(client: &CommandClient) -> Result<bool> {
     Ok(true)
 }
 
-fn prompt_configure_midi(
-    client: &CommandClient,
-    internal_clocks: bool,
-) -> Result<()> {
+fn prompt_configure_midi(client: &CommandClient, internal_clocks: bool) -> Result<()> {
     let (midi_inputs, midi_outputs) = list_ports()?;
     let mut midi_devices = Device::auto_configure(internal_clocks, &midi_inputs, &midi_outputs);
 
@@ -179,10 +173,7 @@ fn prompt_configure_midi(
 
 const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 
-fn prompt_assign_dmx_ports(
-    client: &CommandClient,
-    universe_count: usize,
-) -> Result<()> {
+fn prompt_assign_dmx_ports(client: &CommandClient, universe_count: usize) -> Result<()> {
     let artnet = prompt_bool("Scan for artnet ports?")?;
     let artnet_timeout = artnet.then_some(ARTNET_POLL_TIMEOUT);
     if artnet {
