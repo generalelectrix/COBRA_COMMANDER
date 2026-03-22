@@ -33,7 +33,7 @@ enum ClockMode {
 
 pub struct ClockPanel {
     mode: ClockMode,
-    selected_audio: Option<usize>,  // None = Offline
+    selected_audio: Option<usize>, // None = Offline
     selected_provider: Option<usize>,
     clock_browser: Box<dyn ClockBrowser>,
     audio_devices: Vec<String>,
@@ -58,10 +58,7 @@ impl ClockPanel {
         match status {
             ClockStatus::Internal { audio_device } => {
                 self.mode = ClockMode::Internal;
-                self.selected_audio = self
-                    .audio_devices
-                    .iter()
-                    .position(|d| d == audio_device);
+                self.selected_audio = self.audio_devices.iter().position(|d| d == audio_device);
             }
             ClockStatus::Remote { .. } => {
                 self.mode = ClockMode::Remote;
@@ -125,6 +122,19 @@ impl ClockPanel {
         self.selected_audio.map(|i| self.audio_devices[i].clone())
     }
 
+    fn refresh_audio_devices(&mut self, error_modal: &mut ErrorModal) {
+        let prev_device = self.current_audio_device();
+        match tunnels::audio::AudioInput::devices() {
+            Ok(d) => self.audio_devices = d,
+            Err(e) => {
+                error_modal.show(format!("Failed to refresh audio devices: {e}"));
+                return;
+            }
+        }
+        self.selected_audio =
+            prev_device.and_then(|name| self.audio_devices.iter().position(|d| d == &name));
+    }
+
     fn ui_internal(
         &mut self,
         ui: &mut egui::Ui,
@@ -134,11 +144,21 @@ impl ClockPanel {
     ) {
         let prev_audio = self.selected_audio;
 
+        ui.horizontal(|ui| {
+            ui.label("Audio Input Device:");
+            if ui
+                .button("🔄")
+                .on_hover_text("Refresh device list")
+                .clicked()
+            {
+                self.refresh_audio_devices(error_modal)
+            }
+        });
+
         let selected_text = self
             .selected_audio
             .map_or("Offline", |i| &self.audio_devices[i]);
 
-        ui.label("Audio Input Device:");
         egui::ComboBox::from_id_salt("audio_device")
             .selected_text(selected_text)
             .show_ui(ui, |ui| {
