@@ -18,7 +18,7 @@ use crate::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
     master::MasterControls,
-    midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
+    midi::{self, EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
     osc::{OscControlMessage, ScopedControlEmitter},
     preview::Previewer,
 };
@@ -93,6 +93,8 @@ impl Show {
             preview,
             master_strobe_channel,
         };
+        show.reconcile_submaster_wings()?;
+        show.reconcile_clock_wing()?;
         show.refresh_ui();
         Ok(show)
     }
@@ -190,6 +192,7 @@ impl Show {
                     },
                 );
                 self.channels = Channels::from_iter(self.patch.channels().cloned());
+                self.reconcile_submaster_wings()?;
                 self.refresh_ui();
                 let new_universe_count = self.patch.universe_count();
                 let current_len = self.dmx_ports.len();
@@ -234,6 +237,7 @@ impl Show {
             }
             MetaCommand::UseClockService(service) => {
                 self.clocks = Clocks::Service(service);
+                self.reconcile_clock_wing()?;
                 self.refresh_ui();
                 Ok(())
             }
@@ -242,6 +246,7 @@ impl Show {
                     .map(|name| AudioInput::new(Some(name)))
                     .transpose()?;
                 self.clocks = Clocks::internal(audio_input);
+                self.reconcile_clock_wing()?;
                 self.refresh_ui();
                 Ok(())
             }
@@ -401,6 +406,57 @@ impl Show {
         }
     }
 
+    /// Ensure the correct number of submaster wing slots exist for the current channel count.
+    fn reconcile_submaster_wings(&mut self) -> Result<()> {
+        let desired = midi::slots::submaster_wing_count(self.channels.channel_count());
+        let slot_names = self.controller.midi_slot_names();
+        let current = slot_names
+            .iter()
+            .filter(|n| midi::slots::is_submaster_wing(n))
+            .count();
+
+        // Add missing slots.
+        for i in (current + 1)..=desired {
+            let name = midi::slots::submaster_wing_name(i);
+            let model = midi::Device::LaunchControlXL(
+                crate::midi::device::launch_control_xl::NovationLaunchControlXL {
+                    channel_offset: (i - 1) * 8,
+                },
+            );
+            self.controller.add_midi_slot(name, model)?;
+        }
+
+        // Remove excess slots.
+        for i in ((desired + 1)..=current).rev() {
+            let name = midi::slots::submaster_wing_name(i);
+            self.controller.remove_midi_slot(&name)?;
+        }
+
+        Ok(())
+    }
+
+    /// Ensure the clock wing slot exists iff internal clocks are active.
+    fn reconcile_clock_wing(&mut self) -> Result<()> {
+        let needs = self.clocks.is_internal();
+        let has = self
+            .controller
+            .midi_slot_names()
+            .iter()
+            .any(|n| n == midi::slots::CLOCK_WING_SLOT);
+
+        if needs && !has {
+            let model =
+                midi::Device::CmdMM1(crate::midi::device::cmd_mm1::BehringerCmdMM1 {});
+            self.controller
+                .add_midi_slot(midi::slots::CLOCK_WING_SLOT.to_string(), model)?;
+        } else if !needs && has {
+            self.controller
+                .remove_midi_slot(midi::slots::CLOCK_WING_SLOT)?;
+        }
+
+        Ok(())
+    }
+
     /// Send messages to refresh all UI state.
     fn refresh_ui(&mut self) {
         let emitter = &self.controller.sender_with_metadata(None);
@@ -555,7 +611,7 @@ impl Show {
         let universe_count = patch.universe_count();
         let channels = Channels::from_iter(patch.channels().cloned());
         let initial_channel = channels.current_channel();
-        let show = Self {
+        let mut show = Self {
             zmq_ctx: zmq::Context::new(),
             controller,
             dmx_buffers: vec![[0u8; 512]; universe_count],
@@ -572,6 +628,8 @@ impl Show {
             preview: Previewer::Off,
             master_strobe_channel: false,
         };
+        show.reconcile_submaster_wings().unwrap();
+        show.reconcile_clock_wing().unwrap();
         (show, send)
     }
 }
@@ -581,9 +639,18 @@ mod tests {
     use super::*;
     use crate::dmx::mock::MockDmxPort;
 
-    const ONE_UNIVERSE_PATCH: &str = "- fixture: Dimmer\n  patches:\n    - addr: 1\n";
-    const TWO_UNIVERSE_PATCH: &str =
-        "- fixture: Dimmer\n  patches:\n    - addr: 1\n    - addr: 1\n      universe: 1\n";
+    const ONE_UNIVERSE_PATCH: &str = "\
+- fixture: Dimmer
+  patches:
+    - addr: 1
+";
+    const TWO_UNIVERSE_PATCH: &str = "\
+- fixture: Dimmer
+  patches:
+    - addr: 1
+    - addr: 1
+      universe: 1
+";
 
     /// Create a Show backed by a temporary patch file.
     /// Returns the TempDir too — it must outlive the Show for reload tests.
@@ -657,5 +724,63 @@ mod tests {
         show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
         assert_eq!(show.dmx_ports.len(), 1);
         assert_eq!(show.dmx_buffers.len(), 1);
+    }
+
+    /// Helper to count submaster wing slots in a show.
+    fn submaster_wing_count(show: &Show) -> usize {
+        show.controller
+            .midi_slot_names()
+            .iter()
+            .filter(|n| midi::slots::is_submaster_wing(n))
+            .count()
+    }
+
+    /// Helper to check if clock wing slot exists.
+    fn has_clock_wing(show: &Show) -> bool {
+        show.controller
+            .midi_slot_names()
+            .iter()
+            .any(|n| n == midi::slots::CLOCK_WING_SLOT)
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_one_channel() {
+        let (show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        // 1 channel → 1 submaster wing
+        assert_eq!(submaster_wing_count(&show), 1);
+        assert_eq!(
+            show.controller.midi_slot_names()[0],
+            "Submaster Wing 1"
+        );
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_grows_on_repatch() {
+        // Start with 1 channel (1 wing), repatch to 2 channels.
+        let (mut show, dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        assert_eq!(submaster_wing_count(&show), 1);
+
+        // Two fixture groups → 2 channels → still 1 wing (2 < 8).
+        let two_channel_patch = "\
+- fixture: Dimmer
+  group: A
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  group: B
+  patches:
+    - addr: 2
+";
+        std::fs::write(dir.path().join("patch.yaml"), two_channel_patch).unwrap();
+        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        assert_eq!(show.channels.channel_count(), 2);
+        assert_eq!(submaster_wing_count(&show), 1);
+    }
+
+    #[test]
+    fn reconcile_clock_wing_absent_for_service_clocks() {
+        // test_new uses Clocks::test_new() which is Service — no clock wing.
+        let (show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        assert!(!has_clock_wing(&show));
     }
 }

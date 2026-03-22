@@ -79,6 +79,11 @@ impl Channels {
         id
     }
 
+    /// Return the number of channels.
+    pub fn channel_count(&self) -> usize {
+        self.channel_index.len()
+    }
+
     /// Iterate over valid channel IDs.
     pub fn channel_ids(&self) -> impl Iterator<Item = ChannelId> + '_ {
         self.channel_index

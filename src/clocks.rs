@@ -34,6 +34,14 @@ impl Clocks {
 }
 
 impl Clocks {
+    /// Return true if these are internally-controlled clocks.
+    pub fn is_internal(&self) -> bool {
+        match self {
+            Self::Internal { .. } => true,
+            Self::Service(_) => false,
+        }
+    }
+
     /// Initialize internally-controlled clocks. Use the provided audio input.
     pub fn internal(audio_device: Option<AudioInput>) -> Self {
         let clocks = ClockBank::default();

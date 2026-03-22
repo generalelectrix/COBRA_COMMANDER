@@ -92,6 +92,21 @@ impl Controller {
         self.midi.clear_device(slot_name)
     }
 
+    /// Add a MIDI slot without connecting hardware.
+    pub fn add_midi_slot(&mut self, name: String, model: Device) -> Result<()> {
+        self.midi.add_slot(name, model)
+    }
+
+    /// Remove a MIDI slot by name.
+    pub fn remove_midi_slot(&mut self, name: &str) -> Result<()> {
+        self.midi.remove_slot(name)
+    }
+
+    /// Return the names of all MIDI device slots.
+    pub fn midi_slot_names(&self) -> Vec<String> {
+        self.midi.device_names()
+    }
+
     /// Handle a MIDI device change.
     pub fn handle_device_change(&mut self, change: DeviceChange) -> Result<bool> {
         self.midi.handle_device_change(change)
