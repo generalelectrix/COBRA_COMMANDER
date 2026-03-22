@@ -6,8 +6,8 @@ use eframe::egui;
 
 use crate::control::CommandClient;
 use crate::gui_state::SharedGuiState;
-use crate::ui_util::{CloseHandler, ErrorModal};
-use clock_panel::ClockPanel;
+use crate::ui_util::{CloseHandler, ErrorModal, GuiContext};
+use clock_panel::{ClockPanel, ClockPanelState};
 
 #[derive(Default, PartialEq)]
 enum Tab {
@@ -18,7 +18,7 @@ enum Tab {
 
 struct ConfigApp {
     client: CommandClient,
-    clock_panel: ClockPanel,
+    clock_panel: ClockPanelState,
     close_handler: CloseHandler,
     error_modal: ErrorModal,
     active_tab: Tab,
@@ -40,8 +40,15 @@ impl eframe::App for ConfigApp {
 
         egui::CentralPanel::default().show(ctx, |ui| match self.active_tab {
             Tab::Config => {
-                self.clock_panel
-                    .ui(ui, &self.client, &clock_status, &mut self.error_modal);
+                ClockPanel {
+                    ctx: GuiContext {
+                        error_modal: &mut self.error_modal,
+                        client: &self.client,
+                    },
+                    state: &mut self.clock_panel,
+                    clock_status: &clock_status,
+                }
+                .ui(ui);
             }
             Tab::Midi => {
                 let midi_slots = self.gui_state.midi_slots.load();
@@ -68,7 +75,7 @@ pub fn run_config_gui(
         options,
         Box::new(move |_cc| {
             Ok(Box::new(ConfigApp {
-                clock_panel: ClockPanel::new(zmq_ctx, &initial_clock_status),
+                clock_panel: ClockPanelState::new(zmq_ctx, &initial_clock_status),
                 client,
                 close_handler: CloseHandler::default(),
                 error_modal: ErrorModal::default(),
