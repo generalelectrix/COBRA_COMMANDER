@@ -87,7 +87,7 @@ impl ClockPanel<'_> {
         // Status indicator.
         let status_label = match self.clock_status {
             ClockStatus::Internal { audio_device } => {
-                format!("Active: Internal ({audio_device})")
+                format!("Active: Internal (Audio Input: {audio_device})")
             }
             ClockStatus::Remote { provider } => {
                 format!("Active: Remote ({provider})")
@@ -575,7 +575,7 @@ mod tests {
 
         assert!(
             harness
-                .query_by_label("Active: Internal (Test Mic)")
+                .query_by_label("Active: Internal (Audio Input: Test Mic)")
                 .is_some()
         );
     }
@@ -681,7 +681,7 @@ mod tests {
 
         assert!(
             harness
-                .query_by_label("Active: Internal (Offline)")
+                .query_by_label("Active: Internal (Audio Input: Offline)")
                 .is_some()
         );
     }
