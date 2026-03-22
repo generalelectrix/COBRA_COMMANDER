@@ -18,7 +18,7 @@ use crate::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
     master::MasterControls,
-    midi::{self, EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
+    midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
     osc::{OscControlMessage, ScopedControlEmitter},
     preview::Previewer,
 };
@@ -406,55 +406,16 @@ impl Show {
         }
     }
 
-    /// Ensure the correct number of submaster wing slots exist for the current channel count.
+    /// Reconcile MIDI submaster wing slots with the current channel count.
     fn reconcile_submaster_wings(&mut self) -> Result<()> {
-        let desired = midi::slots::submaster_wing_count(self.channels.channel_count());
-        let slot_names = self.controller.midi_slot_names();
-        let current = slot_names
-            .iter()
-            .filter(|n| midi::slots::is_submaster_wing(n))
-            .count();
-
-        // Add missing slots.
-        for i in (current + 1)..=desired {
-            let name = midi::slots::submaster_wing_name(i);
-            let model = midi::Device::LaunchControlXL(
-                crate::midi::device::launch_control_xl::NovationLaunchControlXL {
-                    channel_offset: (i - 1) * 8,
-                },
-            );
-            self.controller.add_midi_slot(name, model)?;
-        }
-
-        // Remove excess slots.
-        for i in ((desired + 1)..=current).rev() {
-            let name = midi::slots::submaster_wing_name(i);
-            self.controller.remove_midi_slot(&name)?;
-        }
-
-        Ok(())
+        self.controller
+            .reconcile_submaster_wings(self.channels.channel_count())
     }
 
-    /// Ensure the clock wing slot exists iff internal clocks are active.
+    /// Reconcile the clock wing slot with the current clock mode.
     fn reconcile_clock_wing(&mut self) -> Result<()> {
-        let needs = self.clocks.is_internal();
-        let has = self
-            .controller
-            .midi_slot_names()
-            .iter()
-            .any(|n| n == midi::slots::CLOCK_WING_SLOT);
-
-        if needs && !has {
-            let model =
-                midi::Device::CmdMM1(crate::midi::device::cmd_mm1::BehringerCmdMM1 {});
-            self.controller
-                .add_midi_slot(midi::slots::CLOCK_WING_SLOT.to_string(), model)?;
-        } else if !needs && has {
-            self.controller
-                .remove_midi_slot(midi::slots::CLOCK_WING_SLOT)?;
-        }
-
-        Ok(())
+        self.controller
+            .reconcile_clock_wing(self.clocks.is_internal())
     }
 
     /// Send messages to refresh all UI state.
@@ -726,61 +687,4 @@ mod tests {
         assert_eq!(show.dmx_buffers.len(), 1);
     }
 
-    /// Helper to count submaster wing slots in a show.
-    fn submaster_wing_count(show: &Show) -> usize {
-        show.controller
-            .midi_slot_names()
-            .iter()
-            .filter(|n| midi::slots::is_submaster_wing(n))
-            .count()
-    }
-
-    /// Helper to check if clock wing slot exists.
-    fn has_clock_wing(show: &Show) -> bool {
-        show.controller
-            .midi_slot_names()
-            .iter()
-            .any(|n| n == midi::slots::CLOCK_WING_SLOT)
-    }
-
-    #[test]
-    fn reconcile_submaster_wings_one_channel() {
-        let (show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
-        // 1 channel → 1 submaster wing
-        assert_eq!(submaster_wing_count(&show), 1);
-        assert_eq!(
-            show.controller.midi_slot_names()[0],
-            "Submaster Wing 1"
-        );
-    }
-
-    #[test]
-    fn reconcile_submaster_wings_grows_on_repatch() {
-        // Start with 1 channel (1 wing), repatch to 2 channels.
-        let (mut show, dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
-        assert_eq!(submaster_wing_count(&show), 1);
-
-        // Two fixture groups → 2 channels → still 1 wing (2 < 8).
-        let two_channel_patch = "\
-- fixture: Dimmer
-  group: A
-  patches:
-    - addr: 1
-- fixture: Dimmer
-  group: B
-  patches:
-    - addr: 2
-";
-        std::fs::write(dir.path().join("patch.yaml"), two_channel_patch).unwrap();
-        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
-        assert_eq!(show.channels.channel_count(), 2);
-        assert_eq!(submaster_wing_count(&show), 1);
-    }
-
-    #[test]
-    fn reconcile_clock_wing_absent_for_service_clocks() {
-        // test_new uses Clocks::test_new() which is Service — no clock wing.
-        let (show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
-        assert!(!has_clock_wing(&show));
-    }
 }

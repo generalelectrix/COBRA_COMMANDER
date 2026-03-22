@@ -107,6 +107,50 @@ impl Controller {
         self.midi.device_names()
     }
 
+    /// Ensure the correct number of submaster wing slots exist for the
+    /// given channel count.
+    pub fn reconcile_submaster_wings(&mut self, channel_count: usize) -> Result<()> {
+        use crate::midi::{
+            device::launch_control_xl::NovationLaunchControlXL,
+            slots::{is_submaster_wing, submaster_wing_count, submaster_wing_name},
+        };
+
+        let desired = submaster_wing_count(channel_count);
+        let slot_names = self.midi_slot_names();
+        let current = slot_names.iter().filter(|n| is_submaster_wing(n)).count();
+
+        for i in (current + 1)..=desired {
+            let model = Device::LaunchControlXL(NovationLaunchControlXL {
+                channel_offset: (i - 1) * 8,
+            });
+            self.add_midi_slot(submaster_wing_name(i), model)?;
+        }
+        for i in ((desired + 1)..=current).rev() {
+            self.remove_midi_slot(&submaster_wing_name(i))?;
+        }
+        Ok(())
+    }
+
+    /// Ensure the clock wing slot exists iff `needs_clock_wing` is true.
+    pub fn reconcile_clock_wing(&mut self, needs_clock_wing: bool) -> Result<()> {
+        use crate::midi::{
+            device::cmd_mm1::BehringerCmdMM1,
+            slots::CLOCK_WING_SLOT,
+        };
+
+        let has = self.midi_slot_names().iter().any(|n| n == CLOCK_WING_SLOT);
+
+        if needs_clock_wing && !has {
+            self.add_midi_slot(
+                CLOCK_WING_SLOT.to_string(),
+                Device::CmdMM1(BehringerCmdMM1 {}),
+            )?;
+        } else if !needs_clock_wing && has {
+            self.remove_midi_slot(CLOCK_WING_SLOT)?;
+        }
+        Ok(())
+    }
+
     /// Handle a MIDI device change.
     pub fn handle_device_change(&mut self, change: DeviceChange) -> Result<bool> {
         self.midi.handle_device_change(change)
@@ -421,5 +465,91 @@ mod tests {
         assert!(debug.contains("AssignDmxPort"));
         assert!(debug.contains("universe: 3"));
         assert!(debug.contains("mock"));
+    }
+
+    use crate::midi::slots;
+
+    fn submaster_wing_count(controller: &Controller) -> usize {
+        controller
+            .midi_slot_names()
+            .iter()
+            .filter(|n| slots::is_submaster_wing(n))
+            .count()
+    }
+
+    fn has_clock_wing(controller: &Controller) -> bool {
+        controller
+            .midi_slot_names()
+            .iter()
+            .any(|n| n == slots::CLOCK_WING_SLOT)
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_one_channel() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_submaster_wings(1).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 1);
+        assert_eq!(controller.midi_slot_names()[0], "Submaster Wing 1");
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_grows() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_submaster_wings(1).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 1);
+
+        // 9 channels → 2 wings
+        controller.reconcile_submaster_wings(9).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 2);
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_shrinks() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_submaster_wings(9).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 2);
+
+        controller.reconcile_submaster_wings(1).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 1);
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_zero_channels_still_one() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_submaster_wings(0).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 1);
+    }
+
+    #[test]
+    fn reconcile_clock_wing_adds_when_needed() {
+        let (mut controller, _send) = Controller::test_new();
+        assert!(!has_clock_wing(&controller));
+
+        controller.reconcile_clock_wing(true).unwrap();
+        assert!(has_clock_wing(&controller));
+    }
+
+    #[test]
+    fn reconcile_clock_wing_removes_when_not_needed() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_clock_wing(true).unwrap();
+        assert!(has_clock_wing(&controller));
+
+        controller.reconcile_clock_wing(false).unwrap();
+        assert!(!has_clock_wing(&controller));
+    }
+
+    #[test]
+    fn reconcile_clock_wing_noop_when_already_correct() {
+        let (mut controller, _send) = Controller::test_new();
+
+        // No clock wing, don't need one — no-op.
+        controller.reconcile_clock_wing(false).unwrap();
+        assert!(!has_clock_wing(&controller));
+
+        // Has clock wing, still need one — no-op.
+        controller.reconcile_clock_wing(true).unwrap();
+        controller.reconcile_clock_wing(true).unwrap();
+        assert!(has_clock_wing(&controller));
     }
 }
