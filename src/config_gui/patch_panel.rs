@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use eframe::egui;
+use egui::{Pos2, Rect, Shape, Stroke, Vec2, vec2};
 
 use crate::config::{DmxAddrConfig, FixtureGroupConfig, FixtureGroupKey, Options, PatchBlock};
 use crate::control::MetaCommand;
@@ -8,6 +9,43 @@ use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
 use crate::gui_state::PatchSnapshot;
 use crate::ui_util::{GuiContext, StatusColors};
+
+// ---------------------------------------------------------------------------
+// Native arrow button widget
+// ---------------------------------------------------------------------------
+
+/// A small button that paints a filled triangle pointing up or down.
+fn arrow_button(ui: &mut egui::Ui, _id: egui::Id, pointing_up: bool, enabled: bool) -> bool {
+    let size = Vec2::splat(16.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let color = if enabled {
+            ui.style().visuals.text_color()
+        } else {
+            ui.style().visuals.text_color().gamma_multiply(0.3)
+        };
+
+        let arrow_rect = Rect::from_center_size(rect.center(), vec2(8.0, 5.0));
+        let points = if pointing_up {
+            vec![
+                arrow_rect.left_bottom(),
+                arrow_rect.right_bottom(),
+                Pos2::new(arrow_rect.center().x, arrow_rect.top()),
+            ]
+        } else {
+            vec![
+                arrow_rect.left_top(),
+                arrow_rect.right_top(),
+                Pos2::new(arrow_rect.center().x, arrow_rect.bottom()),
+            ]
+        };
+        ui.painter()
+            .add(Shape::convex_polygon(points, color, Stroke::NONE));
+    }
+
+    enabled && response.clicked()
+}
 
 // ---------------------------------------------------------------------------
 // Working copy types
@@ -74,10 +112,7 @@ struct AddGroupForm {
     fixture_type_idx: usize,
     group_name: String,
     channel: bool,
-    color_organ: bool,
     group_options: Vec<(String, String)>,
-    first_addr: String,
-    first_universe: String,
 }
 
 impl AddGroupForm {
@@ -86,10 +121,7 @@ impl AddGroupForm {
             fixture_type_idx: 0,
             group_name: String::new(),
             channel: true,
-            color_organ: false,
             group_options: Vec::new(),
-            first_addr: "1".to_string(),
-            first_universe: "0".to_string(),
         }
     }
 
@@ -314,10 +346,35 @@ impl PatchPanel<'_> {
                     form.sync_options(self.patchers);
                     self.state.mode = PanelMode::AddGroup(form);
                 }
-                ui.toggle_value(&mut self.state.show_address_map, "DMX Map");
             });
         });
         ui.separator();
+
+        // === Apply / Revert buttons pinned to bottom ===
+        egui::TopBottomPanel::bottom("patch_buttons")
+            .show_inside(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Apply").clicked() {
+                        let wc = self.state.working_copy.as_ref().unwrap();
+                        let configs = wc.configs();
+                        if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
+                            self.state.working_copy = None;
+                            self.state.mode = PanelMode::View;
+                        }
+                    }
+                    if ui.button("Revert").clicked() {
+                        self.state.working_copy = None;
+                        self.state.selected_group = None;
+                        self.state.mode = PanelMode::View;
+                    }
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            ui.toggle_value(&mut self.state.show_address_map, "DMX Map");
+                        },
+                    );
+                });
+            });
 
         // === DMX Address Map side panel ===
         if self.state.show_address_map {
@@ -376,16 +433,12 @@ impl PatchPanel<'_> {
                     ui.horizontal(|ui| {
                         // Up/down buttons for channel ordering
                         if has_channel {
-                            if ui
-                                .add_enabled(i > 0, egui::Button::new("Up").small())
-                                .clicked()
-                            {
+                            let up_id = ui.id().with(("group_up", i));
+                            let dn_id = ui.id().with(("group_dn", i));
+                            if arrow_button(ui, up_id, true, i > 0) {
                                 swap = Some((i, i - 1));
                             }
-                            if ui
-                                .add_enabled(i < n - 1, egui::Button::new("Dn").small())
-                                .clicked()
-                            {
+                            if arrow_button(ui, dn_id, false, i < n - 1) {
                                 swap = Some((i, i + 1));
                             }
                         } else {
@@ -424,25 +477,6 @@ impl PatchPanel<'_> {
                 self.state.selected_group = Some(a);
             }
         }
-
-        ui.separator();
-
-        // === Apply / Revert buttons ===
-        ui.horizontal(|ui| {
-            if ui.button("Apply").clicked() {
-                let wc = self.state.working_copy.as_ref().unwrap();
-                let configs = wc.configs();
-                if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
-                    self.state.working_copy = None; // Re-clone from snapshot next frame.
-                    self.state.mode = PanelMode::View;
-                }
-            }
-            if ui.button("Revert").clicked() {
-                self.state.working_copy = None;
-                self.state.selected_group = None;
-                self.state.mode = PanelMode::View;
-            }
-        });
 
         ui.separator();
 
@@ -505,10 +539,7 @@ impl PatchPanel<'_> {
         {
             let wc = self.state.working_copy.as_mut().unwrap();
             let cfg = &mut wc.groups[group_idx].config;
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut cfg.channel, "Channel");
-                ui.checkbox(&mut cfg.color_organ, "Color Organ");
-            });
+            ui.checkbox(&mut cfg.channel, "Channel");
         }
 
         // === Group name (editable) ===
@@ -571,6 +602,17 @@ impl PatchPanel<'_> {
             build_address_map(wc)
         };
 
+        // Get patch option menu before mutable borrow.
+        let patch_opts: Vec<(String, PatchOption)> = {
+            let wc = self.state.working_copy.as_ref().unwrap();
+            let fixture_type = &wc.groups[group_idx].config.fixture;
+            self.patchers
+                .iter()
+                .find(|p| p.name.0 == *fixture_type)
+                .map(|p| (p.patch_options)())
+                .unwrap_or_default()
+        };
+
         let mut fixture_swap: Option<(usize, usize)> = None;
         let mut fixture_delete: Option<usize> = None;
 
@@ -588,6 +630,9 @@ impl PatchPanel<'_> {
                     ui.label("Uni");
                     ui.label("Ch");
                     ui.label("Mir");
+                    for (opt_key, _) in &patch_opts {
+                        ui.label(opt_key);
+                    }
                     ui.label("");
                     ui.end_row();
 
@@ -596,16 +641,12 @@ impl PatchPanel<'_> {
 
                         // Reorder buttons.
                         ui.horizontal(|ui| {
-                            if ui
-                                .add_enabled(i > 0, egui::Button::new("Up").small())
-                                .clicked()
-                            {
+                            let up_id = ui.id().with(("fix_up", i));
+                            let dn_id = ui.id().with(("fix_dn", i));
+                            if arrow_button(ui, up_id, true, i > 0) {
                                 fixture_swap = Some((i, i - 1));
                             }
-                            if ui
-                                .add_enabled(i < num_patches - 1, egui::Button::new("Dn").small())
-                                .clicked()
-                            {
+                            if arrow_button(ui, dn_id, false, i < num_patches - 1) {
                                 fixture_swap = Some((i, i + 1));
                             }
                         });
@@ -617,7 +658,7 @@ impl PatchPanel<'_> {
                         let (start, _count) = block.start_count();
                         let mut addr_str = start
                             .map(|a| format!("{a}"))
-                            .unwrap_or_else(|| "-".to_string());
+                            .unwrap_or_default();
 
                         // Check collision.
                         let has_collision = start
@@ -629,16 +670,28 @@ impl PatchPanel<'_> {
                             })
                             .unwrap_or(false);
 
+                        // Check validity.
+                        let addr_invalid = start
+                            .map(|a| a.validate().is_err())
+                            .unwrap_or(false);
+
                         let text_edit =
                             egui::TextEdit::singleline(&mut addr_str).desired_width(40.0);
                         let response = ui.add(text_edit);
                         if has_collision {
                             response.clone().on_hover_text("DMX address collision!");
+                        } else if addr_invalid {
+                            response
+                                .clone()
+                                .on_hover_text("Address must be 1-512");
                         }
                         if response.changed() {
-                            if let Ok(v) = addr_str.parse::<usize>() {
+                            // Only allow digits.
+                            let digits: String =
+                                addr_str.chars().filter(|c| c.is_ascii_digit()).collect();
+                            if let Ok(v) = digits.parse::<usize>() {
                                 block.addr = Some(DmxAddrConfig::Single(DmxAddr::new(v)));
-                            } else if addr_str == "-" || addr_str.is_empty() {
+                            } else {
                                 block.addr = None;
                             }
                         }
@@ -655,6 +708,12 @@ impl PatchPanel<'_> {
 
                         // Editable mirror.
                         ui.checkbox(&mut block.mirror, "");
+
+                        // Patch option columns (read-only).
+                        for (opt_key, _) in &patch_opts {
+                            let val = block.options.get_string(opt_key).unwrap_or_default();
+                            ui.label(&val);
+                        }
 
                         // Delete button.
                         if ui.button("x").clicked() {
@@ -680,38 +739,6 @@ impl PatchPanel<'_> {
             let group = &mut wc.groups[group_idx];
             group.config.patches.remove(idx);
             group.channel_counts.remove(idx);
-        }
-
-        // === Patch options (read-only) ===
-        {
-            let wc = self.state.working_copy.as_ref().unwrap();
-            let cfg = &wc.groups[group_idx].config;
-            let patcher = self.patchers.iter().find(|p| p.name.0 == cfg.fixture);
-            if let Some(patcher) = patcher {
-                let patch_opts = (patcher.patch_options)();
-                if !patch_opts.is_empty() {
-                    ui.add_space(4.0);
-                    ui.label("Patch Options (per fixture)");
-                    egui::Grid::new("patch_options_grid")
-                        .striped(true)
-                        .show(ui, |ui| {
-                            ui.label("#");
-                            for (opt_key, _) in &patch_opts {
-                                ui.label(opt_key);
-                            }
-                            ui.end_row();
-
-                            for (i, block) in cfg.patches.iter().enumerate() {
-                                ui.label(format!("{}", i + 1));
-                                for (opt_key, _) in &patch_opts {
-                                    let val = block.options.get_string(opt_key).unwrap_or_default();
-                                    ui.label(&val);
-                                }
-                                ui.end_row();
-                            }
-                        });
-                }
-            }
         }
 
         // === Add fixture inline form ===
@@ -773,10 +800,7 @@ impl PatchPanel<'_> {
         ui.label("(optional — defaults to fixture type)");
 
         ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut form.channel, "Channel");
-            ui.checkbox(&mut form.color_organ, "Color Organ");
-        });
+        ui.checkbox(&mut form.channel, "Channel");
 
         // Group options (editable in creation flow).
         let patcher = self.patchers.get(form.fixture_type_idx);
@@ -800,31 +824,13 @@ impl PatchPanel<'_> {
             }
         }
 
-        // First fixture address.
-        ui.add_space(4.0);
-        ui.label("First Fixture");
-        ui.horizontal(|ui| {
-            ui.label("DMX Address:");
-            ui.text_edit_singleline(&mut form.first_addr)
-                .on_hover_text("1-512");
-            ui.label("Universe:");
-            ui.text_edit_singleline(&mut form.first_universe)
-                .on_hover_text("0+");
-        });
-
-        let addr_valid = form.first_addr.parse::<usize>().is_ok();
-        let uni_valid = form.first_universe.parse::<usize>().is_ok();
-
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if ui.button("Cancel").clicked() {
                 self.state.mode = PanelMode::View;
             }
             if ui
-                .add_enabled(
-                    all_valid && addr_valid && uni_valid,
-                    egui::Button::new("Add Group"),
-                )
+                .add_enabled(all_valid, egui::Button::new("Add Group"))
                 .clicked()
             {
                 self.commit_add_group();
@@ -842,12 +848,6 @@ impl PatchPanel<'_> {
             None => return,
         };
 
-        let addr: usize = match form.first_addr.parse() {
-            Ok(v) => v,
-            Err(_) => return,
-        };
-        let universe: usize = form.first_universe.parse().unwrap_or(0);
-
         let group_options = build_options_from_form(&form.group_options);
 
         let group_name = if form.group_name.is_empty() {
@@ -860,13 +860,8 @@ impl PatchPanel<'_> {
             fixture: patcher.name.0.to_string(),
             group: group_name,
             channel: form.channel,
-            color_organ: form.color_organ,
-            patches: vec![PatchBlock {
-                addr: Some(DmxAddrConfig::Single(DmxAddr::new(addr))),
-                universe,
-                mirror: false,
-                options: Options::default(),
-            }],
+            color_organ: false,
+            patches: vec![],
             options: group_options,
         };
 
@@ -923,7 +918,11 @@ impl PatchPanel<'_> {
             }
         }
 
-        let addr_valid = form.addr.parse::<usize>().is_ok();
+        let addr_valid = form
+            .addr
+            .parse::<usize>()
+            .map(|v| DmxAddr::new(v).validate().is_ok())
+            .unwrap_or(false);
         let count_valid = form.count.parse::<usize>().map(|c| c >= 1).unwrap_or(false);
 
         ui.horizontal(|ui| {
@@ -1051,7 +1050,24 @@ impl PatchPanel<'_> {
                 ranges.push((addr, addr, name.clone(), is_collision));
             }
 
+            // Render ranges with gaps shown between them.
+            let mut prev_end: usize = 0;
             for (start, end, name, is_collision) in &ranges {
+                // Show gap if there's free space before this range.
+                if *start > prev_end + 1 {
+                    let gap_start = prev_end + 1;
+                    let gap_end = start - 1;
+                    let gap_str = if gap_start == gap_end {
+                        format!("{gap_start:>3}")
+                    } else {
+                        format!("{gap_start:>3}-{gap_end}")
+                    };
+                    ui.colored_label(
+                        ui.style().visuals.text_color().gamma_multiply(0.3),
+                        format!("{gap_str}  (free)"),
+                    );
+                }
+
                 let range_str = if start == end {
                     format!("{start:>3}")
                 } else {
@@ -1065,6 +1081,20 @@ impl PatchPanel<'_> {
                 } else {
                     ui.label(&label);
                 }
+                prev_end = *end;
+            }
+
+            // Show trailing free space.
+            if prev_end < 512 {
+                let gap_str = if prev_end + 1 == 512 {
+                    "512".to_string()
+                } else {
+                    format!("{}-512", prev_end + 1)
+                };
+                ui.colored_label(
+                    ui.style().visuals.text_color().gamma_multiply(0.3),
+                    format!("{gap_str}  (free)"),
+                );
             }
 
             ui.add_space(4.0);
@@ -1139,11 +1169,68 @@ mod test {
         }
     }
 
+    fn color_block(addr: usize, kind: &str) -> PatchBlock {
+        let mut options = Options::default();
+        if !kind.is_empty() {
+            options.set_string("kind", kind);
+        }
+        PatchBlock {
+            addr: Some(DmxAddrConfig::Single(DmxAddr::new(addr))),
+            universe: 0,
+            mirror: false,
+            options,
+        }
+    }
+
+    fn color_group(name: Option<&str>, blocks: Vec<PatchBlock>) -> FixtureGroupConfig {
+        FixtureGroupConfig {
+            fixture: "Color".to_string(),
+            group: name.map(|n| FixtureGroupKey(n.to_string())),
+            channel: true,
+            color_organ: false,
+            patches: blocks,
+            options: Options::default(),
+        }
+    }
+
+    fn flash_bang_group(name: Option<&str>, paired: bool) -> FixtureGroupConfig {
+        let mut options = Options::default();
+        options.set_bool("paired", paired);
+        FixtureGroupConfig {
+            fixture: "FlashBang".to_string(),
+            group: name.map(|n| FixtureGroupKey(n.to_string())),
+            channel: true,
+            color_organ: false,
+            patches: vec![dimmer_block(100)],
+            options,
+        }
+    }
+
     fn test_snapshot_with_groups() -> PatchSnapshot {
         PatchSnapshot {
             groups: vec![
                 dimmer_group(None, &[1]),
                 dimmer_group(Some("BackDimmer"), &[10, 11]),
+            ],
+        }
+    }
+
+    /// Snapshot with diverse option types for visual verification.
+    fn test_snapshot_with_options() -> PatchSnapshot {
+        PatchSnapshot {
+            groups: vec![
+                // Color has Select patch option (kind)
+                color_group(
+                    Some("FrontColor"),
+                    vec![
+                        color_block(20, "Rgb"),
+                        color_block(23, "Rgbw"),
+                    ],
+                ),
+                // FlashBang has Bool group option (paired)
+                flash_bang_group(Some("Strobes"), true),
+                // Dimmer has no options
+                dimmer_group(None, &[50]),
             ],
         }
     }
@@ -1518,6 +1605,60 @@ mod test {
         });
         harness.run();
         harness.snapshot("patch_panel_add_group");
+    }
+
+    #[test]
+    fn render_with_patch_options() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_options();
+        let patchers = test_patchers();
+        let status_colors = test_status_colors();
+        let mut error_modal = ErrorModal::default();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0); // FrontColor — has "kind" patch option
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("patch_panel_patch_options");
+    }
+
+    #[test]
+    fn render_with_group_options() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_options();
+        let patchers = test_patchers();
+        let status_colors = test_status_colors();
+        let mut error_modal = ErrorModal::default();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(1); // Strobes (FlashBang) — has "paired" Bool group option
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("patch_panel_group_options");
     }
 
     #[test]
