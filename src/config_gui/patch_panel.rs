@@ -355,11 +355,10 @@ impl PatchPanel<'_> {
 
         // Clamp selected_group.
         let num_groups = wc.groups.len();
-        if let Some(sel) = self.state.selected_group {
-            if sel >= num_groups {
+        if let Some(sel) = self.state.selected_group
+            && sel >= num_groups {
                 self.state.selected_group = Some(num_groups - 1);
             }
-        }
 
         // === Group list with channel reorder buttons (WP5) ===
         let mut swap: Option<(usize, usize)> = None;
@@ -465,8 +464,8 @@ impl PatchPanel<'_> {
         };
 
         // Delete confirmation flow.
-        if let PanelMode::ConfirmDeleteGroup(idx) = self.state.mode {
-            if idx == group_idx {
+        if let PanelMode::ConfirmDeleteGroup(idx) = self.state.mode
+            && idx == group_idx {
                 let wc = self.state.working_copy.as_ref().unwrap();
                 let fix_count = wc.groups[group_idx].config.patches.len();
                 ui.colored_label(
@@ -490,7 +489,6 @@ impl PatchPanel<'_> {
                 });
                 return;
             }
-        }
 
         ui.horizontal(|ui| {
             ui.heading(&key);
@@ -648,11 +646,10 @@ impl PatchPanel<'_> {
                         // Editable universe.
                         let mut uni_str = format!("{}", block.universe);
                         let uni_edit = egui::TextEdit::singleline(&mut uni_str).desired_width(25.0);
-                        if ui.add(uni_edit).changed() {
-                            if let Ok(v) = uni_str.parse::<usize>() {
+                        if ui.add(uni_edit).changed()
+                            && let Ok(v) = uni_str.parse::<usize>() {
                                 block.universe = v;
                             }
-                        }
 
                         ui.label(format!("{ch_count}"));
 
@@ -758,17 +755,15 @@ impl PatchPanel<'_> {
         }
 
         // Show channel count hint.
-        if let Some(patcher) = self.patchers.get(form.fixture_type_idx) {
-            if let Ok(cfg) = (patcher.create_patch)(Options::default(), Options::default()) {
-                if cfg.channel_count > 0 {
+        if let Some(patcher) = self.patchers.get(form.fixture_type_idx)
+            && let Ok(cfg) = (patcher.create_patch)(Options::default(), Options::default())
+                && cfg.channel_count > 0 {
                     ui.label(format!(
                         "({} DMX channel{} per fixture)",
                         cfg.channel_count,
                         if cfg.channel_count > 1 { "s" } else { "" }
                     ));
                 }
-            }
-        }
 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
@@ -1048,12 +1043,11 @@ impl PatchPanel<'_> {
                 let name = &occupants[0].group_name;
                 let is_collision = occupants.len() > 1;
 
-                if let Some(last) = ranges.last_mut() {
-                    if last.2 == *name && last.1 + 1 == addr && last.3 == is_collision {
+                if let Some(last) = ranges.last_mut()
+                    && last.2 == *name && last.1 + 1 == addr && last.3 == is_collision {
                         last.1 = addr;
                         continue;
                     }
-                }
                 ranges.push((addr, addr, name.clone(), is_collision));
             }
 

@@ -117,6 +117,19 @@ impl Options {
             .map(string_value)
     }
 
+    /// Return an error if the options are not empty.
+    pub fn ensure_empty(&self) -> Result<()> {
+        ensure!(
+            self.value.is_empty(),
+            "these options were not expected: {}",
+            self.value.keys().map(string_value).join(", ")
+        );
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl Options {
     /// Set a string value by key.
     pub fn set_string(&mut self, key: &str, val: &str) {
         self.value.insert(
@@ -143,17 +156,7 @@ impl Options {
 
     /// Remove a key from the options.
     pub fn remove(&mut self, key: &str) {
-        self.value.remove(&Value::String(key.to_string()));
-    }
-
-    /// Return an error if the options are not empty.
-    pub fn ensure_empty(&self) -> Result<()> {
-        ensure!(
-            self.value.is_empty(),
-            "these options were not expected: {}",
-            self.value.keys().map(string_value).join(", ")
-        );
-        Ok(())
+        self.value.remove(Value::String(key.to_string()));
     }
 }
 
