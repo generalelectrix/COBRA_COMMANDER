@@ -143,6 +143,7 @@ fn default_for_option(opt: &PatchOption) -> String {
         PatchOption::Select(choices) => choices.first().cloned().unwrap_or_default(),
         PatchOption::Url => String::new(),
         PatchOption::SocketAddr => String::new(),
+        PatchOption::Optional(_) => String::new(),
     }
 }
 
@@ -268,12 +269,21 @@ fn validate_option(opt: &PatchOption, value: &str) -> Result<(), String> {
             .parse::<std::net::SocketAddr>()
             .map(|_| ())
             .map_err(|_| "invalid address (expected host:port)".to_string()),
+        PatchOption::Optional(inner) => {
+            if value.is_empty() {
+                Ok(())
+            } else {
+                validate_option(inner, value)
+            }
+        }
     }
 }
 
 fn build_options_from_form(entries: &[(String, String)]) -> Options {
     Options::from_entries(entries.iter().map(|(k, v)| {
-        let yaml_val = if v == "true" {
+        let yaml_val = if v.is_empty() {
+            serde_yaml::Value::Null
+        } else if v == "true" {
             serde_yaml::Value::Bool(true)
         } else if v == "false" {
             serde_yaml::Value::Bool(false)
@@ -1129,6 +1139,23 @@ fn render_option_widget(ui: &mut egui::Ui, key: &str, opt: &PatchOption, value: 
                 ui.text_edit_singleline(value);
             });
         }
+        PatchOption::Optional(inner) => match inner.as_ref() {
+            PatchOption::Select(choices) => {
+                egui::ComboBox::from_label(key)
+                    .selected_text(if value.is_empty() {
+                        "(none)"
+                    } else {
+                        value.as_str()
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(value, String::new(), "(none)");
+                        for choice in choices {
+                            ui.selectable_value(value, choice.clone(), choice);
+                        }
+                    });
+            }
+            other => render_option_widget(ui, key, other, value),
+        },
     }
 }
 
@@ -1167,6 +1194,8 @@ mod test {
                 ("brightness".into(), PatchOption::Int),
                 ("mode".into(), PatchOption::Select(vec!["Fast".into(), "Slow".into(), "Auto".into()])),
                 ("endpoint".into(), PatchOption::Url),
+                ("addr".into(), PatchOption::SocketAddr),
+                ("limit".into(), PatchOption::Optional(Box::new(PatchOption::Int))),
             ],
             create_patch: |_, _| Ok(PatchConfig { channel_count: 4, render_mode: None }),
             patch_options: || vec![],
@@ -1613,5 +1642,36 @@ mod test {
         state.selected_group = Some(0);
         state.show_address_map = true;
         snapshot_panel(&test_snapshot_with_groups(), &test_patchers(), &mut state, "patch_panel_dmx_map");
+    }
+
+    #[test]
+    fn render_add_fixture_simple() {
+        let patchers = test_patchers();
+        let snapshot = test_snapshot_with_groups();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+        // Pre-initialize working copy so we can create the form from it.
+        state.working_copy = Some(PatchWorkingCopy::from_snapshot(&snapshot, &patchers));
+        let form = AddFixtureForm::new_for_group(
+            &state.working_copy.as_ref().unwrap().groups[0],
+            &patchers,
+        );
+        state.mode = PanelMode::AddFixture(form);
+        snapshot_panel(&snapshot, &patchers, &mut state, "patch_panel_add_fixture_simple");
+    }
+
+    #[test]
+    fn render_add_fixture_with_patch_options() {
+        let patchers = test_patchers();
+        let snapshot = test_snapshot_with_options();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0); // FrontLights (PatchOpts) — has variant + offset
+        state.working_copy = Some(PatchWorkingCopy::from_snapshot(&snapshot, &patchers));
+        let form = AddFixtureForm::new_for_group(
+            &state.working_copy.as_ref().unwrap().groups[0],
+            &patchers,
+        );
+        state.mode = PanelMode::AddFixture(form);
+        snapshot_panel(&snapshot, &patchers, &mut state, "patch_panel_add_fixture_with_opts");
     }
 }
