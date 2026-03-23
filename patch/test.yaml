@@ -1,7 +1,6 @@
-- fixture: FreqStrobe
+- fixture: WizardExtreme
   patches:
     - addr: 1
-- fixture: FlashBang
-  paired: true
+- fixture: Color
   patches:
     - addr: 20

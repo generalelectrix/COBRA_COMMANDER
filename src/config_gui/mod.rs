@@ -15,10 +15,10 @@
 //! - Panel-local UI state (combo box selections, etc.) lives in `FooPanelState`
 //!   and syncs from the authoritative Show state via `sync_from_status()`
 
+mod animation_panel;
 mod clock_panel;
 mod midi_panel;
 mod osc_panel;
-mod visualizer_panel;
 
 use std::sync::atomic::Ordering;
 
@@ -27,25 +27,28 @@ use eframe::egui;
 
 use crate::control::CommandClient;
 use crate::gui_state::SharedGuiState;
-use crate::ui_util::{CloseHandler, ErrorModal, GuiContext};
+use crate::ui_util::{CloseHandler, ErrorModal, GuiContext, StatusColors};
+use animation_panel::VisualizerPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
-use visualizer_panel::VisualizerPanelState;
+use midi_panel::{MidiPanel, MidiPanelState};
 
 #[derive(Default, PartialEq, Clone, Copy)]
 enum Tab {
     #[default]
-    Config,
+    Clocks,
     Midi,
     Osc,
-    Visualizer,
+    Animation,
 }
 
 struct ConfigApp {
     client: CommandClient,
     clock_panel: ClockPanelState,
+    midi_panel: MidiPanelState,
     visualizer_panel: VisualizerPanelState,
     close_handler: CloseHandler,
     error_modal: ErrorModal,
+    status_colors: StatusColors,
     active_tab: Tab,
     gui_state: SharedGuiState,
 }
@@ -58,25 +61,23 @@ impl eframe::App for ConfigApp {
 
         egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.active_tab, Tab::Config, "Config");
+                ui.selectable_value(&mut self.active_tab, Tab::Clocks, "Clocks");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
-                ui.selectable_value(&mut self.active_tab, Tab::Visualizer, "Visualizer");
+                ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
             });
         });
 
         // Notify the show when the visualizer tab becomes active or inactive.
         if self.active_tab != prev_tab {
-            self.gui_state.visualizer_active.store(
-                self.active_tab == Tab::Visualizer,
-                Ordering::Relaxed,
-            );
+            self.gui_state
+                .visualizer_active
+                .store(self.active_tab == Tab::Animation, Ordering::Relaxed);
         }
 
-        let clock_status = self.gui_state.clock_status.load();
-
         egui::CentralPanel::default().show(ctx, |ui| match self.active_tab {
-            Tab::Config => {
+            Tab::Clocks => {
+                let clock_status = self.gui_state.clock_status.load();
                 ClockPanel {
                     ctx: GuiContext {
                         error_modal: &mut self.error_modal,
@@ -84,12 +85,22 @@ impl eframe::App for ConfigApp {
                     },
                     state: &mut self.clock_panel,
                     clock_status: &clock_status,
+                    status_colors: &self.status_colors,
                 }
                 .ui(ui);
             }
             Tab::Midi => {
                 let midi_slots = self.gui_state.midi_slots.load();
-                midi_panel::ui(ui, &midi_slots);
+                MidiPanel {
+                    ctx: GuiContext {
+                        error_modal: &mut self.error_modal,
+                        client: &self.client,
+                    },
+                    state: &mut self.midi_panel,
+                    slots: &midi_slots,
+                    status_colors: &self.status_colors,
+                }
+                .ui(ui);
             }
             Tab::Osc => {
                 let clients = self.gui_state.osc_clients.load();
@@ -99,7 +110,7 @@ impl eframe::App for ConfigApp {
                 };
                 osc_panel::ui(ui, &mut ctx, &self.gui_state.osc_listen_addr, &clients);
             }
-            Tab::Visualizer => {
+            Tab::Animation => {
                 let state = self.gui_state.animation_state.load();
                 self.visualizer_panel.ui(ui, &state);
             }
@@ -125,10 +136,12 @@ pub fn run_config_gui(
         Box::new(move |_cc| {
             Ok(Box::new(ConfigApp {
                 clock_panel: ClockPanelState::new(zmq_ctx, &initial_clock_status),
+                midi_panel: MidiPanelState::new(),
                 visualizer_panel: VisualizerPanelState::default(),
                 client,
                 close_handler: CloseHandler::default(),
                 error_modal: ErrorModal::default(),
+                status_colors: StatusColors::default(),
                 active_tab: Tab::default(),
                 gui_state,
             }))

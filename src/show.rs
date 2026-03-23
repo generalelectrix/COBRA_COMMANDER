@@ -230,6 +230,15 @@ impl Show {
                 self.refresh_ui();
                 Ok(GuiDirty::MIDI_SLOTS)
             }
+            MetaCommand::ConnectMidiPort {
+                slot_name,
+                device_id,
+                kind,
+            } => {
+                self.controller.connect_midi_port(&slot_name, device_id, kind)?;
+                self.refresh_ui();
+                Ok(GuiDirty::MIDI_SLOTS)
+            }
             MetaCommand::UseClockService(service) => {
                 self.clocks = Clocks::Service(service);
                 self.reconcile_clock_wing()?;

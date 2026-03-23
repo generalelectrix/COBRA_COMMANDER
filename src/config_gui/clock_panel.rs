@@ -6,7 +6,7 @@ use zero_configure::pub_sub::SubscriberService;
 use crate::clock_service::{ClockService, browse_clock_providers, connect_to_provider};
 use crate::control::MetaCommand;
 use crate::gui_state::ClockStatus;
-use crate::ui_util::GuiContext;
+use crate::ui_util::{GuiContext, StatusColors};
 
 /// Abstraction over clock provider discovery and connection.
 pub(crate) trait ClockBrowser {
@@ -77,6 +77,7 @@ pub(crate) struct ClockPanel<'a> {
     pub ctx: GuiContext<'a>,
     pub state: &'a mut ClockPanelState,
     pub clock_status: &'a ClockStatus,
+    pub status_colors: &'a StatusColors,
 }
 
 impl ClockPanel<'_> {
@@ -93,7 +94,7 @@ impl ClockPanel<'_> {
                 format!("Active: Remote ({provider})")
             }
         };
-        ui.colored_label(egui::Color32::GREEN, &status_label);
+        ui.colored_label(self.status_colors.active, &status_label);
         ui.add_space(8.0);
 
         // Mode radio buttons — detect change.
@@ -255,8 +256,12 @@ impl ClockPanel<'_> {
 mod tests {
     use super::*;
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::ErrorModal;
+    use crate::ui_util::{ErrorModal, StatusColors};
     use egui_kittest::{Harness, kittest::Queryable};
+
+    fn test_status_colors() -> StatusColors {
+        StatusColors::default()
+    }
 
     struct MockClockBrowser {
         providers: Vec<String>,
@@ -311,6 +316,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -343,6 +349,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -375,6 +382,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -402,6 +410,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -437,6 +446,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -493,6 +503,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -532,6 +543,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -565,6 +577,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -596,6 +609,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },
@@ -671,6 +685,7 @@ mod tests {
                     },
                     state,
                     clock_status: &clock_status,
+                    status_colors: &test_status_colors(),
                 }
                 .ui(ui);
             },

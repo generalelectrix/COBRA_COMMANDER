@@ -6,8 +6,8 @@ use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use enum_dispatch::enum_dispatch;
 use log::error;
 use midi_harness::{
-    DeviceChange, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice, MidiPortSpec,
-    Output, SlotStatus,
+    DeviceChange, DeviceId, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice,
+    MidiPortSpec, Output, SlotStatus,
 };
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
@@ -210,6 +210,20 @@ impl MidiController {
     /// Remove a slot by name.
     pub fn remove_slot(&mut self, name: &str) -> Result<()> {
         self.0.borrow_mut().remove_slot(name)
+    }
+
+    /// Connect a MIDI port to a slot.
+    pub fn connect_port(
+        &mut self,
+        slot_name: &str,
+        device_id: DeviceId,
+        kind: DeviceKind,
+    ) -> Result<()> {
+        let mut mgr = self.0.borrow_mut();
+        match kind {
+            DeviceKind::Input => mgr.connect_input(slot_name, device_id),
+            DeviceKind::Output => mgr.connect_output(slot_name, device_id),
+        }
     }
 
     /// Clear the device assignment from the named slot.

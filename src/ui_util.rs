@@ -1,6 +1,30 @@
-use eframe::egui;
+use eframe::egui::{self, Color32};
 
 use crate::control::{CommandClient, MetaCommand};
+
+/// Semantic status colors for consistent theming across panels.
+pub struct StatusColors {
+    /// Neutral/unassigned state.
+    pub inactive: Color32,
+    /// Connected/running state.
+    pub active: Color32,
+    /// Degraded/attention-needed state.
+    #[expect(unused)]
+    pub warning: Color32,
+    /// Disconnected/failed state.
+    pub error: Color32,
+}
+
+impl Default for StatusColors {
+    fn default() -> Self {
+        Self {
+            inactive: Color32::GRAY,
+            active: Color32::GREEN,
+            warning: Color32::from_rgb(255, 165, 0),
+            error: Color32::from_rgb(255, 80, 80),
+        }
+    }
+}
 
 /// Shared rendering context for GUI panels.
 ///

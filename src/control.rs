@@ -77,6 +77,16 @@ impl Controller {
         self.osc.register(client_id);
     }
 
+    /// Connect a MIDI port to a slot.
+    pub fn connect_midi_port(
+        &mut self,
+        slot_name: &str,
+        device_id: midi_harness::DeviceId,
+        kind: midi_harness::DeviceKind,
+    ) -> Result<()> {
+        self.midi.connect_port(slot_name, device_id, kind)
+    }
+
     /// Deregister an OSC client.
     pub fn deregister_osc_client(&mut self, client_id: OscClientId) {
         self.osc.deregister(client_id);
@@ -303,9 +313,13 @@ pub enum MetaCommand {
         port: Box<dyn rust_dmx::DmxPort>,
     },
     AddMidiDevice(DeviceSpec<Device>),
-    #[expect(unused)]
     ClearMidiDevice {
         slot_name: String,
+    },
+    ConnectMidiPort {
+        slot_name: String,
+        device_id: midi_harness::DeviceId,
+        kind: midi_harness::DeviceKind,
     },
     UseClockService(crate::clock_service::ClockService),
     UseInternalClocks(Option<String>),
@@ -329,6 +343,9 @@ impl fmt::Debug for MetaCommand {
                 .field("device", &spec.device)
                 .finish(),
             Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
+            Self::ConnectMidiPort {
+                slot_name, kind, ..
+            } => write!(f, "ConnectMidiPort({slot_name}, {kind:?})"),
             Self::UseClockService(_) => write!(f, "UseClockService"),
             Self::UseInternalClocks(device) => write!(f, "UseInternalClocks({device:?})"),
             Self::RegisterOscClient(id) => write!(f, "RegisterOscClient({id})"),

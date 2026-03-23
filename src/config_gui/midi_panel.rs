@@ -1,55 +1,195 @@
 use eframe::egui;
-use midi_harness::{PortStatus, SlotStatus};
+use midi_harness::{DeviceKind, MidiPortSpec, PortStatus, SlotStatus};
+use tunnels::midi::list_ports;
 
-/// Render the MIDI device slots panel.
-///
-/// This is a stateless rendering function — it accepts the already-loaded
-/// snapshot from the caller and does not interact with SharedGuiState.
-pub fn ui(ui: &mut egui::Ui, slots: &[SlotStatus]) {
-    ui.heading("MIDI Devices");
-    ui.separator();
+use crate::control::MetaCommand;
+use crate::ui_util::{GuiContext, StatusColors};
 
-    if slots.is_empty() {
-        ui.label("No MIDI slots configured.");
-        return;
-    }
-
-    egui::Grid::new("midi_slots_grid")
-        .num_columns(4)
-        .spacing([16.0, 4.0])
-        .striped(true)
-        .show(ui, |ui| {
-            // Header row.
-            ui.strong("Slot");
-            ui.strong("Model");
-            ui.strong("Input");
-            ui.strong("Output");
-            ui.end_row();
-
-            for slot in slots {
-                ui.label(&slot.name);
-                ui.label(&slot.model);
-                port_status_label(ui, &slot.input);
-                port_status_label(ui, &slot.output);
-                ui.end_row();
-            }
-        });
+pub struct MidiPanelState {
+    input_ports: Vec<MidiPortSpec>,
+    output_ports: Vec<MidiPortSpec>,
 }
 
-/// Render a single port status cell with appropriate coloring.
-fn port_status_label(ui: &mut egui::Ui, status: &PortStatus) {
-    match status {
-        PortStatus::Unassigned => {
-            ui.colored_label(egui::Color32::GRAY, "\u{2014}");
+impl MidiPanelState {
+    pub fn new() -> Self {
+        let (input_ports, output_ports) = list_ports().unwrap_or_default();
+        Self {
+            input_ports,
+            output_ports,
         }
-        PortStatus::Disconnected { name } => {
-            ui.colored_label(
-                egui::Color32::from_rgb(255, 80, 80),
-                format!("{name} (disconnected)"),
-            );
+    }
+
+    fn refresh_ports(&mut self) {
+        if let Ok((inputs, outputs)) = list_ports() {
+            self.input_ports = inputs;
+            self.output_ports = outputs;
         }
-        PortStatus::Connected { name } => {
-            ui.colored_label(egui::Color32::GREEN, name);
+    }
+
+    fn ports_for_kind(&self, kind: DeviceKind) -> &[MidiPortSpec] {
+        match kind {
+            DeviceKind::Input => &self.input_ports,
+            DeviceKind::Output => &self.output_ports,
+        }
+    }
+}
+
+pub(crate) struct MidiPanel<'a> {
+    pub ctx: GuiContext<'a>,
+    pub state: &'a mut MidiPanelState,
+    pub slots: &'a [SlotStatus],
+    pub status_colors: &'a StatusColors,
+}
+
+impl MidiPanel<'_> {
+    pub fn ui(mut self, ui: &mut egui::Ui) {
+        ui.heading("MIDI Devices");
+        ui.separator();
+
+        ui.horizontal(|ui| {
+            if ui
+                .button("\u{1f504}")
+                .on_hover_text("Refresh port list")
+                .clicked()
+            {
+                self.state.refresh_ports();
+            }
+        });
+        ui.add_space(4.0);
+
+        // Copy the reference out of self so the loop doesn't conflict with
+        // &mut self method calls.
+        let slots = self.slots;
+
+        if slots.is_empty() {
+            ui.label("No MIDI slots configured.");
+            return;
+        }
+
+        egui::Grid::new("midi_slots_grid")
+            .num_columns(6)
+            .spacing([12.0, 4.0])
+            .striped(true)
+            .show(ui, |ui| {
+                ui.strong("Slot");
+                ui.strong("Model");
+                ui.strong("Input");
+                ui.strong("Output");
+                ui.label(""); // Auto button column
+                ui.label(""); // Clear button column
+                ui.end_row();
+
+                for slot in slots {
+                    ui.label(&slot.name);
+                    ui.label(&slot.model);
+
+                    self.port_combo(ui, &slot.name, &slot.input, DeviceKind::Input);
+                    self.port_combo(ui, &slot.name, &slot.output, DeviceKind::Output);
+
+                    if ui.button("Auto").clicked() {
+                        self.auto_configure_slot(&slot.model, &slot.name);
+                    }
+
+                    if ui.button("Clear").clicked() {
+                        let _ = self.ctx.send_command(MetaCommand::ClearMidiDevice {
+                            slot_name: slot.name.clone(),
+                        });
+                    }
+
+                    ui.end_row();
+                }
+            });
+    }
+
+    /// Render a combo box for selecting a MIDI port.
+    fn port_combo(
+        &mut self,
+        ui: &mut egui::Ui,
+        slot_name: &str,
+        current: &PortStatus,
+        kind: DeviceKind,
+    ) {
+        let kind_label = match kind {
+            DeviceKind::Input => "input",
+            DeviceKind::Output => "output",
+        };
+        let combo_id = format!("{slot_name}_{kind_label}");
+
+        let (selected_text, text_color) = match current {
+            PortStatus::Unassigned => ("Unassigned".to_string(), self.status_colors.inactive),
+            PortStatus::Connected { name, .. } => (name.clone(), self.status_colors.active),
+            PortStatus::Disconnected { name, .. } => {
+                (format!("{name} (disconnected)"), self.status_colors.error)
+            }
+        };
+
+        let current_id = match current {
+            PortStatus::Connected { id, .. } | PortStatus::Disconnected { id, .. } => Some(id),
+            PortStatus::Unassigned => None,
+        };
+
+        let ports = self.state.ports_for_kind(kind);
+        let ctx = &mut self.ctx;
+
+        egui::ComboBox::from_id_salt(&combo_id)
+            .selected_text(egui::RichText::new(&selected_text).color(text_color))
+            .show_ui(ui, |ui| {
+                if current_id.is_some() && ui.selectable_label(false, "Unassigned").clicked() {
+                    let _ = ctx.send_command(MetaCommand::ClearMidiDevice {
+                        slot_name: slot_name.to_string(),
+                    });
+                }
+
+                for port in ports {
+                    let is_selected = current_id == Some(&port.id);
+                    if ui.selectable_label(is_selected, &port.name).clicked() && !is_selected {
+                        let _ = ctx.send_command(MetaCommand::ConnectMidiPort {
+                            slot_name: slot_name.to_string(),
+                            device_id: port.id.clone(),
+                            kind,
+                        });
+                    }
+                }
+            });
+    }
+
+    /// Try to auto-configure a slot by matching its model name against available ports.
+    fn auto_configure_slot(&mut self, model: &str, slot_name: &str) {
+        // Refresh so we don't match against stale ports from unplugged devices.
+        self.state.refresh_ports();
+
+        let input_id = self
+            .state
+            .input_ports
+            .iter()
+            .find(|p| p.name == model)
+            .map(|p| p.id.clone());
+        let output_id = self
+            .state
+            .output_ports
+            .iter()
+            .find(|p| p.name == model)
+            .map(|p| p.id.clone());
+
+        if input_id.is_none() && output_id.is_none() {
+            self.ctx
+                .report_error(format_args!("No matching MIDI port found for \"{model}\""));
+            return;
+        }
+
+        if let Some(id) = input_id {
+            let _ = self.ctx.send_command(MetaCommand::ConnectMidiPort {
+                slot_name: slot_name.to_string(),
+                device_id: id,
+                kind: DeviceKind::Input,
+            });
+        }
+        if let Some(id) = output_id {
+            let _ = self.ctx.send_command(MetaCommand::ConnectMidiPort {
+                slot_name: slot_name.to_string(),
+                device_id: id,
+                kind: DeviceKind::Output,
+            });
         }
     }
 }
@@ -57,42 +197,26 @@ fn port_status_label(ui: &mut egui::Ui, status: &PortStatus) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use egui_kittest::{Harness, kittest::Queryable};
+    use crate::control::mock::auto_respond_client;
+    use crate::ui_util::ErrorModal;
+    use egui_kittest::Harness;
+    use midi_harness::DeviceId;
 
-    #[test]
-    fn empty_slots_shows_no_configured_message() {
-        let slots: Vec<SlotStatus> = vec![];
-        let harness = Harness::new_ui(|ui| {
-            super::ui(ui, &slots);
-        });
-
-        assert!(
-            harness
-                .query_by_label("No MIDI slots configured.")
-                .is_some()
-        );
+    fn test_status_colors() -> StatusColors {
+        StatusColors::default()
     }
 
-    #[test]
-    fn render_empty_slots() {
-        let slots: Vec<SlotStatus> = vec![];
-        let mut harness = Harness::new_ui(|ui| {
-            super::ui(ui, &slots);
-        });
-        harness.run();
-        harness.snapshot("midi_panel_empty");
-    }
-
-    #[test]
-    fn render_populated_slots() {
-        let slots = vec![
+    fn test_slots() -> Vec<SlotStatus> {
+        vec![
             SlotStatus {
                 name: "Submaster Wing 1".to_string(),
                 model: "Launch Control XL".to_string(),
                 input: PortStatus::Connected {
+                    id: DeviceId("lxcl-in".into()),
                     name: "LXCL Input".to_string(),
                 },
                 output: PortStatus::Disconnected {
+                    id: DeviceId("lxcl-out".into()),
                     name: "LXCL Output".to_string(),
                 },
             },
@@ -106,47 +230,64 @@ mod tests {
                 name: "Fader Wing".to_string(),
                 model: "nanoKONTROL2".to_string(),
                 input: PortStatus::Connected {
+                    id: DeviceId("nano-in".into()),
                     name: "nanoKONTROL2 MIDI In".to_string(),
                 },
                 output: PortStatus::Connected {
+                    id: DeviceId("nano-out".into()),
                     name: "nanoKONTROL2 MIDI Out".to_string(),
                 },
             },
-        ];
-        let mut harness = Harness::new_ui(|ui| {
-            super::ui(ui, &slots);
-        });
-        harness.run();
-        harness.snapshot("midi_panel_populated");
+        ]
     }
 
     #[test]
-    fn populated_slots_shows_names_and_status() {
-        let slots = vec![
-            SlotStatus {
-                name: "Submaster Wing 1".to_string(),
-                model: "Launch Control XL".to_string(),
-                input: PortStatus::Connected {
-                    name: "LXCL Input".to_string(),
+    fn render_empty_slots() {
+        let client = auto_respond_client();
+        let mut error_modal = ErrorModal::default();
+        let slots: Vec<SlotStatus> = vec![];
+        let status_colors = test_status_colors();
+        let mut harness = Harness::new_ui(|ui| {
+            MidiPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
                 },
-                output: PortStatus::Disconnected {
-                    name: "LXCL Output".to_string(),
+                state: &mut MidiPanelState {
+                    input_ports: vec![],
+                    output_ports: vec![],
                 },
-            },
-            SlotStatus {
-                name: "Clock Wing".to_string(),
-                model: "CMD MM-1".to_string(),
-                input: PortStatus::Unassigned,
-                output: PortStatus::Unassigned,
-            },
-        ];
-        let harness = Harness::new_ui(|ui| {
-            super::ui(ui, &slots);
+                slots: &slots,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
         });
+        harness.run();
+        harness.snapshot("midi_panel_empty");
+    }
 
-        assert!(harness.query_by_label("Submaster Wing 1").is_some());
-        assert!(harness.query_by_label("Launch Control XL").is_some());
-        assert!(harness.query_by_label("Clock Wing").is_some());
-        assert!(harness.query_by_label("CMD MM-1").is_some());
+    #[test]
+    fn render_populated_slots() {
+        let client = auto_respond_client();
+        let mut error_modal = ErrorModal::default();
+        let slots = test_slots();
+        let status_colors = test_status_colors();
+        let mut harness = Harness::new_ui(|ui| {
+            MidiPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state: &mut MidiPanelState {
+                    input_ports: vec![],
+                    output_ports: vec![],
+                },
+                slots: &slots,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("midi_panel_populated");
     }
 }
