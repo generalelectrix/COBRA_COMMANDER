@@ -1139,17 +1139,78 @@ fn render_option_widget(ui: &mut egui::Ui, key: &str, opt: &PatchOption, value: 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::fixture::patch::PATCHERS;
+    use crate::fixture::patch::PatchConfig;
+    use crate::fixture::prelude::FixtureType;
+
+    // -----------------------------------------------------------------------
+    // Mock patchers — no dependency on real fixture profiles
+    // -----------------------------------------------------------------------
+
+    /// Simple 1-channel fixture with no options.
+    fn mock_simple_patcher() -> Patcher {
+        Patcher {
+            name: FixtureType("Simple"),
+            create_group: |_, _| unimplemented!(),
+            group_options: || vec![],
+            create_patch: |_, _| Ok(PatchConfig { channel_count: 1, render_mode: None }),
+            patch_options: || vec![],
+        }
+    }
+
+    /// Fixture with group-level options covering Bool, Int, Select, and Url.
+    fn mock_group_opts_patcher() -> Patcher {
+        Patcher {
+            name: FixtureType("GroupOpts"),
+            create_group: |_, _| unimplemented!(),
+            group_options: || vec![
+                ("paired".into(), PatchOption::Bool),
+                ("brightness".into(), PatchOption::Int),
+                ("mode".into(), PatchOption::Select(vec!["Fast".into(), "Slow".into(), "Auto".into()])),
+                ("endpoint".into(), PatchOption::Url),
+            ],
+            create_patch: |_, _| Ok(PatchConfig { channel_count: 4, render_mode: None }),
+            patch_options: || vec![],
+        }
+    }
+
+    /// Fixture with patch-level options (Select + Int).
+    fn mock_patch_opts_patcher() -> Patcher {
+        Patcher {
+            name: FixtureType("PatchOpts"),
+            create_group: |_, _| unimplemented!(),
+            group_options: || vec![],
+            create_patch: |_, opts| {
+                let ch = match opts.get_string("variant").as_deref() {
+                    Some("Wide") => 6,
+                    Some("Narrow") => 3,
+                    _ => 3,
+                };
+                Ok(PatchConfig { channel_count: ch, render_mode: None })
+            },
+            patch_options: || vec![
+                ("variant".into(), PatchOption::Select(vec!["Narrow".into(), "Wide".into()])),
+                ("offset".into(), PatchOption::Int),
+            ],
+        }
+    }
 
     fn test_patchers() -> Vec<Patcher> {
-        PATCHERS.iter().cloned().collect()
+        vec![
+            mock_group_opts_patcher(),
+            mock_patch_opts_patcher(),
+            mock_simple_patcher(),
+        ]
     }
+
+    // -----------------------------------------------------------------------
+    // Test data helpers
+    // -----------------------------------------------------------------------
 
     fn test_snapshot_empty() -> PatchSnapshot {
         PatchSnapshot { groups: vec![] }
     }
 
-    fn dimmer_block(addr: usize) -> PatchBlock {
+    fn simple_block(addr: usize) -> PatchBlock {
         PatchBlock {
             addr: Some(DmxAddrConfig::Single(DmxAddr::new(addr))),
             universe: 0,
@@ -1158,21 +1219,21 @@ mod test {
         }
     }
 
-    fn dimmer_group(name: Option<&str>, addrs: &[usize]) -> FixtureGroupConfig {
+    fn simple_group(name: Option<&str>, addrs: &[usize]) -> FixtureGroupConfig {
         FixtureGroupConfig {
-            fixture: "Dimmer".to_string(),
+            fixture: "Simple".to_string(),
             group: name.map(|n| FixtureGroupKey(n.to_string())),
             channel: true,
             color_organ: false,
-            patches: addrs.iter().map(|&a| dimmer_block(a)).collect(),
+            patches: addrs.iter().map(|&a| simple_block(a)).collect(),
             options: Options::default(),
         }
     }
 
-    fn color_block(addr: usize, kind: &str) -> PatchBlock {
+    fn patch_opts_block(addr: usize, variant: &str) -> PatchBlock {
         let mut options = Options::default();
-        if !kind.is_empty() {
-            options.set_string("kind", kind);
+        if !variant.is_empty() {
+            options.set_string("variant", variant);
         }
         PatchBlock {
             addr: Some(DmxAddrConfig::Single(DmxAddr::new(addr))),
@@ -1182,9 +1243,9 @@ mod test {
         }
     }
 
-    fn color_group(name: Option<&str>, blocks: Vec<PatchBlock>) -> FixtureGroupConfig {
+    fn patch_opts_group(name: Option<&str>, blocks: Vec<PatchBlock>) -> FixtureGroupConfig {
         FixtureGroupConfig {
-            fixture: "Color".to_string(),
+            fixture: "PatchOpts".to_string(),
             group: name.map(|n| FixtureGroupKey(n.to_string())),
             channel: true,
             color_organ: false,
@@ -1193,15 +1254,18 @@ mod test {
         }
     }
 
-    fn flash_bang_group(name: Option<&str>, paired: bool) -> FixtureGroupConfig {
+    fn group_opts_group(name: Option<&str>) -> FixtureGroupConfig {
         let mut options = Options::default();
-        options.set_bool("paired", paired);
+        options.set_bool("paired", true);
+        options.set_string("brightness", "200");
+        options.set_string("mode", "Fast");
+        options.set_string("endpoint", "http://10.0.0.1:8080");
         FixtureGroupConfig {
-            fixture: "FlashBang".to_string(),
+            fixture: "GroupOpts".to_string(),
             group: name.map(|n| FixtureGroupKey(n.to_string())),
             channel: true,
             color_organ: false,
-            patches: vec![dimmer_block(100)],
+            patches: vec![simple_block(100)],
             options,
         }
     }
@@ -1209,50 +1273,57 @@ mod test {
     fn test_snapshot_with_groups() -> PatchSnapshot {
         PatchSnapshot {
             groups: vec![
-                dimmer_group(None, &[1]),
-                dimmer_group(Some("BackDimmer"), &[10, 11]),
+                simple_group(None, &[1]),
+                simple_group(Some("BackSimple"), &[10, 11]),
             ],
         }
     }
 
-    /// Snapshot with diverse option types for visual verification.
     fn test_snapshot_with_options() -> PatchSnapshot {
         PatchSnapshot {
             groups: vec![
-                // Color has Select patch option (kind)
-                color_group(
-                    Some("FrontColor"),
+                // PatchOpts has Select + Int patch options, channel count varies by variant
+                patch_opts_group(
+                    Some("FrontLights"),
                     vec![
-                        color_block(20, "Rgb"),
-                        color_block(23, "Rgbw"),
+                        patch_opts_block(20, "Narrow"),
+                        patch_opts_block(23, "Wide"),
                     ],
                 ),
-                // FlashBang has Bool group option (paired)
-                flash_bang_group(Some("Strobes"), true),
-                // Dimmer has no options
-                dimmer_group(None, &[50]),
+                // GroupOpts has Bool + Int + Select + Url group options
+                group_opts_group(Some("Effects")),
+                // Simple has no options
+                simple_group(None, &[50]),
             ],
         }
     }
 
-    // -- WP3 tests (retained) --
+    // -----------------------------------------------------------------------
+    // Unit tests
+    // -----------------------------------------------------------------------
 
     #[test]
     fn working_copy_from_empty_snapshot() {
-        let snapshot = test_snapshot_empty();
-        let patchers = test_patchers();
-        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
+        let wc = PatchWorkingCopy::from_snapshot(&test_snapshot_empty(), &test_patchers());
         assert!(wc.groups.is_empty());
     }
 
     #[test]
     fn working_copy_resolves_channel_counts() {
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
+        let wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         assert_eq!(wc.groups.len(), 2);
+        // Simple = 1 channel
         assert_eq!(wc.groups[0].channel_counts, vec![1]);
         assert_eq!(wc.groups[1].channel_counts, vec![1, 1]);
+    }
+
+    #[test]
+    fn working_copy_resolves_variable_channel_counts() {
+        let wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_options(), &test_patchers());
+        // PatchOpts: Narrow=3, Wide=6
+        assert_eq!(wc.groups[0].channel_counts, vec![3, 6]);
+        // GroupOpts: always 4
+        assert_eq!(wc.groups[1].channel_counts, vec![4]);
     }
 
     #[test]
@@ -1263,26 +1334,21 @@ mod test {
                 group: None,
                 channel: true,
                 color_organ: false,
-                patches: vec![dimmer_block(1)],
+                patches: vec![simple_block(1)],
                 options: Options::default(),
             }],
         };
-        let patchers = test_patchers();
-        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
+        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         assert_eq!(wc.groups[0].channel_counts, vec![0]);
     }
 
-    // -- WP4 tests --
-
     #[test]
     fn add_group_to_working_copy() {
-        let snapshot = test_snapshot_empty();
         let patchers = test_patchers();
-        let mut wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
+        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_empty(), &patchers);
 
-        let config = dimmer_group(Some("NewGroup"), &[50]);
-        let working_group = PatchWorkingCopy::resolve_group(&config, &patchers);
-        wc.groups.push(working_group);
+        let config = simple_group(Some("NewGroup"), &[50]);
+        wc.groups.push(PatchWorkingCopy::resolve_group(&config, &patchers));
 
         assert_eq!(wc.groups.len(), 1);
         assert_eq!(wc.groups[0].config.key(), "NewGroup");
@@ -1291,26 +1357,20 @@ mod test {
 
     #[test]
     fn remove_group_from_working_copy() {
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let mut wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
-
+        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         assert_eq!(wc.groups.len(), 2);
         wc.groups.remove(0);
         assert_eq!(wc.groups.len(), 1);
-        assert_eq!(wc.groups[0].config.key(), "BackDimmer");
+        assert_eq!(wc.groups[0].config.key(), "BackSimple");
     }
 
     #[test]
     fn add_fixture_to_group() {
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let mut wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
-
+        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         let group = &mut wc.groups[0];
         assert_eq!(group.config.patches.len(), 1);
 
-        group.config.patches.push(dimmer_block(5));
+        group.config.patches.push(simple_block(5));
         group.channel_counts.push(1);
 
         assert_eq!(group.config.patches.len(), 2);
@@ -1319,10 +1379,7 @@ mod test {
 
     #[test]
     fn remove_fixture_from_group() {
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let mut wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
-
+        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         let group = &mut wc.groups[1];
         assert_eq!(group.config.patches.len(), 2);
 
@@ -1335,42 +1392,27 @@ mod test {
 
     #[test]
     fn reorder_fixtures_preserves_sync() {
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let mut wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
-
+        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         let group = &mut wc.groups[1];
-        // BackDimmer has patches at addr 10 and 11.
-        let addr_before_0 = group.config.patches[0].start_count().0.unwrap().dmx_index();
-        let addr_before_1 = group.config.patches[1].start_count().0.unwrap().dmx_index();
+        let addr_0 = group.config.patches[0].start_count().0.unwrap().dmx_index();
+        let addr_1 = group.config.patches[1].start_count().0.unwrap().dmx_index();
 
         group.config.patches.swap(0, 1);
         group.channel_counts.swap(0, 1);
 
-        assert_eq!(
-            group.config.patches[0].start_count().0.unwrap().dmx_index(),
-            addr_before_1
-        );
-        assert_eq!(
-            group.config.patches[1].start_count().0.unwrap().dmx_index(),
-            addr_before_0
-        );
-        // Channel counts still match patches.
+        assert_eq!(group.config.patches[0].start_count().0.unwrap().dmx_index(), addr_1);
+        assert_eq!(group.config.patches[1].start_count().0.unwrap().dmx_index(), addr_0);
         assert_eq!(group.channel_counts.len(), group.config.patches.len());
     }
 
     #[test]
     fn configs_extracts_all_group_configs() {
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
+        let wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         let configs = wc.configs();
         assert_eq!(configs.len(), 2);
-        assert_eq!(configs[0].fixture, "Dimmer");
-        assert_eq!(configs[1].key(), "BackDimmer");
+        assert_eq!(configs[0].fixture, "Simple");
+        assert_eq!(configs[1].key(), "BackSimple");
     }
-
-    // -- WP4 validation tests --
 
     #[test]
     fn validate_int_option() {
@@ -1388,41 +1430,28 @@ mod test {
     fn validate_select_always_ok() {
         let opt = PatchOption::Select(vec!["a".into(), "b".into()]);
         assert!(validate_option(&opt, "a").is_ok());
-        assert!(validate_option(&opt, "z").is_ok()); // Select validation is at widget level.
+        assert!(validate_option(&opt, "z").is_ok());
     }
-
-    // -- WP5 tests --
 
     #[test]
     fn swap_groups_reorders() {
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let mut wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
-
-        assert_eq!(wc.groups[0].config.key(), "Dimmer");
-        assert_eq!(wc.groups[1].config.key(), "BackDimmer");
-
+        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
+        assert_eq!(wc.groups[0].config.key(), "Simple");
+        assert_eq!(wc.groups[1].config.key(), "BackSimple");
         wc.groups.swap(0, 1);
-
-        assert_eq!(wc.groups[0].config.key(), "BackDimmer");
-        assert_eq!(wc.groups[1].config.key(), "Dimmer");
+        assert_eq!(wc.groups[0].config.key(), "BackSimple");
+        assert_eq!(wc.groups[1].config.key(), "Simple");
     }
-
-    // -- WP6 tests --
 
     #[test]
     fn address_map_build() {
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
+        let wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         let map = build_address_map(&wc);
 
-        // Dimmer at addr 1 (1 channel) -> (0, 1)
         assert!(map.contains_key(&(0, 1)));
         assert_eq!(map[&(0, 1)].len(), 1);
-        assert_eq!(map[&(0, 1)][0].group_name, "Dimmer");
+        assert_eq!(map[&(0, 1)][0].group_name, "Simple");
 
-        // BackDimmer at addr 10, 11 -> (0, 10), (0, 11)
         assert!(map.contains_key(&(0, 10)));
         assert!(map.contains_key(&(0, 11)));
     }
@@ -1431,15 +1460,13 @@ mod test {
     fn address_map_detects_collision() {
         let snapshot = PatchSnapshot {
             groups: vec![
-                dimmer_group(Some("A"), &[1]),
-                dimmer_group(Some("B"), &[1]), // same address!
+                simple_group(Some("A"), &[1]),
+                simple_group(Some("B"), &[1]),
             ],
         };
-        let patchers = test_patchers();
-        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
+        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         let map = build_address_map(&wc);
 
-        // Address 1 should have 2 occupants.
         assert_eq!(map[&(0, 1)].len(), 2);
         let collision = collision_at(&map, 0, 1);
         assert!(collision.is_some());
@@ -1450,15 +1477,15 @@ mod test {
     fn address_map_no_collision_different_universes() {
         let snapshot = PatchSnapshot {
             groups: vec![
-                dimmer_group(Some("A"), &[1]),
+                simple_group(Some("A"), &[1]),
                 FixtureGroupConfig {
-                    fixture: "Dimmer".to_string(),
+                    fixture: "Simple".to_string(),
                     group: Some(FixtureGroupKey("B".to_string())),
                     channel: true,
                     color_organ: false,
                     patches: vec![PatchBlock {
                         addr: Some(DmxAddrConfig::Single(DmxAddr::new(1))),
-                        universe: 1, // different universe
+                        universe: 1,
                         mirror: false,
                         options: Options::default(),
                     }],
@@ -1466,13 +1493,26 @@ mod test {
                 },
             ],
         };
-        let patchers = test_patchers();
-        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &patchers);
+        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         let map = build_address_map(&wc);
 
-        // Same address, different universes — no collision.
         assert_eq!(map[&(0, 1)].len(), 1);
         assert_eq!(map[&(1, 1)].len(), 1);
+    }
+
+    #[test]
+    fn address_map_multi_channel_fixture() {
+        // PatchOpts with "Wide" = 6 channels at addr 10 should occupy 10-15.
+        let snapshot = PatchSnapshot {
+            groups: vec![patch_opts_group(None, vec![patch_opts_block(10, "Wide")])],
+        };
+        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
+        let map = build_address_map(&wc);
+
+        for addr in 10..=15 {
+            assert!(map.contains_key(&(0, addr)), "expected addr {addr} in map");
+        }
+        assert!(!map.contains_key(&(0, 16)));
     }
 
     #[test]
@@ -1488,204 +1528,90 @@ mod test {
         assert_eq!(opts.get_string("name").as_deref(), Some("hello"));
     }
 
-    // -- Snapshot tests --
+    // -----------------------------------------------------------------------
+    // Snapshot tests
+    // -----------------------------------------------------------------------
 
     use crate::control::mock::auto_respond_client;
     use crate::ui_util::{ErrorModal, StatusColors};
     use egui_kittest::Harness;
 
-    fn test_status_colors() -> StatusColors {
-        StatusColors::default()
+    fn snapshot_panel(
+        snapshot: &PatchSnapshot,
+        patchers: &[Patcher],
+        state: &mut PatchPanelState,
+        name: &str,
+    ) {
+        let client = auto_respond_client();
+        let status_colors = StatusColors::default();
+        let mut error_modal = ErrorModal::default();
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state,
+                snapshot,
+                patchers,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot(name);
     }
 
     #[test]
     fn render_empty_patch() {
-        let client = auto_respond_client();
-        let snapshot = test_snapshot_empty();
-        let patchers = test_patchers();
-        let status_colors = test_status_colors();
-        let mut error_modal = ErrorModal::default();
         let mut state = PatchPanelState::new();
-
-        let mut harness = Harness::new_ui(|ui| {
-            PatchPanel {
-                ctx: GuiContext {
-                    error_modal: &mut error_modal,
-                    client: &client,
-                },
-                state: &mut state,
-                snapshot: &snapshot,
-                patchers: &patchers,
-                status_colors: &status_colors,
-            }
-            .ui(ui);
-        });
-        harness.run();
-        harness.snapshot("patch_panel_empty");
+        snapshot_panel(&test_snapshot_empty(), &test_patchers(), &mut state, "patch_panel_empty");
     }
 
     #[test]
     fn render_with_groups() {
-        let client = auto_respond_client();
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let status_colors = test_status_colors();
-        let mut error_modal = ErrorModal::default();
         let mut state = PatchPanelState::new();
         state.selected_group = Some(0);
-
-        let mut harness = Harness::new_ui(|ui| {
-            PatchPanel {
-                ctx: GuiContext {
-                    error_modal: &mut error_modal,
-                    client: &client,
-                },
-                state: &mut state,
-                snapshot: &snapshot,
-                patchers: &patchers,
-                status_colors: &status_colors,
-            }
-            .ui(ui);
-        });
-        harness.run();
-        harness.snapshot("patch_panel_with_groups");
+        snapshot_panel(&test_snapshot_with_groups(), &test_patchers(), &mut state, "patch_panel_with_groups");
     }
 
     #[test]
     fn render_second_group_selected() {
-        let client = auto_respond_client();
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let status_colors = test_status_colors();
-        let mut error_modal = ErrorModal::default();
         let mut state = PatchPanelState::new();
         state.selected_group = Some(1);
-
-        let mut harness = Harness::new_ui(|ui| {
-            PatchPanel {
-                ctx: GuiContext {
-                    error_modal: &mut error_modal,
-                    client: &client,
-                },
-                state: &mut state,
-                snapshot: &snapshot,
-                patchers: &patchers,
-                status_colors: &status_colors,
-            }
-            .ui(ui);
-        });
-        harness.run();
-        harness.snapshot("patch_panel_second_group");
+        snapshot_panel(&test_snapshot_with_groups(), &test_patchers(), &mut state, "patch_panel_second_group");
     }
 
     #[test]
     fn render_add_group_form() {
-        let client = auto_respond_client();
-        let snapshot = test_snapshot_with_groups();
         let patchers = test_patchers();
-        let status_colors = test_status_colors();
-        let mut error_modal = ErrorModal::default();
         let mut state = PatchPanelState::new();
         let mut form = AddGroupForm::new();
         form.sync_options(&patchers);
         state.mode = PanelMode::AddGroup(form);
-
-        let mut harness = Harness::new_ui(|ui| {
-            PatchPanel {
-                ctx: GuiContext {
-                    error_modal: &mut error_modal,
-                    client: &client,
-                },
-                state: &mut state,
-                snapshot: &snapshot,
-                patchers: &patchers,
-                status_colors: &status_colors,
-            }
-            .ui(ui);
-        });
-        harness.run();
-        harness.snapshot("patch_panel_add_group");
+        snapshot_panel(&test_snapshot_with_groups(), &patchers, &mut state, "patch_panel_add_group");
     }
 
     #[test]
     fn render_with_patch_options() {
-        let client = auto_respond_client();
-        let snapshot = test_snapshot_with_options();
-        let patchers = test_patchers();
-        let status_colors = test_status_colors();
-        let mut error_modal = ErrorModal::default();
         let mut state = PatchPanelState::new();
-        state.selected_group = Some(0); // FrontColor — has "kind" patch option
-
-        let mut harness = Harness::new_ui(|ui| {
-            PatchPanel {
-                ctx: GuiContext {
-                    error_modal: &mut error_modal,
-                    client: &client,
-                },
-                state: &mut state,
-                snapshot: &snapshot,
-                patchers: &patchers,
-                status_colors: &status_colors,
-            }
-            .ui(ui);
-        });
-        harness.run();
-        harness.snapshot("patch_panel_patch_options");
+        state.selected_group = Some(0); // FrontLights — has variant + offset columns
+        snapshot_panel(&test_snapshot_with_options(), &test_patchers(), &mut state, "patch_panel_patch_options");
     }
 
     #[test]
     fn render_with_group_options() {
-        let client = auto_respond_client();
-        let snapshot = test_snapshot_with_options();
-        let patchers = test_patchers();
-        let status_colors = test_status_colors();
-        let mut error_modal = ErrorModal::default();
         let mut state = PatchPanelState::new();
-        state.selected_group = Some(1); // Strobes (FlashBang) — has "paired" Bool group option
-
-        let mut harness = Harness::new_ui(|ui| {
-            PatchPanel {
-                ctx: GuiContext {
-                    error_modal: &mut error_modal,
-                    client: &client,
-                },
-                state: &mut state,
-                snapshot: &snapshot,
-                patchers: &patchers,
-                status_colors: &status_colors,
-            }
-            .ui(ui);
-        });
-        harness.run();
-        harness.snapshot("patch_panel_group_options");
+        state.selected_group = Some(1); // Effects (GroupOpts) — has Bool, Int, Select, Url
+        snapshot_panel(&test_snapshot_with_options(), &test_patchers(), &mut state, "patch_panel_group_options");
     }
 
     #[test]
     fn render_with_dmx_map() {
-        let client = auto_respond_client();
-        let snapshot = test_snapshot_with_groups();
-        let patchers = test_patchers();
-        let status_colors = test_status_colors();
-        let mut error_modal = ErrorModal::default();
         let mut state = PatchPanelState::new();
         state.selected_group = Some(0);
         state.show_address_map = true;
-
-        let mut harness = Harness::new_ui(|ui| {
-            PatchPanel {
-                ctx: GuiContext {
-                    error_modal: &mut error_modal,
-                    client: &client,
-                },
-                state: &mut state,
-                snapshot: &snapshot,
-                patchers: &patchers,
-                status_colors: &status_colors,
-            }
-            .ui(ui);
-        });
-        harness.run();
-        harness.snapshot("patch_panel_dmx_map");
+        snapshot_panel(&test_snapshot_with_groups(), &test_patchers(), &mut state, "patch_panel_dmx_map");
     }
 }
