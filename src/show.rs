@@ -25,7 +25,7 @@ use crate::{
 pub use crate::channel::ChannelId;
 use tunnels::audio::AudioInput;
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use rust_dmx::{DmxPort, OfflineDmxPort};

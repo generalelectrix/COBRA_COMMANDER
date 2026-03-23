@@ -40,8 +40,8 @@ num-derive = "0.4"
 ordered-float = "5"
 ordermap = "1"
 ansi-escapes = "0.2.0"
-egui_plot = "0.33.0"
-eframe = "0.32.3"
+egui_plot = "0.34"
+eframe = "0.33"
 enum_dispatch = "0.3.13"
 url = { version = "*", features = ["serde"] }
 termion = "4.0.5"
@@ -50,7 +50,7 @@ owo-colors = "4.2.3"
 [dev-dependencies]
 typetag = "0.2"
 tempfile = "3"
-egui_kittest = { version = "0.32", features = ["wgpu", "snapshot"] }
+egui_kittest = { version = "0.33", features = ["wgpu", "snapshot"] }
 
 [patch.'https://github.com/generalelectrix/tunnels']
 midi_harness = { path = "../tunnels/midi_harness" }
