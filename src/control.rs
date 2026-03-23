@@ -17,7 +17,7 @@ use crate::{
         MidiControlMessage, MidiController,
     },
     osc::{
-        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscClientReader, OscControlMessage,
+        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscClientListener, OscControlMessage,
         OscControlResponse, OscController, ScopedControlEmitter, TalkbackMode,
     },
 };
@@ -82,9 +82,9 @@ impl Controller {
         self.osc.deregister(client_id);
     }
 
-    /// Get a reader handle for the shared OSC client list.
-    pub fn osc_client_reader(&self) -> OscClientReader {
-        self.osc.client_reader()
+    /// Get a listener handle for the shared OSC client list.
+    pub fn osc_client_listener(&self) -> OscClientListener {
+        self.osc.client_listener()
     }
 
     /// Add a MIDI device.

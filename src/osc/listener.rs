@@ -1,6 +1,7 @@
 //! Listen for incoming OSC messages, process them, and forward them along.
 
 use crate::control::{ControlMessage, MetaCommand};
+use crate::osc::sender::OscClientListener;
 use crate::osc::{OscClientId, OscControlMessage, OscError};
 use anyhow::Result;
 use log::error;
@@ -9,7 +10,7 @@ use std::net::{SocketAddr, UdpSocket};
 use std::sync::mpsc::Sender;
 
 pub struct OscListener {
-    clients: Vec<OscClientId>,
+    clients: OscClientListener,
     socket: UdpSocket,
     buf: [u8; rosc::decoder::MTU],
     send: Sender<ControlMessage>,
@@ -18,14 +19,14 @@ pub struct OscListener {
 impl OscListener {
     /// Initialize OSC listener.
     pub fn new(
-        initial_clients: Vec<OscClientId>,
+        clients: OscClientListener,
         addr: SocketAddr,
         send: Sender<ControlMessage>,
     ) -> Result<Self> {
         let socket = UdpSocket::bind(addr)?;
 
         Ok(Self {
-            clients: initial_clients,
+            clients,
             socket,
             buf: [0u8; rosc::decoder::MTU],
             send,
@@ -54,7 +55,6 @@ impl OscListener {
 
                 // If this is a deregistration message, tell the show to deregister this client.
                 if m.addr == "/deregister" {
-                    self.clients.retain(|c| *c != client_id);
                     self.send
                         .send(ControlMessage::Meta(
                             MetaCommand::DropOscClient(client_id),
@@ -87,8 +87,7 @@ impl OscListener {
             };
 
             // If this is a new client, tell the show to register them.
-            if !self.clients.contains(&client_id) {
-                self.clients.push(client_id);
+            if !self.clients.load().contains(&client_id) {
                 self.send
                     .send(ControlMessage::Meta(
                         MetaCommand::RegisterOscClient(client_id),

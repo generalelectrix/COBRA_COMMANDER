@@ -3,7 +3,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use midi_harness::SlotStatus;
 
-use crate::osc::OscClientReader;
+use crate::osc::OscClientListener;
 
 bitflags::bitflags! {
     /// GUI state domains that may need re-snapshotting after a control event.
@@ -27,7 +27,7 @@ pub struct GuiState {
     pub midi_slots: ArcSwap<Vec<SlotStatus>>,
     pub clock_status: ArcSwap<ClockStatus>,
     pub osc_listen_addr: String,
-    pub osc_clients: OscClientReader,
+    pub osc_clients: OscClientListener,
 }
 
 impl GuiState {
@@ -35,7 +35,7 @@ impl GuiState {
         midi_slots: Vec<SlotStatus>,
         clock_status: ClockStatus,
         osc_listen_addr: String,
-        osc_clients: OscClientReader,
+        osc_clients: OscClientListener,
     ) -> Self {
         Self {
             midi_slots: ArcSwap::from_pointee(midi_slots),

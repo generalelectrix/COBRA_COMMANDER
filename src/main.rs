@@ -97,13 +97,13 @@ fn run_show(args: RunArgs) -> Result<()> {
             send_control_msg,
             recv_control_msg,
         )?;
-        let osc_client_reader = controller.osc_client_reader();
+        let osc_client_listener = controller.osc_client_listener();
 
         let gui_state: SharedGuiState = Arc::new(GuiState::new(
             vec![],
             ClockStatus::Internal { audio_device: "Offline".into() },
             osc_listen_addr,
-            osc_client_reader,
+            osc_client_listener,
         ));
         let show_gui_state = gui_state.clone();
 
@@ -194,13 +194,13 @@ fn run_show_inline(
         Ok(ip) => format!("{ip}:{}", args.osc_receive_port),
         Err(_) => format!("0.0.0.0:{}", args.osc_receive_port),
     };
-    let osc_client_reader = controller.osc_client_reader();
+    let osc_client_listener = controller.osc_client_listener();
 
     let gui_state: SharedGuiState = Arc::new(GuiState::new(
         vec![],
         clocks.status(),
         osc_listen_addr,
-        osc_client_reader,
+        osc_client_listener,
     ));
 
     let mut show = Show::new(

@@ -632,7 +632,7 @@ impl Show {
             vec![],
             initial_clock_status,
             String::new(),
-            controller.osc_client_reader(),
+            controller.osc_client_listener(),
         ));
         let mut show = Self {
             zmq_ctx: zmq::Context::new(),
