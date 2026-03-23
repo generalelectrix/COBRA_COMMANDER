@@ -35,9 +35,9 @@ use midi_panel::{MidiPanel, MidiPanelState};
 #[derive(Default, PartialEq, Clone, Copy)]
 enum Tab {
     #[default]
-    Clocks,
     Midi,
     Osc,
+    Clocks,
     Animation,
 }
 
