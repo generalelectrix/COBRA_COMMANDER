@@ -160,29 +160,39 @@ struct AddFixtureForm {
 }
 
 impl AddFixtureForm {
-    fn new_for_group(group: &WorkingGroup, patchers: &[Patcher]) -> Self {
-        // Pre-populate address with next available.
-        let next_addr = group
+    fn new_for_group(group: &WorkingGroup, patcher: &Patcher, addr_map: &AddressMap) -> Self {
+        let patch_options: Vec<(String, String)> = (patcher.patch_options)()
+            .iter()
+            .map(|(key, opt)| (key.clone(), default_for_option(opt)))
+            .collect();
+
+        // Best-effort channel count from default patch options.
+        let default_patch_opts = build_options_from_form(&patch_options);
+        let default_ch_count =
+            (patcher.create_patch)(group.config.options.clone(), default_patch_opts)
+                .map(|c| c.channel_count)
+                .unwrap_or(0);
+
+        // Start search after the last fixture in the group.
+        let start_after = group
             .config
             .patches
             .last()
             .and_then(|b| {
                 let (start, count) = b.start_count();
                 let ch = group.channel_counts.last().copied().unwrap_or(0);
-                start.map(|a| a + ch * count)
+                start.map(|a| a.dmx_index() + 1 + ch * count)
             })
-            .map(|a| format!("{a}"))
-            .unwrap_or_else(|| "1".to_string());
+            .unwrap_or(1);
 
-        let patcher = patchers.iter().find(|p| p.name.0 == group.config.fixture);
-        let patch_options = patcher
-            .map(|p| {
-                (p.patch_options)()
-                    .iter()
-                    .map(|(key, opt)| (key.clone(), default_for_option(opt)))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let next_addr = if default_ch_count > 0 {
+            addr_map
+                .find_available(0, default_ch_count, start_after)
+                .map(|a| a.to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
 
         Self {
             addr: next_addr,
@@ -195,60 +205,122 @@ impl AddFixtureForm {
 }
 
 // ---------------------------------------------------------------------------
-// Collision detection
+// Address map
 // ---------------------------------------------------------------------------
 
-/// An entry in the DMX address map.
-struct AddrMapEntry {
-    group_name: String,
-    #[expect(unused)]
-    group_idx: usize,
-}
-
-/// Build a map of (universe, dmx_addr_1indexed) -> group info from the working copy.
-fn build_address_map(wc: &PatchWorkingCopy) -> BTreeMap<(usize, usize), Vec<AddrMapEntry>> {
-    let mut map: BTreeMap<(usize, usize), Vec<AddrMapEntry>> = BTreeMap::new();
-    for (gi, group) in wc.groups.iter().enumerate() {
-        let name = group.config.key().to_string();
-        for (pi, block) in group.config.patches.iter().enumerate() {
-            let (start, count) = block.start_count();
-            let Some(start_addr) = start else { continue };
-            let ch_count = group.channel_counts.get(pi).copied().unwrap_or(0);
-            if ch_count == 0 {
-                continue;
-            }
-            let mut addr = start_addr;
-            for _ in 0..count {
-                let base = addr.dmx_index() + 1; // back to 1-indexed
-                for ch in 0..ch_count {
-                    map.entry((block.universe, base + ch))
-                        .or_default()
-                        .push(AddrMapEntry {
-                            group_name: name.clone(),
-                            group_idx: gi,
-                        });
-                }
-                addr = addr + ch_count;
-            }
-        }
-    }
-    map
-}
-
-/// Check if a specific address has a collision in the address map.
-fn collision_at(
-    addr_map: &BTreeMap<(usize, usize), Vec<AddrMapEntry>>,
+/// A specific DMX address in a specific universe.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct UniverseAddress {
     universe: usize,
-    addr: usize,
-) -> Option<String> {
-    addr_map.get(&(universe, addr)).and_then(|entries| {
-        if entries.len() > 1 {
-            let names: Vec<_> = entries.iter().map(|e| e.group_name.as_str()).collect();
-            Some(names.join(", "))
-        } else {
-            None
+    /// 1-indexed DMX address.
+    address: usize,
+}
+
+type GroupName = String;
+
+/// Maps each DMX address to the group names occupying it.
+struct AddressMap(BTreeMap<UniverseAddress, Vec<GroupName>>);
+
+impl AddressMap {
+    fn from_working_copy(wc: &PatchWorkingCopy) -> Self {
+        let mut map = BTreeMap::new();
+        for group in &wc.groups {
+            let name = group.config.key().to_string();
+            for (pi, block) in group.config.patches.iter().enumerate() {
+                let (start, count) = block.start_count();
+                let Some(start_addr) = start else { continue };
+                let ch_count = group.channel_counts.get(pi).copied().unwrap_or(0);
+                if ch_count == 0 {
+                    continue;
+                }
+                let mut addr = start_addr;
+                for _ in 0..count {
+                    let base = addr.dmx_index() + 1;
+                    for ch in 0..ch_count {
+                        let key = UniverseAddress {
+                            universe: block.universe,
+                            address: base + ch,
+                        };
+                        map.entry(key).or_insert_with(Vec::new).push(name.clone());
+                    }
+                    addr = addr + ch_count;
+                }
+            }
         }
-    })
+        Self(map)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Check if a specific address has a collision (occupied by 2+ fixtures).
+    fn collision_at(&self, addr: UniverseAddress) -> Option<String> {
+        self.0.get(&addr).and_then(|names| {
+            if names.len() > 1 {
+                Some(names.join(", "))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Find an available contiguous run of `channel_count` free addresses
+    /// in the given universe, starting the search from `start_after`.
+    /// If nothing is available after that point, wraps around to addr 1.
+    fn find_available(
+        &self,
+        universe: usize,
+        channel_count: usize,
+        start_after: usize,
+    ) -> Option<usize> {
+        if channel_count == 0 {
+            return None;
+        }
+        let scan = |from: usize, to: usize| -> Option<usize> {
+            let mut addr = from;
+            while addr + channel_count - 1 <= to {
+                let free = (0..channel_count).all(|offset| {
+                    !self.0.contains_key(&UniverseAddress {
+                        universe,
+                        address: addr + offset,
+                    })
+                });
+                if free {
+                    return Some(addr);
+                }
+                addr += 1;
+            }
+            None
+        };
+        scan(start_after, 512).or_else(|| scan(1, start_after.saturating_sub(1)))
+    }
+
+    /// Return all universes that have at least one address in use.
+    fn universes(&self) -> Vec<usize> {
+        self.0
+            .keys()
+            .map(|k| k.universe)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    /// Iterate entries for a given universe.
+    fn range_for_universe(
+        &self,
+        universe: usize,
+    ) -> impl Iterator<Item = (&UniverseAddress, &Vec<GroupName>)> {
+        let start = UniverseAddress {
+            universe,
+            address: 1,
+        };
+        let end = UniverseAddress {
+            universe,
+            address: 512,
+        };
+        self.0.range(start..=end)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -361,35 +433,31 @@ impl PatchPanel<'_> {
         ui.separator();
 
         // === Apply / Revert buttons pinned to bottom ===
-        egui::TopBottomPanel::bottom("patch_buttons")
-            .show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Apply").clicked() {
-                        let wc = self.state.working_copy.as_ref().unwrap();
-                        let configs = wc.configs();
-                        if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
-                            self.state.working_copy = None;
-                            self.state.mode = PanelMode::View;
-                        }
-                    }
-                    if ui.button("Revert").clicked() {
+        egui::TopBottomPanel::bottom("patch_buttons").show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Apply").clicked() {
+                    let wc = self.state.working_copy.as_ref().unwrap();
+                    let configs = wc.configs();
+                    if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
                         self.state.working_copy = None;
-                        self.state.selected_group = None;
                         self.state.mode = PanelMode::View;
                     }
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            ui.toggle_value(&mut self.state.show_address_map, "DMX Map");
-                        },
-                    );
+                }
+                if ui.button("Revert").clicked() {
+                    self.state.working_copy = None;
+                    self.state.selected_group = None;
+                    self.state.mode = PanelMode::View;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.toggle_value(&mut self.state.show_address_map, "DMX Map");
                 });
             });
+        });
 
         // === DMX Address Map side panel ===
         if self.state.show_address_map {
             let wc = self.state.working_copy.as_ref().unwrap();
-            let addr_map = build_address_map(wc);
+            let addr_map = AddressMap::from_working_copy(wc);
             egui::SidePanel::right("dmx_address_map")
                 .default_width(200.0)
                 .show_inside(ui, |ui| {
@@ -423,9 +491,10 @@ impl PatchPanel<'_> {
         // Clamp selected_group.
         let num_groups = wc.groups.len();
         if let Some(sel) = self.state.selected_group
-            && sel >= num_groups {
-                self.state.selected_group = Some(num_groups - 1);
-            }
+            && sel >= num_groups
+        {
+            self.state.selected_group = Some(num_groups - 1);
+        }
 
         // === Group list with channel reorder buttons (WP5) ===
         let mut swap: Option<(usize, usize)> = None;
@@ -509,30 +578,31 @@ impl PatchPanel<'_> {
 
         // Delete confirmation flow.
         if let PanelMode::ConfirmDeleteGroup(idx) = self.state.mode
-            && idx == group_idx {
-                let wc = self.state.working_copy.as_ref().unwrap();
-                let fix_count = wc.groups[group_idx].config.patches.len();
-                ui.colored_label(
-                    self.status_colors.error,
-                    format!("Really delete {key} ({fix_count} fixtures)?"),
-                );
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        self.state.mode = PanelMode::View;
-                    }
-                    if ui.button("Delete").clicked() {
-                        let wc = self.state.working_copy.as_mut().unwrap();
-                        wc.groups.remove(group_idx);
-                        self.state.selected_group = if wc.groups.is_empty() {
-                            None
-                        } else {
-                            Some(group_idx.min(wc.groups.len() - 1))
-                        };
-                        self.state.mode = PanelMode::View;
-                    }
-                });
-                return;
-            }
+            && idx == group_idx
+        {
+            let wc = self.state.working_copy.as_ref().unwrap();
+            let fix_count = wc.groups[group_idx].config.patches.len();
+            ui.colored_label(
+                self.status_colors.error,
+                format!("Really delete {key} ({fix_count} fixtures)?"),
+            );
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    self.state.mode = PanelMode::View;
+                }
+                if ui.button("Delete").clicked() {
+                    let wc = self.state.working_copy.as_mut().unwrap();
+                    wc.groups.remove(group_idx);
+                    self.state.selected_group = if wc.groups.is_empty() {
+                        None
+                    } else {
+                        Some(group_idx.min(wc.groups.len() - 1))
+                    };
+                    self.state.mode = PanelMode::View;
+                }
+            });
+            return;
+        }
 
         ui.horizontal(|ui| {
             ui.heading(&key);
@@ -595,22 +665,36 @@ impl PatchPanel<'_> {
 
         // === Fixtures table (editable addresses, universe, mirror) ===
         ui.add_space(8.0);
+
+        // Build address map for collision detection and smart address pre-fill.
+        let addr_map = {
+            let wc = self.state.working_copy.as_ref().unwrap();
+            AddressMap::from_working_copy(wc)
+        };
+
         ui.horizontal(|ui| {
             ui.label("Fixtures");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("+ Add").clicked() {
                     let wc = self.state.working_copy.as_ref().unwrap();
-                    let form = AddFixtureForm::new_for_group(&wc.groups[group_idx], self.patchers);
-                    self.state.mode = PanelMode::AddFixture(form);
+                    let fixture_type = &wc.groups[group_idx].config.fixture;
+                    match self.patchers.iter().find(|p| p.name.0 == *fixture_type) {
+                        Some(patcher) => {
+                            let form = AddFixtureForm::new_for_group(
+                                &wc.groups[group_idx],
+                                patcher,
+                                &addr_map,
+                            );
+                            self.state.mode = PanelMode::AddFixture(form);
+                        }
+                        None => {
+                            self.ctx
+                                .report_error(format!("Unknown fixture type: {fixture_type}"));
+                        }
+                    }
                 }
             });
         });
-
-        // Build address map for collision detection.
-        let addr_map = {
-            let wc = self.state.working_copy.as_ref().unwrap();
-            build_address_map(wc)
-        };
 
         // Get patch option menu before mutable borrow.
         let patch_opts: Vec<(String, PatchOption)> = {
@@ -666,24 +750,24 @@ impl PatchPanel<'_> {
                         // Editable address.
                         let block = &mut group.config.patches[i];
                         let (start, _count) = block.start_count();
-                        let mut addr_str = start
-                            .map(|a| format!("{a}"))
-                            .unwrap_or_default();
+                        let mut addr_str = start.map(|a| format!("{a}")).unwrap_or_default();
 
                         // Check collision.
                         let has_collision = start
                             .map(|a| {
                                 (0..ch_count).any(|ch| {
-                                    collision_at(&addr_map, block.universe, a.dmx_index() + 1 + ch)
+                                    addr_map
+                                        .collision_at(UniverseAddress {
+                                            universe: block.universe,
+                                            address: a.dmx_index() + 1 + ch,
+                                        })
                                         .is_some()
                                 })
                             })
                             .unwrap_or(false);
 
                         // Check validity.
-                        let addr_invalid = start
-                            .map(|a| a.validate().is_err())
-                            .unwrap_or(false);
+                        let addr_invalid = start.map(|a| a.validate().is_err()).unwrap_or(false);
 
                         let text_edit =
                             egui::TextEdit::singleline(&mut addr_str).desired_width(40.0);
@@ -691,9 +775,7 @@ impl PatchPanel<'_> {
                         if has_collision {
                             response.clone().on_hover_text("DMX address collision!");
                         } else if addr_invalid {
-                            response
-                                .clone()
-                                .on_hover_text("Address must be 1-512");
+                            response.clone().on_hover_text("Address must be 1-512");
                         }
                         if response.changed() {
                             // Only allow digits.
@@ -710,9 +792,10 @@ impl PatchPanel<'_> {
                         let mut uni_str = format!("{}", block.universe);
                         let uni_edit = egui::TextEdit::singleline(&mut uni_str).desired_width(25.0);
                         if ui.add(uni_edit).changed()
-                            && let Ok(v) = uni_str.parse::<usize>() {
-                                block.universe = v;
-                            }
+                            && let Ok(v) = uni_str.parse::<usize>()
+                        {
+                            block.universe = v;
+                        }
 
                         ui.label(format!("{ch_count}"));
 
@@ -794,13 +877,14 @@ impl PatchPanel<'_> {
         // Show channel count hint.
         if let Some(patcher) = self.patchers.get(form.fixture_type_idx)
             && let Ok(cfg) = (patcher.create_patch)(Options::default(), Options::default())
-                && cfg.channel_count > 0 {
-                    ui.label(format!(
-                        "({} DMX channel{} per fixture)",
-                        cfg.channel_count,
-                        if cfg.channel_count > 1 { "s" } else { "" }
-                    ));
-                }
+            && cfg.channel_count > 0
+        {
+            ui.label(format!(
+                "({} DMX channel{} per fixture)",
+                cfg.channel_count,
+                if cfg.channel_count > 1 { "s" } else { "" }
+            ));
+        }
 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
@@ -1010,12 +1094,7 @@ impl PatchPanel<'_> {
     // DMX Address Map (WP6)
     // -----------------------------------------------------------------------
 
-    fn render_address_map(
-        &self,
-        ui: &mut egui::Ui,
-        wc: &PatchWorkingCopy,
-        addr_map: &BTreeMap<(usize, usize), Vec<AddrMapEntry>>,
-    ) {
+    fn render_address_map(&self, ui: &mut egui::Ui, wc: &PatchWorkingCopy, addr_map: &AddressMap) {
         ui.heading("DMX Map");
         ui.separator();
 
@@ -1024,19 +1103,10 @@ impl PatchPanel<'_> {
             return;
         }
 
-        // Determine universes in use.
-        let universes: Vec<usize> = addr_map
-            .keys()
-            .map(|(u, _)| *u)
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .collect();
-
-        for universe in &universes {
+        for universe in addr_map.universes() {
             ui.label(format!("Universe {universe}"));
 
-            // Collect contiguous ranges for this universe.
-            let entries: Vec<_> = addr_map.range((*universe, 1)..=(*universe, 512)).collect();
+            let entries: Vec<_> = addr_map.range_for_universe(universe).collect();
 
             if entries.is_empty() {
                 ui.label("  (empty)");
@@ -1044,19 +1114,21 @@ impl PatchPanel<'_> {
             }
 
             // Group into contiguous runs of the same group.
-            let mut ranges: Vec<(usize, usize, String, bool)> = Vec::new(); // (start, end, name, collision)
+            let mut ranges: Vec<(usize, usize, String, bool)> = Vec::new();
 
-            for entry in &entries {
-                let addr = entry.0.1;
-                let occupants = entry.1;
-                let name = &occupants[0].group_name;
-                let is_collision = occupants.len() > 1;
+            for (ua, names) in &entries {
+                let addr = ua.address;
+                let name = &names[0];
+                let is_collision = names.len() > 1;
 
                 if let Some(last) = ranges.last_mut()
-                    && last.2 == *name && last.1 + 1 == addr && last.3 == is_collision {
-                        last.1 = addr;
-                        continue;
-                    }
+                    && last.2 == *name
+                    && last.1 + 1 == addr
+                    && last.3 == is_collision
+                {
+                    last.1 = addr;
+                    continue;
+                }
                 ranges.push((addr, addr, name.clone(), is_collision));
             }
 
@@ -1179,7 +1251,12 @@ mod test {
             name: FixtureType("Simple"),
             create_group: |_, _| unimplemented!(),
             group_options: || vec![],
-            create_patch: |_, _| Ok(PatchConfig { channel_count: 1, render_mode: None }),
+            create_patch: |_, _| {
+                Ok(PatchConfig {
+                    channel_count: 1,
+                    render_mode: None,
+                })
+            },
             patch_options: || vec![],
         }
     }
@@ -1189,15 +1266,28 @@ mod test {
         Patcher {
             name: FixtureType("GroupOpts"),
             create_group: |_, _| unimplemented!(),
-            group_options: || vec![
-                ("paired".into(), PatchOption::Bool),
-                ("brightness".into(), PatchOption::Int),
-                ("mode".into(), PatchOption::Select(vec!["Fast".into(), "Slow".into(), "Auto".into()])),
-                ("endpoint".into(), PatchOption::Url),
-                ("addr".into(), PatchOption::SocketAddr),
-                ("limit".into(), PatchOption::Optional(Box::new(PatchOption::Int))),
-            ],
-            create_patch: |_, _| Ok(PatchConfig { channel_count: 4, render_mode: None }),
+            group_options: || {
+                vec![
+                    ("paired".into(), PatchOption::Bool),
+                    ("brightness".into(), PatchOption::Int),
+                    (
+                        "mode".into(),
+                        PatchOption::Select(vec!["Fast".into(), "Slow".into(), "Auto".into()]),
+                    ),
+                    ("endpoint".into(), PatchOption::Url),
+                    ("addr".into(), PatchOption::SocketAddr),
+                    (
+                        "limit".into(),
+                        PatchOption::Optional(Box::new(PatchOption::Int)),
+                    ),
+                ]
+            },
+            create_patch: |_, _| {
+                Ok(PatchConfig {
+                    channel_count: 4,
+                    render_mode: None,
+                })
+            },
             patch_options: || vec![],
         }
     }
@@ -1214,12 +1304,20 @@ mod test {
                     Some("Narrow") => 3,
                     _ => 3,
                 };
-                Ok(PatchConfig { channel_count: ch, render_mode: None })
+                Ok(PatchConfig {
+                    channel_count: ch,
+                    render_mode: None,
+                })
             },
-            patch_options: || vec![
-                ("variant".into(), PatchOption::Select(vec!["Narrow".into(), "Wide".into()])),
-                ("offset".into(), PatchOption::Int),
-            ],
+            patch_options: || {
+                vec![
+                    (
+                        "variant".into(),
+                        PatchOption::Select(vec!["Narrow".into(), "Wide".into()]),
+                    ),
+                    ("offset".into(), PatchOption::Int),
+                ]
+            },
         }
     }
 
@@ -1314,10 +1412,7 @@ mod test {
                 // PatchOpts has Select + Int patch options, channel count varies by variant
                 patch_opts_group(
                     Some("FrontLights"),
-                    vec![
-                        patch_opts_block(20, "Narrow"),
-                        patch_opts_block(23, "Wide"),
-                    ],
+                    vec![patch_opts_block(20, "Narrow"), patch_opts_block(23, "Wide")],
                 ),
                 // GroupOpts has Bool + Int + Select + Url group options
                 group_opts_group(Some("Effects")),
@@ -1377,7 +1472,8 @@ mod test {
         let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_empty(), &patchers);
 
         let config = simple_group(Some("NewGroup"), &[50]);
-        wc.groups.push(PatchWorkingCopy::resolve_group(&config, &patchers));
+        wc.groups
+            .push(PatchWorkingCopy::resolve_group(&config, &patchers));
 
         assert_eq!(wc.groups.len(), 1);
         assert_eq!(wc.groups[0].config.key(), "NewGroup");
@@ -1386,7 +1482,8 @@ mod test {
 
     #[test]
     fn remove_group_from_working_copy() {
-        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
+        let mut wc =
+            PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         assert_eq!(wc.groups.len(), 2);
         wc.groups.remove(0);
         assert_eq!(wc.groups.len(), 1);
@@ -1395,7 +1492,8 @@ mod test {
 
     #[test]
     fn add_fixture_to_group() {
-        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
+        let mut wc =
+            PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         let group = &mut wc.groups[0];
         assert_eq!(group.config.patches.len(), 1);
 
@@ -1408,7 +1506,8 @@ mod test {
 
     #[test]
     fn remove_fixture_from_group() {
-        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
+        let mut wc =
+            PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         let group = &mut wc.groups[1];
         assert_eq!(group.config.patches.len(), 2);
 
@@ -1421,7 +1520,8 @@ mod test {
 
     #[test]
     fn reorder_fixtures_preserves_sync() {
-        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
+        let mut wc =
+            PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         let group = &mut wc.groups[1];
         let addr_0 = group.config.patches[0].start_count().0.unwrap().dmx_index();
         let addr_1 = group.config.patches[1].start_count().0.unwrap().dmx_index();
@@ -1429,8 +1529,14 @@ mod test {
         group.config.patches.swap(0, 1);
         group.channel_counts.swap(0, 1);
 
-        assert_eq!(group.config.patches[0].start_count().0.unwrap().dmx_index(), addr_1);
-        assert_eq!(group.config.patches[1].start_count().0.unwrap().dmx_index(), addr_0);
+        assert_eq!(
+            group.config.patches[0].start_count().0.unwrap().dmx_index(),
+            addr_1
+        );
+        assert_eq!(
+            group.config.patches[1].start_count().0.unwrap().dmx_index(),
+            addr_0
+        );
         assert_eq!(group.channel_counts.len(), group.config.patches.len());
     }
 
@@ -1464,7 +1570,8 @@ mod test {
 
     #[test]
     fn swap_groups_reorders() {
-        let mut wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
+        let mut wc =
+            PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
         assert_eq!(wc.groups[0].config.key(), "Simple");
         assert_eq!(wc.groups[1].config.key(), "BackSimple");
         wc.groups.swap(0, 1);
@@ -1472,32 +1579,31 @@ mod test {
         assert_eq!(wc.groups[1].config.key(), "Simple");
     }
 
+    fn ua(universe: usize, address: usize) -> UniverseAddress {
+        UniverseAddress { universe, address }
+    }
+
     #[test]
     fn address_map_build() {
         let wc = PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
-        let map = build_address_map(&wc);
+        let map = AddressMap::from_working_copy(&wc);
 
-        assert!(map.contains_key(&(0, 1)));
-        assert_eq!(map[&(0, 1)].len(), 1);
-        assert_eq!(map[&(0, 1)][0].group_name, "Simple");
-
-        assert!(map.contains_key(&(0, 10)));
-        assert!(map.contains_key(&(0, 11)));
+        assert_eq!(map.0[&ua(0, 1)].len(), 1);
+        assert_eq!(map.0[&ua(0, 1)][0], "Simple");
+        assert!(map.0.contains_key(&ua(0, 10)));
+        assert!(map.0.contains_key(&ua(0, 11)));
     }
 
     #[test]
     fn address_map_detects_collision() {
         let snapshot = PatchSnapshot {
-            groups: vec![
-                simple_group(Some("A"), &[1]),
-                simple_group(Some("B"), &[1]),
-            ],
+            groups: vec![simple_group(Some("A"), &[1]), simple_group(Some("B"), &[1])],
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
-        let map = build_address_map(&wc);
+        let map = AddressMap::from_working_copy(&wc);
 
-        assert_eq!(map[&(0, 1)].len(), 2);
-        let collision = collision_at(&map, 0, 1);
+        assert_eq!(map.0[&ua(0, 1)].len(), 2);
+        let collision = map.collision_at(ua(0, 1));
         assert!(collision.is_some());
         assert!(collision.unwrap().contains("A"));
     }
@@ -1523,25 +1629,67 @@ mod test {
             ],
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
-        let map = build_address_map(&wc);
+        let map = AddressMap::from_working_copy(&wc);
 
-        assert_eq!(map[&(0, 1)].len(), 1);
-        assert_eq!(map[&(1, 1)].len(), 1);
+        assert_eq!(map.0[&ua(0, 1)].len(), 1);
+        assert_eq!(map.0[&ua(1, 1)].len(), 1);
     }
 
     #[test]
     fn address_map_multi_channel_fixture() {
-        // PatchOpts with "Wide" = 6 channels at addr 10 should occupy 10-15.
         let snapshot = PatchSnapshot {
             groups: vec![patch_opts_group(None, vec![patch_opts_block(10, "Wide")])],
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
-        let map = build_address_map(&wc);
+        let map = AddressMap::from_working_copy(&wc);
 
         for addr in 10..=15 {
-            assert!(map.contains_key(&(0, addr)), "expected addr {addr} in map");
+            assert!(
+                map.0.contains_key(&ua(0, addr)),
+                "expected addr {addr} in map"
+            );
         }
-        assert!(!map.contains_key(&(0, 16)));
+        assert!(!map.0.contains_key(&ua(0, 16)));
+    }
+
+    #[test]
+    fn find_available_skips_used_addresses() {
+        // Addresses 1 and 10-11 are used.
+        let snapshot = test_snapshot_with_groups();
+        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
+        let map = AddressMap::from_working_copy(&wc);
+
+        // 1-channel fixture starting from 1: addr 1 is used, so finds 2.
+        assert_eq!(map.find_available(0, 1, 1), Some(2));
+        // 3-channel fixture starting from 1: 2-4 are free.
+        assert_eq!(map.find_available(0, 3, 1), Some(2));
+        // Start after addr 11: next free is 12.
+        assert_eq!(map.find_available(0, 1, 12), Some(12));
+    }
+
+    #[test]
+    fn find_available_wraps_around() {
+        // All addresses 500-512 are used.
+        let snapshot = PatchSnapshot {
+            groups: vec![simple_group(None, &(500..=512).collect::<Vec<_>>())],
+        };
+        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
+        let map = AddressMap::from_working_copy(&wc);
+
+        // Starting from 510, nothing fits after — wraps to addr 1.
+        assert_eq!(map.find_available(0, 1, 510), Some(1));
+    }
+
+    #[test]
+    fn find_available_returns_none_when_full() {
+        // All 512 addresses used.
+        let snapshot = PatchSnapshot {
+            groups: vec![simple_group(None, &(1..=512).collect::<Vec<_>>())],
+        };
+        let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
+        let map = AddressMap::from_working_copy(&wc);
+
+        assert_eq!(map.find_available(0, 1, 1), None);
     }
 
     #[test]
@@ -1595,21 +1743,36 @@ mod test {
     #[test]
     fn render_empty_patch() {
         let mut state = PatchPanelState::new();
-        snapshot_panel(&test_snapshot_empty(), &test_patchers(), &mut state, "patch_panel_empty");
+        snapshot_panel(
+            &test_snapshot_empty(),
+            &test_patchers(),
+            &mut state,
+            "patch_panel_empty",
+        );
     }
 
     #[test]
     fn render_with_groups() {
         let mut state = PatchPanelState::new();
         state.selected_group = Some(0);
-        snapshot_panel(&test_snapshot_with_groups(), &test_patchers(), &mut state, "patch_panel_with_groups");
+        snapshot_panel(
+            &test_snapshot_with_groups(),
+            &test_patchers(),
+            &mut state,
+            "patch_panel_with_groups",
+        );
     }
 
     #[test]
     fn render_second_group_selected() {
         let mut state = PatchPanelState::new();
         state.selected_group = Some(1);
-        snapshot_panel(&test_snapshot_with_groups(), &test_patchers(), &mut state, "patch_panel_second_group");
+        snapshot_panel(
+            &test_snapshot_with_groups(),
+            &test_patchers(),
+            &mut state,
+            "patch_panel_second_group",
+        );
     }
 
     #[test]
@@ -1619,21 +1782,36 @@ mod test {
         let mut form = AddGroupForm::new();
         form.sync_options(&patchers);
         state.mode = PanelMode::AddGroup(form);
-        snapshot_panel(&test_snapshot_with_groups(), &patchers, &mut state, "patch_panel_add_group");
+        snapshot_panel(
+            &test_snapshot_with_groups(),
+            &patchers,
+            &mut state,
+            "patch_panel_add_group",
+        );
     }
 
     #[test]
     fn render_with_patch_options() {
         let mut state = PatchPanelState::new();
         state.selected_group = Some(0); // FrontLights — has variant + offset columns
-        snapshot_panel(&test_snapshot_with_options(), &test_patchers(), &mut state, "patch_panel_patch_options");
+        snapshot_panel(
+            &test_snapshot_with_options(),
+            &test_patchers(),
+            &mut state,
+            "patch_panel_patch_options",
+        );
     }
 
     #[test]
     fn render_with_group_options() {
         let mut state = PatchPanelState::new();
         state.selected_group = Some(1); // Effects (GroupOpts) — has Bool, Int, Select, Url
-        snapshot_panel(&test_snapshot_with_options(), &test_patchers(), &mut state, "patch_panel_group_options");
+        snapshot_panel(
+            &test_snapshot_with_options(),
+            &test_patchers(),
+            &mut state,
+            "patch_panel_group_options",
+        );
     }
 
     #[test]
@@ -1641,7 +1819,28 @@ mod test {
         let mut state = PatchPanelState::new();
         state.selected_group = Some(0);
         state.show_address_map = true;
-        snapshot_panel(&test_snapshot_with_groups(), &test_patchers(), &mut state, "patch_panel_dmx_map");
+        snapshot_panel(
+            &test_snapshot_with_groups(),
+            &test_patchers(),
+            &mut state,
+            "patch_panel_dmx_map",
+        );
+    }
+
+    fn setup_add_fixture(
+        snapshot: &PatchSnapshot,
+        patchers: &[Patcher],
+        group_idx: usize,
+        state: &mut PatchPanelState,
+    ) {
+        state.selected_group = Some(group_idx);
+        state.working_copy = Some(PatchWorkingCopy::from_snapshot(snapshot, patchers));
+        let wc = state.working_copy.as_ref().unwrap();
+        let fixture_type = &wc.groups[group_idx].config.fixture;
+        let patcher = patchers.iter().find(|p| p.name.0 == *fixture_type).unwrap();
+        let addr_map = AddressMap::from_working_copy(wc);
+        let form = AddFixtureForm::new_for_group(&wc.groups[group_idx], patcher, &addr_map);
+        state.mode = PanelMode::AddFixture(form);
     }
 
     #[test]
@@ -1649,15 +1848,13 @@ mod test {
         let patchers = test_patchers();
         let snapshot = test_snapshot_with_groups();
         let mut state = PatchPanelState::new();
-        state.selected_group = Some(0);
-        // Pre-initialize working copy so we can create the form from it.
-        state.working_copy = Some(PatchWorkingCopy::from_snapshot(&snapshot, &patchers));
-        let form = AddFixtureForm::new_for_group(
-            &state.working_copy.as_ref().unwrap().groups[0],
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+        snapshot_panel(
+            &snapshot,
             &patchers,
+            &mut state,
+            "patch_panel_add_fixture_simple",
         );
-        state.mode = PanelMode::AddFixture(form);
-        snapshot_panel(&snapshot, &patchers, &mut state, "patch_panel_add_fixture_simple");
     }
 
     #[test]
@@ -1665,13 +1862,12 @@ mod test {
         let patchers = test_patchers();
         let snapshot = test_snapshot_with_options();
         let mut state = PatchPanelState::new();
-        state.selected_group = Some(0); // FrontLights (PatchOpts) — has variant + offset
-        state.working_copy = Some(PatchWorkingCopy::from_snapshot(&snapshot, &patchers));
-        let form = AddFixtureForm::new_for_group(
-            &state.working_copy.as_ref().unwrap().groups[0],
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+        snapshot_panel(
+            &snapshot,
             &patchers,
+            &mut state,
+            "patch_panel_add_fixture_with_opts",
         );
-        state.mode = PanelMode::AddFixture(form);
-        snapshot_panel(&snapshot, &patchers, &mut state, "patch_panel_add_fixture_with_opts");
     }
 }
