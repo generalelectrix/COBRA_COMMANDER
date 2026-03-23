@@ -6,7 +6,6 @@ use std::{
 
 use crate::{
     animation::AnimationUIState,
-    gui_state::AnimationSnapshot,
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
     clocks::Clocks,
     color::Hsluv,
@@ -15,6 +14,7 @@ use crate::{
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
+    gui_state::{AnimationSnapshot, PatchSnapshot},
     gui_state::{GuiDirty, SharedGuiState},
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
@@ -176,34 +176,14 @@ impl Show {
         match cmd {
             MetaCommand::ReloadPatch => {
                 self.patch.repatch_from_file(&self.patch_file_path)?;
-                let sender = self.controller.sender_with_metadata(None);
-                sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
-                Channels::emit_osc_state_change(
-                    crate::channel::StateChange::Clear,
-                    &ScopedControlEmitter {
-                        entity: crate::osc::channels::GROUP,
-                        emitter: &sender,
-                    },
-                );
-                self.channels = Channels::from_iter(self.patch.channels().cloned());
-                self.reconcile_submaster_wings()?;
-                self.refresh_ui();
-                let new_universe_count = self.patch.universe_count();
-                let current_len = self.dmx_ports.len();
-                if new_universe_count > current_len {
-                    for _ in current_len..new_universe_count {
-                        self.dmx_ports
-                            .push(Box::new(OfflineDmxPort) as Box<dyn DmxPort>);
-                        self.dmx_buffers.push([0u8; 512]);
-                    }
-                } else if new_universe_count < current_len {
-                    self.dmx_ports.truncate(new_universe_count);
-                    self.dmx_buffers.truncate(new_universe_count);
-                }
-                for buf in &mut self.dmx_buffers {
-                    buf.fill(0);
-                }
-                Ok(GuiDirty::MIDI_SLOTS)
+                self.post_repatch()
+            }
+            MetaCommand::Repatch(groups) => {
+                self.patch.repatch(&groups)?;
+                self.gui_state
+                    .patch_snapshot
+                    .store(Arc::new(PatchSnapshot { groups }));
+                self.post_repatch()
             }
             MetaCommand::RefreshUI => {
                 self.refresh_ui();
@@ -235,7 +215,8 @@ impl Show {
                 device_id,
                 kind,
             } => {
-                self.controller.connect_midi_port(&slot_name, device_id, kind)?;
+                self.controller
+                    .connect_midi_port(&slot_name, device_id, kind)?;
                 self.refresh_ui();
                 Ok(GuiDirty::MIDI_SLOTS)
             }
@@ -266,6 +247,38 @@ impl Show {
                 Ok(GuiDirty::CLEAN)
             }
         }
+    }
+
+    /// Shared post-repatch logic: clear channels, reconcile wings, resize DMX buffers.
+    fn post_repatch(&mut self) -> Result<GuiDirty> {
+        let sender = self.controller.sender_with_metadata(None);
+        sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
+        Channels::emit_osc_state_change(
+            crate::channel::StateChange::Clear,
+            &ScopedControlEmitter {
+                entity: crate::osc::channels::GROUP,
+                emitter: &sender,
+            },
+        );
+        self.channels = Channels::from_iter(self.patch.channels().cloned());
+        self.reconcile_submaster_wings()?;
+        self.refresh_ui();
+        let new_universe_count = self.patch.universe_count();
+        let current_len = self.dmx_ports.len();
+        if new_universe_count > current_len {
+            for _ in current_len..new_universe_count {
+                self.dmx_ports
+                    .push(Box::new(OfflineDmxPort) as Box<dyn DmxPort>);
+                self.dmx_buffers.push([0u8; 512]);
+            }
+        } else if new_universe_count < current_len {
+            self.dmx_ports.truncate(new_universe_count);
+            self.dmx_buffers.truncate(new_universe_count);
+        }
+        for buf in &mut self.dmx_buffers {
+            buf.fill(0);
+        }
+        Ok(GuiDirty::MIDI_SLOTS)
     }
 
     /// Handle a single MIDI control message.

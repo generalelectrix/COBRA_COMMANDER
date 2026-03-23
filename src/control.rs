@@ -325,6 +325,8 @@ pub enum MetaCommand {
     UseInternalClocks(Option<String>),
     RegisterOscClient(OscClientId),
     DropOscClient(OscClientId),
+    /// Apply a new patch configuration from the GUI editor.
+    Repatch(Vec<crate::config::FixtureGroupConfig>),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -350,6 +352,7 @@ impl fmt::Debug for MetaCommand {
             Self::UseInternalClocks(device) => write!(f, "UseInternalClocks({device:?})"),
             Self::RegisterOscClient(id) => write!(f, "RegisterOscClient({id})"),
             Self::DropOscClient(id) => write!(f, "DropOscClient({id})"),
+            Self::Repatch(groups) => write!(f, "Repatch({} groups)", groups.len()),
         }
     }
 }

@@ -137,7 +137,8 @@ impl ClockPanel<'_> {
         match tunnels::audio::AudioInput::devices() {
             Ok(d) => self.state.audio_devices = d,
             Err(e) => {
-                self.ctx.report_error(format_args!("Failed to refresh audio devices: {e}"));
+                self.ctx
+                    .report_error(format_args!("Failed to refresh audio devices: {e}"));
                 return;
             }
         }
@@ -242,9 +243,8 @@ impl ClockPanel<'_> {
                     }
                 }
                 Err(e) => {
-                    self.ctx.report_error(format_args!(
-                        "Failed to connect to clock provider: {e}"
-                    ));
+                    self.ctx
+                        .report_error(format_args!("Failed to connect to clock provider: {e}"));
                     self.state.sync_from_status(self.clock_status);
                 }
             }
@@ -355,10 +355,7 @@ mod tests {
             },
             ClockPanelState::test_new(
                 vec!["Built-in Microphone".to_string()],
-                vec![
-                    "studio-clock".to_string(),
-                    "backup-clock".to_string(),
-                ],
+                vec!["studio-clock".to_string(), "backup-clock".to_string()],
                 &clock_status,
             ),
         );

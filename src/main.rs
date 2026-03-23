@@ -98,18 +98,16 @@ fn run_show(args: RunArgs) -> Result<()> {
 
         let gui_state: SharedGuiState = Arc::new(GuiState::new(
             vec![],
-            ClockStatus::Internal { audio_device: "Offline".into() },
+            ClockStatus::Internal {
+                audio_device: "Offline".into(),
+            },
             osc_listen_addr,
             osc_client_listener,
         ));
         let show_gui_state = gui_state.clone();
 
         std::thread::spawn(move || {
-            if let Err(e) = run_show_worker(
-                args,
-                controller,
-                show_gui_state,
-            ) {
+            if let Err(e) = run_show_worker(args, controller, show_gui_state) {
                 error!("Show worker error: {e:#}");
             }
         });
@@ -117,12 +115,7 @@ fn run_show(args: RunArgs) -> Result<()> {
         config_gui::run_config_gui(gui_client, gui_zmq, gui_state)?;
     } else {
         // Non-GUI path: existing behavior unchanged.
-        run_show_inline(
-            args,
-            command_client,
-            send_control_msg,
-            recv_control_msg,
-        )?;
+        run_show_inline(args, command_client, send_control_msg, recv_control_msg)?;
     }
 
     Ok(())
@@ -226,11 +219,7 @@ fn run_show_inline(
 }
 
 /// Build and run the show on a worker thread (GUI path).
-fn run_show_worker(
-    args: RunArgs,
-    controller: Controller,
-    gui_state: SharedGuiState,
-) -> Result<()> {
+fn run_show_worker(args: RunArgs, controller: Controller, gui_state: SharedGuiState) -> Result<()> {
     let patch = Patch::from_file(&args.patch_file)?;
     let clocks = Clocks::internal(None);
 

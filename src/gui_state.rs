@@ -1,12 +1,10 @@
-use std::sync::{
-    Arc,
-    atomic::AtomicBool,
-};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use arc_swap::ArcSwap;
 use midi_harness::SlotStatus;
 use tunnels::{animation::Animation, clock_server::SharedClockData};
 
+use crate::config::FixtureGroupConfig;
 use crate::osc::OscClientListener;
 
 /// Snapshot of animation state for the visualizer panel.
@@ -15,6 +13,12 @@ pub struct AnimationSnapshot {
     pub animation: Animation,
     pub clocks: SharedClockData,
     pub fixture_count: usize,
+}
+
+/// Snapshot of the current patch configuration for the GUI.
+#[derive(Clone, Debug, Default)]
+pub struct PatchSnapshot {
+    pub groups: Vec<FixtureGroupConfig>,
 }
 
 bitflags::bitflags! {
@@ -44,6 +48,7 @@ pub struct GuiState {
     /// snapshots animation state.
     pub visualizer_active: AtomicBool,
     pub animation_state: ArcSwap<AnimationSnapshot>,
+    pub patch_snapshot: ArcSwap<PatchSnapshot>,
 }
 
 impl GuiState {
@@ -60,6 +65,7 @@ impl GuiState {
             osc_clients,
             visualizer_active: AtomicBool::new(false),
             animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),
+            patch_snapshot: ArcSwap::from_pointee(PatchSnapshot::default()),
         }
     }
 }

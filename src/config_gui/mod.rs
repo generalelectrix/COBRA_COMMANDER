@@ -19,6 +19,7 @@ mod animation_panel;
 mod clock_panel;
 mod midi_panel;
 mod osc_panel;
+mod patch_panel;
 
 use std::sync::atomic::Ordering;
 
@@ -26,11 +27,13 @@ use anyhow::Result;
 use eframe::egui;
 
 use crate::control::CommandClient;
+use crate::fixture::Patch;
 use crate::gui_state::SharedGuiState;
 use crate::ui_util::{CloseHandler, ErrorModal, GuiContext, StatusColors};
 use animation_panel::VisualizerPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use midi_panel::{MidiPanel, MidiPanelState};
+use patch_panel::{PatchPanel, PatchPanelState};
 
 #[derive(Default, PartialEq, Clone, Copy)]
 enum Tab {
@@ -39,6 +42,7 @@ enum Tab {
     Osc,
     Clocks,
     Animation,
+    Patch,
 }
 
 struct ConfigApp {
@@ -46,6 +50,8 @@ struct ConfigApp {
     clock_panel: ClockPanelState,
     midi_panel: MidiPanelState,
     visualizer_panel: VisualizerPanelState,
+    patch_panel: PatchPanelState,
+    patchers: Vec<crate::fixture::patch::Patcher>,
     close_handler: CloseHandler,
     error_modal: ErrorModal,
     status_colors: StatusColors,
@@ -65,6 +71,7 @@ impl eframe::App for ConfigApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
                 ui.selectable_value(&mut self.active_tab, Tab::Clocks, "Clocks");
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
+                ui.selectable_value(&mut self.active_tab, Tab::Patch, "Patch");
             });
         });
 
@@ -114,6 +121,20 @@ impl eframe::App for ConfigApp {
                 let state = self.gui_state.animation_state.load();
                 self.visualizer_panel.ui(ui, &state);
             }
+            Tab::Patch => {
+                let snapshot = self.gui_state.patch_snapshot.load();
+                PatchPanel {
+                    ctx: GuiContext {
+                        error_modal: &mut self.error_modal,
+                        client: &self.client,
+                    },
+                    state: &mut self.patch_panel,
+                    snapshot: &snapshot,
+                    patchers: &self.patchers,
+                    status_colors: &self.status_colors,
+                }
+                .ui(ui);
+            }
         });
 
         self.error_modal.ui(ctx);
@@ -126,7 +147,7 @@ pub fn run_config_gui(
     gui_state: SharedGuiState,
 ) -> Result<()> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([400.0, 300.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([600.0, 500.0]),
         ..Default::default()
     };
     let initial_clock_status = gui_state.clock_status.load();
@@ -138,6 +159,8 @@ pub fn run_config_gui(
                 clock_panel: ClockPanelState::new(zmq_ctx, &initial_clock_status),
                 midi_panel: MidiPanelState::new(),
                 visualizer_panel: VisualizerPanelState::default(),
+                patch_panel: PatchPanelState::new(),
+                patchers: Patch::menu(),
                 client,
                 close_handler: CloseHandler::default(),
                 error_modal: ErrorModal::default(),

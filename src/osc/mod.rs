@@ -69,20 +69,17 @@ impl OscController {
     ) -> Result<Self> {
         let recv_addr = SocketAddr::from_str(&format!("0.0.0.0:{receive_port}"))?;
 
-        let (client_manager, initial_listener) =
-            sender::OscClientManager::new(send_addrs);
+        let (client_manager, initial_listener) = sender::OscClientManager::new(send_addrs);
 
-        let mut listener =
-            OscListener::new(client_manager.listener(), recv_addr, send)
-                .context("failed to start OSC listener")?;
+        let mut listener = OscListener::new(client_manager.listener(), recv_addr, send)
+            .context("failed to start OSC listener")?;
 
         thread::spawn(move || {
             listener.run();
         });
 
         let (mut sender, response_send) =
-            OscSender::new(initial_listener)
-                .context("failed to start OSC sender")?;
+            OscSender::new(initial_listener).context("failed to start OSC sender")?;
 
         thread::spawn(move || {
             sender.run();
@@ -122,7 +119,13 @@ impl OscController {
     pub fn test_new() -> (Self, std::sync::mpsc::Receiver<OscControlResponse>) {
         let (send, recv) = std::sync::mpsc::channel();
         let (client_manager, _) = sender::OscClientManager::new(vec![]);
-        (Self { send, client_manager }, recv)
+        (
+            Self {
+                send,
+                client_manager,
+            },
+            recv,
+        )
     }
 }
 
