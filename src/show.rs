@@ -93,6 +93,12 @@ impl Show {
         show.reconcile_clock_wing()?;
         show.refresh_ui();
         show.snapshot_gui_state(GuiDirty::all());
+        // Populate initial patch snapshot for the GUI.
+        if let Ok(groups) = crate::fixture::patch::parse_file(&show.patch_file_path) {
+            show.gui_state
+                .patch_snapshot
+                .store(Arc::new(PatchSnapshot { groups }));
+        }
         Ok(show)
     }
 
@@ -175,7 +181,11 @@ impl Show {
     fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<GuiDirty> {
         match cmd {
             MetaCommand::ReloadPatch => {
-                self.patch.repatch_from_file(&self.patch_file_path)?;
+                let groups = crate::fixture::patch::parse_file(&self.patch_file_path)?;
+                self.patch.repatch(&groups)?;
+                self.gui_state
+                    .patch_snapshot
+                    .store(Arc::new(PatchSnapshot { groups }));
                 self.post_repatch()
             }
             MetaCommand::Repatch(groups) => {

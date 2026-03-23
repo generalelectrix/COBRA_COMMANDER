@@ -377,13 +377,13 @@ impl PatchPanel<'_> {
                         // Up/down buttons for channel ordering
                         if has_channel {
                             if ui
-                                .add_enabled(i > 0, egui::Button::new("▲").small())
+                                .add_enabled(i > 0, egui::Button::new("Up").small())
                                 .clicked()
                             {
                                 swap = Some((i, i - 1));
                             }
                             if ui
-                                .add_enabled(i < n - 1, egui::Button::new("▼").small())
+                                .add_enabled(i < n - 1, egui::Button::new("Dn").small())
                                 .clicked()
                             {
                                 swap = Some((i, i + 1));
@@ -597,13 +597,13 @@ impl PatchPanel<'_> {
                         // Reorder buttons.
                         ui.horizontal(|ui| {
                             if ui
-                                .add_enabled(i > 0, egui::Button::new("▲").small())
+                                .add_enabled(i > 0, egui::Button::new("Up").small())
                                 .clicked()
                             {
                                 fixture_swap = Some((i, i - 1));
                             }
                             if ui
-                                .add_enabled(i < num_patches - 1, egui::Button::new("▼").small())
+                                .add_enabled(i < num_patches - 1, egui::Button::new("Dn").small())
                                 .clicked()
                             {
                                 fixture_swap = Some((i, i + 1));
@@ -657,7 +657,7 @@ impl PatchPanel<'_> {
                         ui.checkbox(&mut block.mirror, "");
 
                         // Delete button.
-                        if ui.button("✕").clicked() {
+                        if ui.button("x").clicked() {
                             fixture_delete = Some(i);
                         }
 
@@ -1399,5 +1399,152 @@ mod test {
         assert_eq!(opts.get_bool("flag"), Some(true));
         assert_eq!(opts.get_string("count").as_deref(), Some("42"));
         assert_eq!(opts.get_string("name").as_deref(), Some("hello"));
+    }
+
+    // -- Snapshot tests --
+
+    use crate::control::mock::auto_respond_client;
+    use crate::ui_util::{ErrorModal, StatusColors};
+    use egui_kittest::Harness;
+
+    fn test_status_colors() -> StatusColors {
+        StatusColors::default()
+    }
+
+    #[test]
+    fn render_empty_patch() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_empty();
+        let patchers = test_patchers();
+        let status_colors = test_status_colors();
+        let mut error_modal = ErrorModal::default();
+        let mut state = PatchPanelState::new();
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("patch_panel_empty");
+    }
+
+    #[test]
+    fn render_with_groups() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_groups();
+        let patchers = test_patchers();
+        let status_colors = test_status_colors();
+        let mut error_modal = ErrorModal::default();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("patch_panel_with_groups");
+    }
+
+    #[test]
+    fn render_second_group_selected() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_groups();
+        let patchers = test_patchers();
+        let status_colors = test_status_colors();
+        let mut error_modal = ErrorModal::default();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(1);
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("patch_panel_second_group");
+    }
+
+    #[test]
+    fn render_add_group_form() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_groups();
+        let patchers = test_patchers();
+        let status_colors = test_status_colors();
+        let mut error_modal = ErrorModal::default();
+        let mut state = PatchPanelState::new();
+        let mut form = AddGroupForm::new();
+        form.sync_options(&patchers);
+        state.mode = PanelMode::AddGroup(form);
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("patch_panel_add_group");
+    }
+
+    #[test]
+    fn render_with_dmx_map() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_groups();
+        let patchers = test_patchers();
+        let status_colors = test_status_colors();
+        let mut error_modal = ErrorModal::default();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+        state.show_address_map = true;
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    error_modal: &mut error_modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+                status_colors: &status_colors,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("patch_panel_dmx_map");
     }
 }
