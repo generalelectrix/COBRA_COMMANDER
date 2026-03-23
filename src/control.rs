@@ -298,7 +298,6 @@ pub enum MetaCommand {
     ReloadPatch,
     RefreshUI,
     ResetAllAnimations,
-    StartAnimationVisualizer,
     AssignDmxPort {
         universe: usize,
         port: Box<dyn rust_dmx::DmxPort>,
@@ -320,7 +319,6 @@ impl fmt::Debug for MetaCommand {
             Self::ReloadPatch => write!(f, "ReloadPatch"),
             Self::RefreshUI => write!(f, "RefreshUI"),
             Self::ResetAllAnimations => write!(f, "ResetAllAnimations"),
-            Self::StartAnimationVisualizer => write!(f, "StartAnimationVisualizer"),
             Self::AssignDmxPort { universe, port } => f
                 .debug_struct("AssignDmxPort")
                 .field("universe", universe)

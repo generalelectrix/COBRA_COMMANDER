@@ -14,7 +14,6 @@ use std::time::Duration;
 use tunnels::midi::list_ports;
 use zmq::Context;
 
-use crate::animation_visualizer::run_animation_visualizer;
 use crate::cli::*;
 use crate::control::{CommandClient, Controller};
 use crate::gui_state::{ClockStatus, GuiState, SharedGuiState};
@@ -23,7 +22,6 @@ use crate::preview::Previewer;
 use crate::show::Show;
 
 mod animation;
-mod animation_visualizer;
 mod channel;
 mod cli;
 mod clock_service;
@@ -59,7 +57,6 @@ fn main() -> Result<()> {
     match args.command {
         Command::Run(args) => run_show(args),
         Command::Check(args) => check_patch(args),
-        Command::Viz => run_animation_visualizer(),
         Command::Fix(args) => fixture_help(args),
     }
 }
@@ -111,7 +108,6 @@ fn run_show(args: RunArgs) -> Result<()> {
             if let Err(e) = run_show_worker(
                 args,
                 controller,
-                zmq_ctx,
                 show_gui_state,
             ) {
                 error!("Show worker error: {e:#}");
@@ -126,7 +122,6 @@ fn run_show(args: RunArgs) -> Result<()> {
             command_client,
             send_control_msg,
             recv_control_msg,
-            zmq_ctx,
         )?;
     }
 
@@ -139,7 +134,6 @@ fn run_show_inline(
     command_client: CommandClient,
     send_control_msg: std::sync::mpsc::Sender<crate::control::ControlMessage>,
     recv_control_msg: std::sync::mpsc::Receiver<crate::control::ControlMessage>,
-    zmq_ctx: Context,
 ) -> Result<()> {
     let patch = Patch::from_file(&args.patch_file)?;
     let clocks = Clocks::internal(None);
@@ -209,12 +203,10 @@ fn run_show_inline(
         controller,
         dmx_ports,
         clocks,
-        None,
         args.cli_preview
             .then(Previewer::terminal)
             .unwrap_or_default(),
         args.master_strobe_channel,
-        zmq_ctx,
         gui_state,
     )?;
 
@@ -237,7 +229,6 @@ fn run_show_inline(
 fn run_show_worker(
     args: RunArgs,
     controller: Controller,
-    zmq_ctx: Context,
     gui_state: SharedGuiState,
 ) -> Result<()> {
     let patch = Patch::from_file(&args.patch_file)?;
@@ -256,10 +247,8 @@ fn run_show_worker(
         controller,
         dmx_ports,
         clocks,
-        None,
         Previewer::default(),
         args.master_strobe_channel,
-        zmq_ctx,
         gui_state,
     )?;
 

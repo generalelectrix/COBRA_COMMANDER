@@ -33,9 +33,6 @@ pub(crate) enum Command {
     /// Check that the provided patch file is valid, then quit.
     Check(CheckArgs),
 
-    /// Run the animation visualizer.
-    Viz,
-
     /// Get fixture info.
     Fix(FixArgs),
 }
@@ -97,7 +94,6 @@ pub(crate) fn run_cli_configuration(client: CommandClient, universe_count: usize
     let internal_clocks = offer_action(&client, prompt_configure_clocks)?;
     offer_action(&client, |c| prompt_configure_midi(c, internal_clocks))?;
     offer_action(&client, |c| prompt_assign_dmx_ports(c, universe_count))?;
-    offer_action(&client, prompt_start_animation_visualizer)?;
     println!("Show configuration complete.");
     Ok(())
 }
@@ -220,11 +216,4 @@ fn prompt_select_port(ports: &mut Vec<Box<dyn DmxPort>>) -> Result<Box<dyn DmxPo
         }
         return Ok(ports.remove(index));
     }
-}
-
-fn prompt_start_animation_visualizer(client: &CommandClient) -> Result<()> {
-    if !prompt_bool("Start animation visualizer?")? {
-        return Ok(());
-    }
-    client.send_command(MetaCommand::StartAnimationVisualizer)
 }

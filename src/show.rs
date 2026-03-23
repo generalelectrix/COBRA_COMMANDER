@@ -4,13 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use std::env::current_exe;
-
 use crate::{
     animation::AnimationUIState,
-    animation_visualizer::{AnimationPublisher, AnimationServiceState, animation_publisher},
+    gui_state::AnimationSnapshot,
     channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
-    cli::Command,
     clocks::Clocks,
     color::Hsluv,
     control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
@@ -34,7 +31,6 @@ use log::error;
 use rust_dmx::{DmxPort, OfflineDmxPort};
 
 pub struct Show {
-    zmq_ctx: zmq::Context,
     controller: Controller,
     dmx_ports: Vec<Box<dyn DmxPort>>,
     dmx_buffers: Vec<DmxBuffer>,
@@ -44,7 +40,6 @@ pub struct Show {
     master_controls: MasterControls,
     animation_ui_state: AnimationUIState,
     clocks: Clocks,
-    animation_service: Option<AnimationPublisher>,
     preview: Previewer,
     master_strobe_channel: bool,
     gui_state: SharedGuiState,
@@ -65,10 +60,8 @@ impl Show {
         controller: Controller,
         dmx_ports: Vec<Box<dyn DmxPort>>,
         clocks: Clocks,
-        animation_service: Option<AnimationPublisher>,
         preview: Previewer,
         master_strobe_channel: bool,
-        zmq_ctx: zmq::Context,
         gui_state: SharedGuiState,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
@@ -83,7 +76,6 @@ impl Show {
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
         let mut show = Self {
-            zmq_ctx,
             controller,
             dmx_buffers: vec![[0u8; 512]; dmx_ports.len()],
             dmx_ports,
@@ -93,7 +85,6 @@ impl Show {
             master_controls: Default::default(),
             animation_ui_state,
             clocks,
-            animation_service,
             preview,
             master_strobe_channel,
             gui_state,
@@ -265,18 +256,6 @@ impl Show {
                 self.controller.deregister_osc_client(client_id);
                 Ok(GuiDirty::CLEAN)
             }
-            MetaCommand::StartAnimationVisualizer => {
-                if self.animation_service.is_none() {
-                    self.animation_service = Some(animation_publisher(&self.zmq_ctx)?);
-                }
-                let bin_path =
-                    current_exe().context("failed to get the path to the running binary")?;
-                std::process::Command::new(bin_path)
-                    .arg(Command::Viz.to_string())
-                    .spawn()
-                    .context("failed to start animation visualizer")?;
-                Ok(GuiDirty::CLEAN)
-            }
         }
     }
 
@@ -441,8 +420,8 @@ impl Show {
             );
         }
 
-        if let Err(err) = self.publish_animation_state() {
-            error!("Animation state publishing error: {err}.");
+        if let Err(err) = self.snapshot_animation_state() {
+            error!("Animation state snapshot error: {err}.");
         };
     }
 
@@ -502,11 +481,15 @@ impl Show {
         self.clocks.emit_state(&mut self.controller);
     }
 
-    /// If we have a animation publisher configured, send current state.
-    fn publish_animation_state(&mut self) -> Result<()> {
-        let Some(anim_pub) = self.animation_service.as_mut() else {
+    /// Snapshot animation state into the shared GUI state, if the visualizer is active.
+    fn snapshot_animation_state(&mut self) -> Result<()> {
+        if !self
+            .gui_state
+            .visualizer_active
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             return Ok(());
-        };
+        }
         let Some(current_channel) = self.channels.current_channel() else {
             return Ok(());
         };
@@ -516,16 +499,18 @@ impl Show {
         let animation_index = self
             .animation_ui_state
             .animation_index_for_channel(current_channel);
-        // FIXME: would be nice to avoid the extra memcopy here...
-        anim_pub.send(&AnimationServiceState {
-            animation: group
-                .get_animation(animation_index)
-                .map(ControllableTargetedAnimation::anim)
-                .cloned()
-                .unwrap_or_default(),
-            clocks: self.clocks.get(),
-            fixture_count: group.fixture_configs().len(),
-        })
+        self.gui_state
+            .animation_state
+            .store(Arc::new(AnimationSnapshot {
+                animation: group
+                    .get_animation(animation_index)
+                    .map(ControllableTargetedAnimation::anim)
+                    .cloned()
+                    .unwrap_or_default(),
+                clocks: self.clocks.get(),
+                fixture_count: group.fixture_configs().len(),
+            }));
+        Ok(())
     }
 }
 
@@ -597,10 +582,11 @@ pub mod test_support {
             .unwrap();
             let patch = Patch::from_file(&patch_path).unwrap();
             let (mut show, send) = Show::test_new(patch, patch_path);
-            let zmq_ctx = show.zmq_ctx.clone();
 
             // Send the client handle back to the calling thread.
-            send_tx.send(CommandClient::new(send, zmq_ctx)).unwrap();
+            send_tx
+                .send(CommandClient::new(send, zmq::Context::new()))
+                .unwrap();
 
             // Process commands until the client is dropped.
             loop {
@@ -635,7 +621,6 @@ impl Show {
             controller.osc_client_listener(),
         ));
         let mut show = Self {
-            zmq_ctx: zmq::Context::new(),
             controller,
             dmx_buffers: vec![[0u8; 512]; universe_count],
             dmx_ports: (0..universe_count)
@@ -647,7 +632,6 @@ impl Show {
             master_controls: Default::default(),
             animation_ui_state: AnimationUIState::new(initial_channel),
             clocks,
-            animation_service: None,
             preview: Previewer::Off,
             master_strobe_channel: false,
             gui_state,
@@ -753,5 +737,40 @@ mod tests {
         show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
         assert_eq!(show.dmx_ports.len(), 1);
         assert_eq!(show.dmx_buffers.len(), 1);
+    }
+
+    #[test]
+    fn snapshot_animation_state_skipped_when_inactive() {
+        let (mut show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+
+        // Visualizer is inactive by default.
+        assert!(
+            !show
+                .gui_state
+                .visualizer_active
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
+
+        show.snapshot_animation_state().unwrap();
+
+        // Animation state should still be the default (fixture_count == 0).
+        let state = show.gui_state.animation_state.load();
+        assert_eq!(state.fixture_count, 0);
+    }
+
+    #[test]
+    fn snapshot_animation_state_updates_when_active() {
+        let (mut show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+
+        // Activate the visualizer.
+        show.gui_state
+            .visualizer_active
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
+        show.snapshot_animation_state().unwrap();
+
+        // The patch has one Dimmer fixture, so fixture_count should be 1.
+        let state = show.gui_state.animation_state.load();
+        assert_eq!(state.fixture_count, 1);
     }
 }

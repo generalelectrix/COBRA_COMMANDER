@@ -18,6 +18,9 @@
 mod clock_panel;
 mod midi_panel;
 mod osc_panel;
+mod visualizer_panel;
+
+use std::sync::atomic::Ordering;
 
 use anyhow::Result;
 use eframe::egui;
@@ -26,18 +29,21 @@ use crate::control::CommandClient;
 use crate::gui_state::SharedGuiState;
 use crate::ui_util::{CloseHandler, ErrorModal, GuiContext};
 use clock_panel::{ClockPanel, ClockPanelState};
+use visualizer_panel::VisualizerPanelState;
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Clone, Copy)]
 enum Tab {
     #[default]
     Config,
     Midi,
     Osc,
+    Visualizer,
 }
 
 struct ConfigApp {
     client: CommandClient,
     clock_panel: ClockPanelState,
+    visualizer_panel: VisualizerPanelState,
     close_handler: CloseHandler,
     error_modal: ErrorModal,
     active_tab: Tab,
@@ -48,13 +54,24 @@ impl eframe::App for ConfigApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.close_handler.update("Quit Cobra Commander?", ctx);
 
+        let prev_tab = self.active_tab;
+
         egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.active_tab, Tab::Config, "Config");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
+                ui.selectable_value(&mut self.active_tab, Tab::Visualizer, "Visualizer");
             });
         });
+
+        // Notify the show when the visualizer tab becomes active or inactive.
+        if self.active_tab != prev_tab {
+            self.gui_state.visualizer_active.store(
+                self.active_tab == Tab::Visualizer,
+                Ordering::Relaxed,
+            );
+        }
 
         let clock_status = self.gui_state.clock_status.load();
 
@@ -82,6 +99,10 @@ impl eframe::App for ConfigApp {
                 };
                 osc_panel::ui(ui, &mut ctx, &self.gui_state.osc_listen_addr, &clients);
             }
+            Tab::Visualizer => {
+                let state = self.gui_state.animation_state.load();
+                self.visualizer_panel.ui(ui, &state);
+            }
         });
 
         self.error_modal.ui(ctx);
@@ -104,6 +125,7 @@ pub fn run_config_gui(
         Box::new(move |_cc| {
             Ok(Box::new(ConfigApp {
                 clock_panel: ClockPanelState::new(zmq_ctx, &initial_clock_status),
+                visualizer_panel: VisualizerPanelState::default(),
                 client,
                 close_handler: CloseHandler::default(),
                 error_modal: ErrorModal::default(),

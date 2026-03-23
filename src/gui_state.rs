@@ -1,9 +1,21 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::AtomicBool,
+};
 
 use arc_swap::ArcSwap;
 use midi_harness::SlotStatus;
+use tunnels::{animation::Animation, clock_server::SharedClockData};
 
 use crate::osc::OscClientListener;
+
+/// Snapshot of animation state for the visualizer panel.
+#[derive(Default)]
+pub struct AnimationSnapshot {
+    pub animation: Animation,
+    pub clocks: SharedClockData,
+    pub fixture_count: usize,
+}
 
 bitflags::bitflags! {
     /// GUI state domains that may need re-snapshotting after a control event.
@@ -28,6 +40,10 @@ pub struct GuiState {
     pub clock_status: ArcSwap<ClockStatus>,
     pub osc_listen_addr: String,
     pub osc_clients: OscClientListener,
+    /// Whether the visualizer tab is active — controls whether the Show
+    /// snapshots animation state.
+    pub visualizer_active: AtomicBool,
+    pub animation_state: ArcSwap<AnimationSnapshot>,
 }
 
 impl GuiState {
@@ -42,6 +58,8 @@ impl GuiState {
             clock_status: ArcSwap::from_pointee(clock_status),
             osc_listen_addr,
             osc_clients,
+            visualizer_active: AtomicBool::new(false),
+            animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),
         }
     }
 }
