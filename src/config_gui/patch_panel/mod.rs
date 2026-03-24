@@ -369,16 +369,19 @@ impl PatchPanel<'_> {
                                 Some(ch) => format!("{ch}"),
                                 None => "-".to_string(),
                             };
-                            ui.label(&ch_text);
+                            ui.add(egui::Label::new(&ch_text).selectable(false));
 
                             // Name.
-                            ui.label(group.config.key());
+                            ui.add(egui::Label::new(group.config.key()).selectable(false));
 
                             // Type.
-                            ui.label(&group.config.fixture);
+                            ui.add(egui::Label::new(&group.config.fixture).selectable(false));
 
                             // Fixture count.
-                            ui.label(format!("{}", group.config.patches.len()));
+                            ui.add(
+                                egui::Label::new(format!("{}", group.config.patches.len()))
+                                    .selectable(false),
+                            );
 
                             // Delete button.
                             if ui.button("x").clicked() {
