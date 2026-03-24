@@ -8,6 +8,7 @@ pub struct StatusColors {
     pub inactive: Color32,
     /// Connected/running state.
     pub active: Color32,
+    #[expect(unused)]
     /// Degraded/attention-needed state.
     pub warning: Color32,
     /// Disconnected/failed state.
@@ -38,8 +39,11 @@ pub fn confirm_button(ui: &mut egui::Ui, text: &str) -> bool {
 
 /// A confirm button that can be disabled.
 pub fn confirm_button_enabled(ui: &mut egui::Ui, text: &str, enabled: bool) -> bool {
-    ui.add_enabled(enabled, egui::Button::new(text).fill(STATUS_COLORS.confirm_button))
-        .clicked()
+    ui.add_enabled(
+        enabled,
+        egui::Button::new(text).fill(STATUS_COLORS.confirm_button),
+    )
+    .clicked()
 }
 
 /// A cancel/revert/dismiss button with semantic styling.
