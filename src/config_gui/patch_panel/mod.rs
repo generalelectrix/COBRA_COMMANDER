@@ -316,12 +316,33 @@ impl PatchPanel<'_> {
                     return;
                 }
 
+                let selected = self.state.selected_group;
+
                 egui::Grid::new("group_table")
                     .striped(true)
+                    .with_row_color(move |row, style| {
+                        if row == 0 {
+                            return None;
+                        }
+                        if selected == Some(row - 1) {
+                            Some(style.visuals.selection.bg_fill)
+                        } else {
+                            None
+                        }
+                    })
                     .show(ui, |ui| {
+                        ui.label("");
+                        ui.label("Ch");
+                        ui.label("Name");
+                        ui.label("Type");
+                        ui.label("Count");
+                        ui.label("");
+                        ui.end_row();
+
                         for i in 0..n {
                             let group = &wc.groups[i];
                             let has_channel = group.config.channel;
+                            let row_top = ui.cursor().top();
 
                             // Up/down arrows.
                             ui.horizontal(|ui| {
@@ -344,20 +365,14 @@ impl PatchPanel<'_> {
                             });
 
                             // Channel number.
-                            match channel_numbers.get(i).copied().flatten() {
-                                Some(ch) => { ui.label(format!("{ch}")); }
-                                None => { ui.label("-"); }
-                            }
+                            let ch_text = match channel_numbers.get(i).copied().flatten() {
+                                Some(ch) => format!("{ch}"),
+                                None => "-".to_string(),
+                            };
+                            ui.label(&ch_text);
 
-                            // Selectable name.
-                            let key = group.config.key();
-                            let is_selected = self.state.selected_group == Some(i);
-                            if ui.selectable_label(is_selected, key).clicked() {
-                                self.state.selected_group = Some(i);
-                                if matches!(self.state.mode, PanelMode::AddFixture(_)) {
-                                    self.state.mode = PanelMode::View;
-                                }
-                            }
+                            // Name.
+                            ui.label(group.config.key());
 
                             // Type.
                             ui.label(&group.config.fixture);
@@ -371,6 +386,26 @@ impl PatchPanel<'_> {
                             }
 
                             ui.end_row();
+
+                            // Row-level click detection.
+                            let row_bottom = ui.cursor().top();
+                            let row_rect = egui::Rect::from_x_y_ranges(
+                                ui.min_rect().x_range(),
+                                row_top..=row_bottom,
+                            );
+                            if ui
+                                .interact(
+                                    row_rect,
+                                    ui.id().with(("group_row", i)),
+                                    egui::Sense::click(),
+                                )
+                                .clicked()
+                            {
+                                self.state.selected_group = Some(i);
+                                if matches!(self.state.mode, PanelMode::AddFixture(_)) {
+                                    self.state.mode = PanelMode::View;
+                                }
+                            }
                         }
                     });
             });
