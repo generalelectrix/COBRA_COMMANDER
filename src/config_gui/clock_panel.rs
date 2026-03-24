@@ -257,7 +257,7 @@ impl ClockPanel<'_> {
 mod tests {
     use super::*;
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::ErrorModal;
+    use crate::ui_util::MessageModal;
     use egui_kittest::{Harness, kittest::Queryable};
 
     struct MockClockBrowser {
@@ -303,12 +303,12 @@ mod tests {
         let clock_status = ClockStatus::Internal {
             audio_device: "Built-in Microphone".into(),
         };
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -335,12 +335,12 @@ mod tests {
         let clock_status = ClockStatus::Remote {
             provider: "studio-clock".into(),
         };
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -364,12 +364,12 @@ mod tests {
         let clock_status = ClockStatus::Internal {
             audio_device: "Offline".into(),
         };
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -391,12 +391,12 @@ mod tests {
     fn switch_to_internal_fires_command() {
         let client = auto_respond_client();
         let clock_status = test_clock_status();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -426,12 +426,12 @@ mod tests {
     fn switch_to_remote_without_provider_fires_nothing() {
         let client = auto_respond_client();
         let clock_status = test_clock_status();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -482,12 +482,12 @@ mod tests {
     fn switch_back_to_remote_fires_reconnect() {
         let client = auto_respond_client();
         let clock_status = test_clock_status();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -521,12 +521,12 @@ mod tests {
     fn remote_no_providers_shows_searching() {
         let client = auto_respond_client();
         let clock_status = test_clock_status();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -554,12 +554,12 @@ mod tests {
         let clock_status = ClockStatus::Internal {
             audio_device: "Test Mic".into(),
         };
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -585,12 +585,12 @@ mod tests {
         let clock_status = ClockStatus::Remote {
             provider: "clock-server-1".into(),
         };
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,
@@ -660,12 +660,12 @@ mod tests {
         let clock_status = ClockStatus::Internal {
             audio_device: "Offline".into(),
         };
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut ClockPanelState| {
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut error_modal,
+                        modal: &mut modal,
                         client: &client,
                     },
                     state,

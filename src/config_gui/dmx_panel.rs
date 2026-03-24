@@ -175,20 +175,20 @@ impl DmxPortPanel<'_> {
 mod test {
     use super::*;
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::ErrorModal;
+    use crate::ui_util::MessageModal;
     use egui_kittest::Harness;
 
     #[test]
     fn render_no_universes() {
         let client = auto_respond_client();
         let status = DmxPortStatus { ports: vec![] };
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut state = DmxPortPanelState::new();
 
         let mut harness = Harness::new_ui(|ui| {
             DmxPortPanel {
                 ctx: GuiContext {
-                    error_modal: &mut error_modal,
+                    modal: &mut modal,
                     client: &client,
                 },
                 state: &mut state,
@@ -206,13 +206,13 @@ mod test {
         let status = DmxPortStatus {
             ports: vec!["offline".to_string(), "offline".to_string()],
         };
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let mut state = DmxPortPanelState::new();
 
         let mut harness = Harness::new_ui(|ui| {
             DmxPortPanel {
                 ctx: GuiContext {
-                    error_modal: &mut error_modal,
+                    modal: &mut modal,
                     client: &client,
                 },
                 state: &mut state,

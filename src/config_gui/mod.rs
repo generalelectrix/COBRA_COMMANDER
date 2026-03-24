@@ -30,7 +30,7 @@ use eframe::egui;
 use crate::control::CommandClient;
 use crate::fixture::Patch;
 use crate::gui_state::SharedGuiState;
-use crate::ui_util::{CloseHandler, ErrorModal, GuiContext};
+use crate::ui_util::{CloseHandler, MessageModal, GuiContext};
 use animation_panel::VisualizerPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
@@ -57,7 +57,7 @@ struct ConfigApp {
     dmx_panel: DmxPortPanelState,
     patchers: Vec<crate::fixture::patch::Patcher>,
     close_handler: CloseHandler,
-    error_modal: ErrorModal,
+    modal: MessageModal,
     active_tab: Tab,
     gui_state: SharedGuiState,
 }
@@ -91,7 +91,7 @@ impl eframe::App for ConfigApp {
                 let clock_status = self.gui_state.clock_status.load();
                 ClockPanel {
                     ctx: GuiContext {
-                        error_modal: &mut self.error_modal,
+                        modal: &mut self.modal,
                         client: &self.client,
                     },
                     state: &mut self.clock_panel,
@@ -103,7 +103,7 @@ impl eframe::App for ConfigApp {
                 let midi_slots = self.gui_state.midi_slots.load();
                 MidiPanel {
                     ctx: GuiContext {
-                        error_modal: &mut self.error_modal,
+                        modal: &mut self.modal,
                         client: &self.client,
                     },
                     state: &mut self.midi_panel,
@@ -114,7 +114,7 @@ impl eframe::App for ConfigApp {
             Tab::Osc => {
                 let clients = self.gui_state.osc_clients.load();
                 let mut ctx = GuiContext {
-                    error_modal: &mut self.error_modal,
+                    modal: &mut self.modal,
                     client: &self.client,
                 };
                 osc_panel::ui(ui, &mut ctx, &self.gui_state.osc_listen_addr, &clients);
@@ -127,7 +127,7 @@ impl eframe::App for ConfigApp {
                 let snapshot = self.gui_state.patch_snapshot.load();
                 PatchPanel {
                     ctx: GuiContext {
-                        error_modal: &mut self.error_modal,
+                        modal: &mut self.modal,
                         client: &self.client,
                     },
                     state: &mut self.patch_panel,
@@ -140,7 +140,7 @@ impl eframe::App for ConfigApp {
                 let port_status = self.gui_state.dmx_port_status.load();
                 DmxPortPanel {
                     ctx: GuiContext {
-                        error_modal: &mut self.error_modal,
+                        modal: &mut self.modal,
                         client: &self.client,
                     },
                     state: &mut self.dmx_panel,
@@ -150,7 +150,7 @@ impl eframe::App for ConfigApp {
             }
         });
 
-        self.error_modal.ui(ctx);
+        self.modal.ui(ctx);
     }
 }
 
@@ -177,7 +177,7 @@ pub fn run_config_gui(
                 patchers: Patch::menu(),
                 client,
                 close_handler: CloseHandler::default(),
-                error_modal: ErrorModal::default(),
+                modal: MessageModal::default(),
                 active_tab: Tab::default(),
                 gui_state,
             }))

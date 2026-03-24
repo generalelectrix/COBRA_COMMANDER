@@ -57,46 +57,46 @@ pub fn cancel_button(ui: &mut egui::Ui, text: &str) -> bool {
 /// Bundles the dependencies common to all panel renderers so they don't
 /// need to be threaded through every method call.
 pub(crate) struct GuiContext<'a> {
-    pub error_modal: &'a mut ErrorModal,
+    pub modal: &'a mut MessageModal,
     pub client: &'a CommandClient,
 }
 
 impl GuiContext<'_> {
     pub fn report_error(&mut self, error: impl std::fmt::Display) {
-        self.error_modal.show(error.to_string());
+        self.modal.show("Error", error.to_string());
     }
 
     pub fn send_command(&mut self, cmd: MetaCommand) -> Result<(), anyhow::Error> {
         self.client.send_command(cmd).inspect_err(|e| {
-            self.error_modal.show(e.to_string());
+            self.modal.show("Error", e.to_string());
         })
     }
 }
 
-/// Displays a modal error dialog that blocks interaction until dismissed.
+/// Displays a modal dialog with a title and message, blocked until dismissed.
 #[derive(Default)]
-pub struct ErrorModal {
-    message: Option<String>,
+pub struct MessageModal {
+    pending: Option<(String, String)>,
 }
 
-impl ErrorModal {
-    pub fn show(&mut self, error: String) {
-        self.message = Some(error);
+impl MessageModal {
+    pub fn show(&mut self, title: impl Into<String>, message: impl Into<String>) {
+        self.pending = Some((title.into(), message.into()));
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
-        let Some(message) = &self.message else { return };
-        let modal_response = egui::Modal::new(egui::Id::new("error_modal")).show(ctx, |ui| {
+        let Some((title, message)) = &self.pending else { return };
+        let response = egui::Modal::new(egui::Id::new("message_modal")).show(ctx, |ui| {
             ui.set_width(300.0);
-            ui.heading("Error");
+            ui.heading(title.as_str());
             ui.label(message.as_str());
             ui.add_space(8.0);
             if ui.button("OK").clicked() {
                 ui.close();
             }
         });
-        if modal_response.should_close() {
-            self.message = None;
+        if response.should_close() {
+            self.pending = None;
         }
     }
 }

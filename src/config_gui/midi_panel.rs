@@ -197,7 +197,7 @@ impl MidiPanel<'_> {
 mod tests {
     use super::*;
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::ErrorModal;
+    use crate::ui_util::MessageModal;
     use egui_kittest::Harness;
     use midi_harness::DeviceId;
 
@@ -239,12 +239,12 @@ mod tests {
     #[test]
     fn render_empty_slots() {
         let client = auto_respond_client();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let slots: Vec<SlotStatus> = vec![];
         let mut harness = Harness::new_ui(|ui| {
             MidiPanel {
                 ctx: GuiContext {
-                    error_modal: &mut error_modal,
+                    modal: &mut modal,
                     client: &client,
                 },
                 state: &mut MidiPanelState {
@@ -262,12 +262,12 @@ mod tests {
     #[test]
     fn render_populated_slots() {
         let client = auto_respond_client();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let slots = test_slots();
         let mut harness = Harness::new_ui(|ui| {
             MidiPanel {
                 ctx: GuiContext {
-                    error_modal: &mut error_modal,
+                    modal: &mut modal,
                     client: &client,
                 },
                 state: &mut MidiPanelState {

@@ -37,17 +37,17 @@ pub fn ui(ui: &mut egui::Ui, ctx: &mut GuiContext<'_>, listen_addr: &str, client
 mod tests {
     use super::*;
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::ErrorModal;
+    use crate::ui_util::MessageModal;
     use egui_kittest::Harness;
 
     #[test]
     fn render_no_clients() {
         let client = auto_respond_client();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let clients: Vec<OscClientId> = vec![];
         let mut harness = Harness::new_ui(|ui| {
             let mut ctx = GuiContext {
-                error_modal: &mut error_modal,
+                modal: &mut modal,
                 client: &client,
             };
             super::ui(ui, &mut ctx, "192.168.1.42:8000", &clients);
@@ -62,7 +62,7 @@ mod tests {
         use std::str::FromStr;
 
         let client = auto_respond_client();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
         let clients: Vec<OscClientId> = vec![
             OscClientId::from_addr(SocketAddr::from_str("192.168.1.10:9000").unwrap()),
             OscClientId::from_addr(SocketAddr::from_str("192.168.1.20:9000").unwrap()),
@@ -70,7 +70,7 @@ mod tests {
         ];
         let mut harness = Harness::new_ui(|ui| {
             let mut ctx = GuiContext {
-                error_modal: &mut error_modal,
+                modal: &mut modal,
                 client: &client,
             };
             super::ui(ui, &mut ctx, "192.168.1.42:8000", &clients);

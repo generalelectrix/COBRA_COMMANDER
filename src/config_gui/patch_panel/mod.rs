@@ -175,6 +175,10 @@ impl PatchPanel<'_> {
                             if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
                                 self.state.working_copy = None;
                                 self.state.mode = PanelMode::View;
+                                self.ctx.modal.show(
+                                    "Patch Applied",
+                                    "Patch configuration updated successfully.",
+                                );
                             }
                         }
                         if cancel_button(ui, "Revert") {
@@ -1315,7 +1319,7 @@ mod test {
     // -----------------------------------------------------------------------
 
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::ErrorModal;
+    use crate::ui_util::MessageModal;
     use egui_kittest::Harness;
 
     fn snapshot_panel(
@@ -1325,12 +1329,12 @@ mod test {
         name: &str,
     ) {
         let client = auto_respond_client();
-        let mut error_modal = ErrorModal::default();
+        let mut modal = MessageModal::default();
 
         let mut harness = Harness::new_ui(|ui| {
             PatchPanel {
                 ctx: GuiContext {
-                    error_modal: &mut error_modal,
+                    modal: &mut modal,
                     client: &client,
                 },
                 state,
