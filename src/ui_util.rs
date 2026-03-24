@@ -9,22 +9,20 @@ pub struct StatusColors {
     /// Connected/running state.
     pub active: Color32,
     /// Degraded/attention-needed state.
-    #[expect(unused)]
     pub warning: Color32,
     /// Disconnected/failed state.
     pub error: Color32,
+    /// Inline validation error text.
+    pub error_text: Color32,
 }
 
-impl Default for StatusColors {
-    fn default() -> Self {
-        Self {
-            inactive: Color32::GRAY,
-            active: Color32::GREEN,
-            warning: Color32::from_rgb(255, 165, 0),
-            error: Color32::from_rgb(255, 80, 80),
-        }
-    }
-}
+pub const STATUS_COLORS: StatusColors = StatusColors {
+    inactive: Color32::GRAY,
+    active: Color32::GREEN,
+    warning: Color32::from_rgb(255, 165, 0),
+    error: Color32::from_rgb(255, 80, 80),
+    error_text: Color32::RED,
+};
 
 /// Shared rendering context for GUI panels.
 ///

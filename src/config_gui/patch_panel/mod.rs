@@ -9,7 +9,7 @@ use crate::control::MetaCommand;
 use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
 use crate::gui_state::PatchSnapshot;
-use crate::ui_util::{GuiContext, StatusColors};
+use crate::ui_util::{GuiContext, STATUS_COLORS};
 
 use address_map::{AddressMap, UniverseAddress};
 use widgets::{
@@ -143,7 +143,6 @@ pub(crate) struct PatchPanel<'a> {
     pub state: &'a mut PatchPanelState,
     pub snapshot: &'a PatchSnapshot,
     pub patchers: &'a [Patcher],
-    pub status_colors: &'a StatusColors,
 }
 
 impl PatchPanel<'_> {
@@ -194,7 +193,6 @@ impl PatchPanel<'_> {
         if self.state.show_address_map {
             let Some(wc) = self.state.working_copy.as_ref() else { return };
             let addr_map = AddressMap::from_working_copy(wc);
-            let status_colors = self.status_colors;
             let mut show = self.state.show_address_map;
             egui::Window::new("DMX Address Map")
                 .open(&mut show)
@@ -202,7 +200,7 @@ impl PatchPanel<'_> {
                 .default_width(250.0)
                 .vscroll(true)
                 .show(ui.ctx(), |ui| {
-                    render_address_map(ui, wc, &addr_map, status_colors);
+                    render_address_map(ui, wc, &addr_map);
                 });
             self.state.show_address_map = show;
         }
@@ -335,7 +333,7 @@ impl PatchPanel<'_> {
         let fix_count = wc.groups[group_idx].config.patches.len();
 
         ui.colored_label(
-            self.status_colors.error,
+            STATUS_COLORS.error,
             format!("Really delete {key} ({fix_count} fixtures)?"),
         );
         ui.horizontal(|ui| {
@@ -641,7 +639,7 @@ impl PatchPanel<'_> {
                     {
                         render_option_widget(ui, menu_key, menu_opt, &mut entry.1);
                         if let Err(msg) = validate_option(menu_opt, &entry.1) {
-                            ui.colored_label(egui::Color32::RED, &msg);
+                            ui.colored_label(STATUS_COLORS.error_text, &msg);
                             all_valid = false;
                         }
                     }
@@ -733,7 +731,7 @@ impl PatchPanel<'_> {
                     if let Some(entry) = form.patch_options.iter_mut().find(|(k, _)| k == opt_key) {
                         render_option_widget(ui, opt_key, opt_type, &mut entry.1);
                         if let Err(msg) = validate_option(opt_type, &entry.1) {
-                            ui.colored_label(egui::Color32::RED, &msg);
+                            ui.colored_label(STATUS_COLORS.error_text, &msg);
                             all_valid = false;
                         }
                     }
@@ -1269,7 +1267,7 @@ mod test {
     // -----------------------------------------------------------------------
 
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::{ErrorModal, StatusColors};
+    use crate::ui_util::ErrorModal;
     use egui_kittest::Harness;
 
     fn snapshot_panel(
@@ -1279,7 +1277,6 @@ mod test {
         name: &str,
     ) {
         let client = auto_respond_client();
-        let status_colors = StatusColors::default();
         let mut error_modal = ErrorModal::default();
 
         let mut harness = Harness::new_ui(|ui| {
@@ -1291,7 +1288,6 @@ mod test {
                 state,
                 snapshot,
                 patchers,
-                status_colors: &status_colors,
             }
             .ui(ui);
         });

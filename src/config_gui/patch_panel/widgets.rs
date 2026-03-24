@@ -3,7 +3,7 @@ use egui::{Pos2, Rect, Shape, Stroke, Vec2, vec2};
 
 use crate::config::Options;
 use crate::fixture::patch::PatchOption;
-use crate::ui_util::StatusColors;
+use crate::ui_util::STATUS_COLORS;
 
 use super::address_map::{AddressMap, GroupName};
 use super::working_copy::PatchWorkingCopy;
@@ -145,7 +145,6 @@ pub fn render_address_map(
     ui: &mut egui::Ui,
     wc: &PatchWorkingCopy,
     addr_map: &AddressMap,
-    status_colors: &StatusColors,
 ) {
     if wc.groups.is_empty() || addr_map.is_empty() {
         ui.label("No addresses in use.");
@@ -206,7 +205,7 @@ pub fn render_address_map(
 
             let label = format!("{range_str}  {name}");
             if *is_collision {
-                ui.colored_label(status_colors.error, &label)
+                ui.colored_label(STATUS_COLORS.error, &label)
                     .on_hover_text("DMX address collision!");
             } else {
                 ui.label(&label);

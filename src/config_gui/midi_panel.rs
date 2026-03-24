@@ -3,7 +3,7 @@ use midi_harness::{DeviceKind, MidiPortSpec, PortStatus, SlotStatus};
 use tunnels::midi::list_ports;
 
 use crate::control::MetaCommand;
-use crate::ui_util::{GuiContext, StatusColors};
+use crate::ui_util::{GuiContext, STATUS_COLORS};
 
 pub struct MidiPanelState {
     input_ports: Vec<MidiPortSpec>,
@@ -38,7 +38,6 @@ pub(crate) struct MidiPanel<'a> {
     pub ctx: GuiContext<'a>,
     pub state: &'a mut MidiPanelState,
     pub slots: &'a [SlotStatus],
-    pub status_colors: &'a StatusColors,
 }
 
 impl MidiPanel<'_> {
@@ -116,10 +115,10 @@ impl MidiPanel<'_> {
         let combo_id = format!("{slot_name}_{kind_label}");
 
         let (selected_text, text_color) = match current {
-            PortStatus::Unassigned => ("Unassigned".to_string(), self.status_colors.inactive),
-            PortStatus::Connected { name, .. } => (name.clone(), self.status_colors.active),
+            PortStatus::Unassigned => ("Unassigned".to_string(), STATUS_COLORS.inactive),
+            PortStatus::Connected { name, .. } => (name.clone(), STATUS_COLORS.active),
             PortStatus::Disconnected { name, .. } => {
-                (format!("{name} (disconnected)"), self.status_colors.error)
+                (format!("{name} (disconnected)"), STATUS_COLORS.error)
             }
         };
 
@@ -202,10 +201,6 @@ mod tests {
     use egui_kittest::Harness;
     use midi_harness::DeviceId;
 
-    fn test_status_colors() -> StatusColors {
-        StatusColors::default()
-    }
-
     fn test_slots() -> Vec<SlotStatus> {
         vec![
             SlotStatus {
@@ -246,7 +241,6 @@ mod tests {
         let client = auto_respond_client();
         let mut error_modal = ErrorModal::default();
         let slots: Vec<SlotStatus> = vec![];
-        let status_colors = test_status_colors();
         let mut harness = Harness::new_ui(|ui| {
             MidiPanel {
                 ctx: GuiContext {
@@ -258,7 +252,6 @@ mod tests {
                     output_ports: vec![],
                 },
                 slots: &slots,
-                status_colors: &status_colors,
             }
             .ui(ui);
         });
@@ -271,7 +264,6 @@ mod tests {
         let client = auto_respond_client();
         let mut error_modal = ErrorModal::default();
         let slots = test_slots();
-        let status_colors = test_status_colors();
         let mut harness = Harness::new_ui(|ui| {
             MidiPanel {
                 ctx: GuiContext {
@@ -283,7 +275,6 @@ mod tests {
                     output_ports: vec![],
                 },
                 slots: &slots,
-                status_colors: &status_colors,
             }
             .ui(ui);
         });

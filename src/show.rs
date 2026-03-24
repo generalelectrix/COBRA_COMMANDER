@@ -569,6 +569,16 @@ fn assign_dmx_port(
             dmx_ports.len()
         );
     }
+    // Prevent assigning the same port to multiple universes.
+    let new_name = port.to_string();
+    let offline_name = OfflineDmxPort.to_string();
+    if new_name != offline_name {
+        for (i, existing) in dmx_ports.iter().enumerate() {
+            if i != universe && existing.to_string() == new_name {
+                bail!("port {new_name} is already assigned to universe {i}");
+            }
+        }
+    }
     port.open()
         .map_err(|e| anyhow::anyhow!("failed to open port {port}: {e}"))?;
     dmx_buffers[universe].fill(0);
@@ -754,6 +764,26 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("out of range"));
         assert!(err_msg.contains("2 universe(s)"));
+    }
+
+    #[test]
+    fn assign_dmx_port_rejects_duplicate() {
+        let (mut show, _dir) = show_from_yaml(TWO_UNIVERSE_PATCH);
+
+        // Assign a mock port to universe 0.
+        show.handle_meta_command(MetaCommand::AssignDmxPort {
+            universe: 0,
+            port: Box::new(MockDmxPort::new()),
+        })
+        .unwrap();
+
+        // Assigning the same port type to universe 1 should fail.
+        let result = show.handle_meta_command(MetaCommand::AssignDmxPort {
+            universe: 1,
+            port: Box::new(MockDmxPort::new()),
+        });
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already assigned"));
     }
 
     #[test]

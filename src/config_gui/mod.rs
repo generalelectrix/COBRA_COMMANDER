@@ -30,7 +30,7 @@ use eframe::egui;
 use crate::control::CommandClient;
 use crate::fixture::Patch;
 use crate::gui_state::SharedGuiState;
-use crate::ui_util::{CloseHandler, ErrorModal, GuiContext, StatusColors};
+use crate::ui_util::{CloseHandler, ErrorModal, GuiContext};
 use animation_panel::VisualizerPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
@@ -58,7 +58,6 @@ struct ConfigApp {
     patchers: Vec<crate::fixture::patch::Patcher>,
     close_handler: CloseHandler,
     error_modal: ErrorModal,
-    status_colors: StatusColors,
     active_tab: Tab,
     gui_state: SharedGuiState,
 }
@@ -97,7 +96,6 @@ impl eframe::App for ConfigApp {
                     },
                     state: &mut self.clock_panel,
                     clock_status: &clock_status,
-                    status_colors: &self.status_colors,
                 }
                 .ui(ui);
             }
@@ -110,7 +108,6 @@ impl eframe::App for ConfigApp {
                     },
                     state: &mut self.midi_panel,
                     slots: &midi_slots,
-                    status_colors: &self.status_colors,
                 }
                 .ui(ui);
             }
@@ -136,7 +133,6 @@ impl eframe::App for ConfigApp {
                     state: &mut self.patch_panel,
                     snapshot: &snapshot,
                     patchers: &self.patchers,
-                    status_colors: &self.status_colors,
                 }
                 .ui(ui);
             }
@@ -182,7 +178,6 @@ pub fn run_config_gui(
                 client,
                 close_handler: CloseHandler::default(),
                 error_modal: ErrorModal::default(),
-                status_colors: StatusColors::default(),
                 active_tab: Tab::default(),
                 gui_state,
             }))

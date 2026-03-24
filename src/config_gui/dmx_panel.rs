@@ -4,14 +4,14 @@ use eframe::egui;
 
 use crate::control::MetaCommand;
 use crate::gui_state::DmxPortStatus;
-use crate::ui_util::GuiContext;
+use crate::ui_util::{GuiContext, STATUS_COLORS};
 
 pub struct DmxPortPanelState {
     available_ports: Vec<Box<dyn rust_dmx::DmxPort>>,
     scan_artnet: bool,
     artnet_timeout_secs: String,
-    /// Universe currently showing the assign picker, if any.
-    assigning_universe: Option<usize>,
+    /// Selected port in the available list. None = "offline" selected.
+    selected_port: Option<usize>,
 }
 
 impl DmxPortPanelState {
@@ -20,7 +20,7 @@ impl DmxPortPanelState {
             available_ports: Vec::new(),
             scan_artnet: false,
             artnet_timeout_secs: "3".to_string(),
-            assigning_universe: None,
+            selected_port: None,
         }
     }
 }
@@ -49,7 +49,7 @@ impl DmxPortPanel<'_> {
                     .add_enabled(artnet_valid, egui::Button::new("Refresh"))
                     .clicked()
                 {
-                    self.refresh_ports(ui);
+                    self.refresh_ports();
                 }
             });
         });
@@ -64,7 +64,7 @@ impl DmxPortPanel<'_> {
                 ui.add(edit);
                 ui.label("sec");
                 if !artnet_valid {
-                    ui.colored_label(egui::Color32::RED, "must be a positive number");
+                    ui.colored_label(STATUS_COLORS.error_text, "must be a positive number");
                 }
             }
         });
@@ -75,9 +75,21 @@ impl DmxPortPanel<'_> {
         if self.port_status.ports.is_empty() {
             ui.label("No universes configured.");
         } else {
-            // Collect assignment action to apply after rendering.
-            let mut assign_action: Option<(usize, Box<dyn rust_dmx::DmxPort>)> = None;
-            let mut assign_offline: Option<usize> = None;
+            // Track which port name is currently selected for display.
+            let selected_name = match self.state.selected_port {
+                None => rust_dmx::OfflineDmxPort.to_string(),
+                Some(i) => self
+                    .state
+                    .available_ports
+                    .get(i)
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| {
+                        self.state.selected_port = None;
+                        rust_dmx::OfflineDmxPort.to_string()
+                    }),
+            };
+
+            let mut assign_action: Option<usize> = None;
 
             egui::Grid::new("dmx_universe_grid")
                 .striped(true)
@@ -86,24 +98,14 @@ impl DmxPortPanel<'_> {
                         ui.label(format!("Universe {universe}"));
                         ui.label(port_name);
 
-                        if self.state.assigning_universe == Some(universe) {
-                            // Show picker.
-                            if ui.button("offline").clicked() {
-                                assign_offline = Some(universe);
-                            }
-                            for i in 0..self.state.available_ports.len() {
-                                let name = self.state.available_ports[i].to_string();
-                                if ui.button(&name).clicked() {
-                                    let port = self.state.available_ports.remove(i);
-                                    assign_action = Some((universe, port));
-                                    break;
-                                }
-                            }
-                            if ui.button("Cancel").clicked() {
-                                self.state.assigning_universe = None;
-                            }
-                        } else if ui.button("Assign").clicked() {
-                            self.state.assigning_universe = Some(universe);
+                        // Don't allow assigning if the selected port is already this universe's port.
+                        let same_as_current = selected_name == *port_name;
+                        if ui
+                            .add_enabled(!same_as_current, egui::Button::new("Assign"))
+                            .on_hover_text(format!("Assign {selected_name}"))
+                            .clicked()
+                        {
+                            assign_action = Some(universe);
                         }
 
                         ui.end_row();
@@ -111,40 +113,49 @@ impl DmxPortPanel<'_> {
                 });
 
             // Apply assignment.
-            if let Some((universe, port)) = assign_action {
+            if let Some(universe) = assign_action {
+                let port: Box<dyn rust_dmx::DmxPort> = match self.state.selected_port.take() {
+                    None => Box::new(rust_dmx::OfflineDmxPort),
+                    Some(i) => {
+                        if i < self.state.available_ports.len() {
+                            self.state.available_ports.remove(i)
+                        } else {
+                            Box::new(rust_dmx::OfflineDmxPort)
+                        }
+                    }
+                };
                 let _ = self
                     .ctx
                     .send_command(MetaCommand::AssignDmxPort { universe, port });
-                self.state.assigning_universe = None;
-            }
-            if let Some(universe) = assign_offline {
-                let port = Box::new(rust_dmx::OfflineDmxPort) as Box<dyn rust_dmx::DmxPort>;
-                let _ = self
-                    .ctx
-                    .send_command(MetaCommand::AssignDmxPort { universe, port });
-                self.state.assigning_universe = None;
             }
         }
 
-        // Available ports pool.
         ui.separator();
+
+        // Available ports pool.
         ui.label(format!(
             "Available Ports ({})",
-            self.state.available_ports.len()
+            self.state.available_ports.len() + 1 // +1 for offline
         ));
-        if self.state.available_ports.is_empty() {
-            ui.colored_label(
-                ui.style().visuals.text_color().gamma_multiply(0.5),
-                "None — click Refresh to discover ports.",
-            );
-        } else {
-            for port in &self.state.available_ports {
-                ui.label(port.to_string());
+
+        // Offline is always first.
+        let offline_name = rust_dmx::OfflineDmxPort.to_string();
+        if ui
+            .selectable_label(self.state.selected_port.is_none(), &offline_name)
+            .clicked()
+        {
+            self.state.selected_port = None;
+        }
+
+        for (i, port) in self.state.available_ports.iter().enumerate() {
+            let is_selected = self.state.selected_port == Some(i);
+            if ui.selectable_label(is_selected, port.to_string()).clicked() {
+                self.state.selected_port = Some(i);
             }
         }
     }
 
-    fn refresh_ports(&mut self, ui: &mut egui::Ui) {
+    fn refresh_ports(&mut self) {
         let artnet_timeout = if self.state.scan_artnet {
             let secs = self
                 .state
@@ -157,12 +168,10 @@ impl DmxPortPanel<'_> {
             None
         };
 
-        // Show a brief "scanning" state — egui will repaint after this frame.
-        ui.ctx().request_repaint();
-
         match rust_dmx::available_ports(artnet_timeout) {
             Ok(ports) => {
                 self.state.available_ports = ports;
+                self.state.selected_port = None;
             }
             Err(e) => {
                 self.ctx.report_error(format!("Port discovery failed: {e}"));
