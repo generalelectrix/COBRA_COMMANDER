@@ -69,7 +69,8 @@ impl ClockPanelState {
     }
 
     fn current_audio_device(&self) -> Option<String> {
-        self.selected_audio.map(|i| self.audio_devices[i].clone())
+        self.selected_audio
+            .and_then(|i| self.audio_devices.get(i).cloned())
     }
 }
 
@@ -163,7 +164,8 @@ impl ClockPanel<'_> {
         let selected_text = self
             .state
             .selected_audio
-            .map_or("Offline", |i| &self.state.audio_devices[i]);
+            .and_then(|i| self.state.audio_devices.get(i))
+            .map_or("Offline", |s| s.as_str());
 
         egui::ComboBox::from_id_salt("audio_device")
             .selected_text(selected_text)
@@ -230,8 +232,8 @@ impl ClockPanel<'_> {
 
         if let Some(sel) = self.state.selected_provider
             && (provider_changed || reconnect)
+            && let Some(provider_name) = providers.get(sel)
         {
-            let provider_name = &providers[sel];
             match self.state.clock_browser.connect(provider_name) {
                 Ok(service) => {
                     if self

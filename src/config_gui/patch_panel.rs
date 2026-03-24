@@ -436,7 +436,7 @@ impl PatchPanel<'_> {
         egui::TopBottomPanel::bottom("patch_buttons").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Apply").clicked() {
-                    let wc = self.state.working_copy.as_ref().unwrap();
+                    let Some(wc) = self.state.working_copy.as_ref() else { return };
                     let configs = wc.configs();
                     if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
                         self.state.working_copy = None;
@@ -456,7 +456,7 @@ impl PatchPanel<'_> {
 
         // === DMX Address Map floating window ===
         if self.state.show_address_map {
-            let wc = self.state.working_copy.as_ref().unwrap();
+            let Some(wc) = self.state.working_copy.as_ref() else { return };
             let addr_map = AddressMap::from_working_copy(wc);
             let status_colors = self.status_colors;
             let mut show = self.state.show_address_map;
@@ -483,7 +483,7 @@ impl PatchPanel<'_> {
     }
 
     fn render_main_view(&mut self, ui: &mut egui::Ui) {
-        let wc = self.state.working_copy.as_ref().unwrap();
+        let Some(wc) = self.state.working_copy.as_ref() else { return };
 
         if wc.groups.is_empty() {
             ui.vertical_centered(|ui| {
@@ -509,7 +509,7 @@ impl PatchPanel<'_> {
             .max_height(120.0)
             .id_salt("patch_group_list")
             .show(ui, |ui| {
-                let wc = self.state.working_copy.as_ref().unwrap();
+                let Some(wc) = self.state.working_copy.as_ref() else { return };
                 let n = wc.groups.len();
                 for i in 0..n {
                     let group = &wc.groups[i];
@@ -553,7 +553,7 @@ impl PatchPanel<'_> {
 
         // Apply swap if requested.
         if let Some((a, b)) = swap {
-            let wc = self.state.working_copy.as_mut().unwrap();
+            let Some(wc) = self.state.working_copy.as_mut() else { return };
             wc.groups.swap(a, b);
             // Follow selection.
             if self.state.selected_group == Some(a) {
@@ -567,7 +567,7 @@ impl PatchPanel<'_> {
 
         // === Detail view ===
         if let Some(sel) = self.state.selected_group {
-            let wc = self.state.working_copy.as_ref().unwrap();
+            let Some(wc) = self.state.working_copy.as_ref() else { return };
             if sel < wc.groups.len() {
                 self.render_detail(ui, sel);
             }
@@ -577,7 +577,7 @@ impl PatchPanel<'_> {
     fn render_detail(&mut self, ui: &mut egui::Ui, group_idx: usize) {
         // === Header with delete ===
         let (key, fixture_type) = {
-            let wc = self.state.working_copy.as_ref().unwrap();
+            let Some(wc) = self.state.working_copy.as_ref() else { return };
             let cfg = &wc.groups[group_idx].config;
             (cfg.key().to_string(), cfg.fixture.clone())
         };
@@ -586,7 +586,7 @@ impl PatchPanel<'_> {
         if let PanelMode::ConfirmDeleteGroup(idx) = self.state.mode
             && idx == group_idx
         {
-            let wc = self.state.working_copy.as_ref().unwrap();
+            let Some(wc) = self.state.working_copy.as_ref() else { return };
             let fix_count = wc.groups[group_idx].config.patches.len();
             ui.colored_label(
                 self.status_colors.error,
@@ -597,7 +597,7 @@ impl PatchPanel<'_> {
                     self.state.mode = PanelMode::View;
                 }
                 if ui.button("Delete").clicked() {
-                    let wc = self.state.working_copy.as_mut().unwrap();
+                    let Some(wc) = self.state.working_copy.as_mut() else { return };
                     wc.groups.remove(group_idx);
                     self.state.selected_group = if wc.groups.is_empty() {
                         None
@@ -623,14 +623,14 @@ impl PatchPanel<'_> {
 
         // === Channel / Color Organ (editable) ===
         {
-            let wc = self.state.working_copy.as_mut().unwrap();
+            let Some(wc) = self.state.working_copy.as_mut() else { return };
             let cfg = &mut wc.groups[group_idx].config;
             ui.checkbox(&mut cfg.channel, "Channel");
         }
 
         // === Group name (editable) ===
         {
-            let wc = self.state.working_copy.as_mut().unwrap();
+            let Some(wc) = self.state.working_copy.as_mut() else { return };
             let cfg = &mut wc.groups[group_idx].config;
             ui.horizontal(|ui| {
                 ui.label("Group name:");
@@ -647,7 +647,7 @@ impl PatchPanel<'_> {
 
         // === Group options (read-only) ===
         {
-            let wc = self.state.working_copy.as_ref().unwrap();
+            let Some(wc) = self.state.working_copy.as_ref() else { return };
             let cfg = &wc.groups[group_idx].config;
             let patcher = self.patchers.iter().find(|p| p.name.0 == cfg.fixture);
             if let Some(patcher) = patcher {
@@ -674,7 +674,7 @@ impl PatchPanel<'_> {
 
         // Build address map for collision detection and smart address pre-fill.
         let addr_map = {
-            let wc = self.state.working_copy.as_ref().unwrap();
+            let Some(wc) = self.state.working_copy.as_ref() else { return };
             AddressMap::from_working_copy(wc)
         };
 
@@ -682,7 +682,7 @@ impl PatchPanel<'_> {
             ui.label("Fixtures");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("+ Add").clicked() {
-                    let wc = self.state.working_copy.as_ref().unwrap();
+                    let Some(wc) = self.state.working_copy.as_ref() else { return };
                     let fixture_type = &wc.groups[group_idx].config.fixture;
                     match self.patchers.iter().find(|p| p.name.0 == *fixture_type) {
                         Some(patcher) => {
@@ -704,7 +704,7 @@ impl PatchPanel<'_> {
 
         // Get patch option menu before mutable borrow.
         let patch_opts: Vec<(String, PatchOption)> = {
-            let wc = self.state.working_copy.as_ref().unwrap();
+            let Some(wc) = self.state.working_copy.as_ref() else { return };
             let fixture_type = &wc.groups[group_idx].config.fixture;
             self.patchers
                 .iter()
@@ -717,7 +717,7 @@ impl PatchPanel<'_> {
         let mut fixture_delete: Option<usize> = None;
 
         {
-            let wc = self.state.working_copy.as_mut().unwrap();
+            let Some(wc) = self.state.working_copy.as_mut() else { return };
             let group = &mut wc.groups[group_idx];
             let num_patches = group.config.patches.len();
 
@@ -826,7 +826,7 @@ impl PatchPanel<'_> {
 
         // Apply fixture reorder.
         if let Some((a, b)) = fixture_swap {
-            let wc = self.state.working_copy.as_mut().unwrap();
+            let Some(wc) = self.state.working_copy.as_mut() else { return };
             let group = &mut wc.groups[group_idx];
             group.config.patches.swap(a, b);
             group.channel_counts.swap(a, b);
@@ -834,7 +834,7 @@ impl PatchPanel<'_> {
 
         // Apply fixture delete.
         if let Some(idx) = fixture_delete {
-            let wc = self.state.working_copy.as_mut().unwrap();
+            let Some(wc) = self.state.working_copy.as_mut() else { return };
             let group = &mut wc.groups[group_idx];
             group.config.patches.remove(idx);
             group.channel_counts.remove(idx);
@@ -966,7 +966,7 @@ impl PatchPanel<'_> {
         };
 
         let working_group = PatchWorkingCopy::resolve_group(&config, self.patchers);
-        let wc = self.state.working_copy.as_mut().unwrap();
+        let Some(wc) = self.state.working_copy.as_mut() else { return };
         let new_idx = wc.groups.len();
         wc.groups.push(working_group);
         self.state.selected_group = Some(new_idx);
@@ -984,7 +984,7 @@ impl PatchPanel<'_> {
             return;
         };
 
-        let wc = self.state.working_copy.as_ref().unwrap();
+        let Some(wc) = self.state.working_copy.as_ref() else { return };
         let fixture_type = &wc.groups[group_idx].config.fixture;
         let patcher = self.patchers.iter().find(|p| p.name.0 == *fixture_type);
         let mut all_valid = true;
@@ -1055,7 +1055,7 @@ impl PatchPanel<'_> {
         let mirror = form.mirror;
         let patch_options = build_options_from_form(&form.patch_options);
 
-        let wc = self.state.working_copy.as_mut().unwrap();
+        let Some(wc) = self.state.working_copy.as_mut() else { return };
         let group = &mut wc.groups[group_idx];
         let patcher = self
             .patchers
