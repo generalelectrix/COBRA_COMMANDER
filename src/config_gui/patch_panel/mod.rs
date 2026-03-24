@@ -277,13 +277,13 @@ impl PatchPanel<'_> {
                             ui.horizontal(|ui| {
                                 if has_channel {
                                     if ui
-                                        .add_enabled(i > 0, egui::Button::new("▲").small())
+                                        .add_enabled(i > 0, egui::Button::new("⏶").small())
                                         .clicked()
                                     {
                                         swap = Some((i, i - 1));
                                     }
                                     if ui
-                                        .add_enabled(i < n - 1, egui::Button::new("▼").small())
+                                        .add_enabled(i < n - 1, egui::Button::new("⏷").small())
                                         .clicked()
                                     {
                                         swap = Some((i, i + 1));
@@ -528,7 +528,7 @@ impl PatchPanel<'_> {
 
                         ui.horizontal(|ui| {
                             if ui
-                                .add_enabled(i > 0, egui::Button::new("▲").small())
+                                .add_enabled(i > 0, egui::Button::new("⏶").small())
                                 .clicked()
                             {
                                 fixture_swap = Some((i, i - 1));
@@ -536,7 +536,7 @@ impl PatchPanel<'_> {
                             if ui
                                 .add_enabled(
                                     i < num_patches - 1,
-                                    egui::Button::new("▼").small(),
+                                    egui::Button::new("⏷").small(),
                                 )
                                 .clicked()
                             {
@@ -1468,4 +1468,5 @@ mod test {
             "patch_panel_add_fixture_with_opts",
         );
     }
+
 }
