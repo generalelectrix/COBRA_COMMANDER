@@ -42,20 +42,16 @@ impl DmxPortPanel<'_> {
                 .unwrap_or(false);
 
         // Header.
-        ui.horizontal(|ui| {
-            ui.heading("DMX Ports");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add_enabled(artnet_valid, egui::Button::new("Refresh"))
-                    .clicked()
-                {
-                    self.refresh_ports();
-                }
-            });
-        });
+        ui.heading("DMX Ports");
 
-        // ArtNet options.
+        // Refresh + ArtNet options.
         ui.horizontal(|ui| {
+            if ui
+                .add_enabled(artnet_valid, egui::Button::new("Refresh"))
+                .clicked()
+            {
+                self.refresh_ports();
+            }
             ui.checkbox(&mut self.state.scan_artnet, "Scan ArtNet");
             if self.state.scan_artnet {
                 ui.label("Timeout:");
@@ -71,11 +67,33 @@ impl DmxPortPanel<'_> {
 
         ui.separator();
 
+        // Available ports pool.
+        ui.label(format!(
+            "Available Ports ({})",
+            self.state.available_ports.len() + 1 // +1 for offline
+        ));
+
+        let offline_name = rust_dmx::OfflineDmxPort.to_string();
+        if ui
+            .selectable_label(self.state.selected_port.is_none(), &offline_name)
+            .clicked()
+        {
+            self.state.selected_port = None;
+        }
+
+        for (i, port) in self.state.available_ports.iter().enumerate() {
+            let is_selected = self.state.selected_port == Some(i);
+            if ui.selectable_label(is_selected, port.to_string()).clicked() {
+                self.state.selected_port = Some(i);
+            }
+        }
+
+        ui.separator();
+
         // Universe list.
         if self.port_status.ports.is_empty() {
             ui.label("No universes configured.");
         } else {
-            // Track which port name is currently selected for display.
             let selected_name = match self.state.selected_port {
                 None => rust_dmx::OfflineDmxPort.to_string(),
                 Some(i) => self
@@ -95,10 +113,6 @@ impl DmxPortPanel<'_> {
                 .striped(true)
                 .show(ui, |ui| {
                     for (universe, port_name) in self.port_status.ports.iter().enumerate() {
-                        ui.label(format!("Universe {universe}"));
-                        ui.label(port_name);
-
-                        // Don't allow assigning if the selected port is already this universe's port.
                         let same_as_current = selected_name == *port_name;
                         if ui
                             .add_enabled(!same_as_current, egui::Button::new("Assign"))
@@ -108,11 +122,12 @@ impl DmxPortPanel<'_> {
                             assign_action = Some(universe);
                         }
 
+                        ui.label(format!("Universe {universe}"));
+                        ui.label(port_name);
                         ui.end_row();
                     }
                 });
 
-            // Apply assignment.
             if let Some(universe) = assign_action {
                 let port: Box<dyn rust_dmx::DmxPort> = match self.state.selected_port.take() {
                     None => Box::new(rust_dmx::OfflineDmxPort),
@@ -127,30 +142,6 @@ impl DmxPortPanel<'_> {
                 let _ = self
                     .ctx
                     .send_command(MetaCommand::AssignDmxPort { universe, port });
-            }
-        }
-
-        ui.separator();
-
-        // Available ports pool.
-        ui.label(format!(
-            "Available Ports ({})",
-            self.state.available_ports.len() + 1 // +1 for offline
-        ));
-
-        // Offline is always first.
-        let offline_name = rust_dmx::OfflineDmxPort.to_string();
-        if ui
-            .selectable_label(self.state.selected_port.is_none(), &offline_name)
-            .clicked()
-        {
-            self.state.selected_port = None;
-        }
-
-        for (i, port) in self.state.available_ports.iter().enumerate() {
-            let is_selected = self.state.selected_port == Some(i);
-            if ui.selectable_label(is_selected, port.to_string()).clicked() {
-                self.state.selected_port = Some(i);
             }
         }
     }
