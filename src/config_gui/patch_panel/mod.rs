@@ -113,7 +113,6 @@ enum PanelMode {
     View,
     AddGroup(AddGroupForm),
     AddFixture(AddFixtureForm),
-    ConfirmDeleteGroup(usize),
 }
 
 pub struct PatchPanelState {
@@ -121,6 +120,8 @@ pub struct PatchPanelState {
     selected_group: Option<usize>,
     show_address_map: bool,
     mode: PanelMode,
+    /// Group index pending delete confirmation via modal.
+    pending_delete: Option<usize>,
 }
 
 impl PatchPanelState {
@@ -130,6 +131,7 @@ impl PatchPanelState {
             selected_group: None,
             show_address_map: false,
             mode: PanelMode::View,
+            pending_delete: None,
         }
     }
 }
@@ -214,6 +216,50 @@ impl PatchPanel<'_> {
                 ui.heading("Groups");
                 ui.separator();
                 self.render_main_view(ui);
+            }
+        }
+
+        // Delete group confirmation modal.
+        if let Some(group_idx) = self.state.pending_delete {
+            let (key, fix_count) = self
+                .state
+                .working_copy
+                .as_ref()
+                .and_then(|wc| {
+                    wc.groups.get(group_idx).map(|g| {
+                        (g.config.key().to_string(), g.config.patches.len())
+                    })
+                })
+                .unwrap_or_default();
+
+            let response =
+                egui::Modal::new(egui::Id::new("delete_group_modal")).show(ui.ctx(), |ui| {
+                    ui.set_width(300.0);
+                    ui.heading("Delete Group");
+                    ui.label(format!("Really delete {key} ({fix_count} fixtures)?"));
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if confirm_button(ui, "Delete") {
+                            let Some(wc) = self.state.working_copy.as_mut() else {
+                                return;
+                            };
+                            wc.groups.remove(group_idx);
+                            self.state.selected_group = if wc.groups.is_empty() {
+                                None
+                            } else {
+                                Some(group_idx.min(wc.groups.len() - 1))
+                            };
+                            self.state.pending_delete = None;
+                            ui.close();
+                        }
+                        if cancel_button(ui, "Cancel") {
+                            self.state.pending_delete = None;
+                            ui.close();
+                        }
+                    });
+                });
+            if response.should_close() {
+                self.state.pending_delete = None;
             }
         }
     }
@@ -343,9 +389,9 @@ impl PatchPanel<'_> {
             }
         }
 
-        // Apply delete.
+        // Trigger delete confirmation modal.
         if let Some(idx) = delete_group {
-            self.state.mode = PanelMode::ConfirmDeleteGroup(idx);
+            self.state.pending_delete = Some(idx);
         }
 
         ui.separator();
@@ -364,9 +410,6 @@ impl PatchPanel<'_> {
     // -----------------------------------------------------------------------
 
     fn render_detail(&mut self, ui: &mut egui::Ui, group_idx: usize) {
-        if self.render_delete_confirmation(ui, group_idx) {
-            return;
-        }
         self.render_detail_editable_fields(ui, group_idx);
         self.render_detail_group_options(ui, group_idx);
         self.render_fixtures_table(ui, group_idx);
@@ -375,41 +418,6 @@ impl PatchPanel<'_> {
             ui.separator();
             self.render_add_fixture_form(ui, group_idx);
         }
-    }
-
-    /// Returns true if the confirmation is showing (caller should return early).
-    fn render_delete_confirmation(&mut self, ui: &mut egui::Ui, group_idx: usize) -> bool {
-        let PanelMode::ConfirmDeleteGroup(idx) = self.state.mode else {
-            return false;
-        };
-        if idx != group_idx {
-            return false;
-        }
-
-        let Some(wc) = self.state.working_copy.as_ref() else { return true };
-        let key = wc.groups[group_idx].config.key().to_string();
-        let fix_count = wc.groups[group_idx].config.patches.len();
-
-        ui.colored_label(
-            STATUS_COLORS.error,
-            format!("Really delete {key} ({fix_count} fixtures)?"),
-        );
-        ui.horizontal(|ui| {
-            if ui.button("Cancel").clicked() {
-                self.state.mode = PanelMode::View;
-            }
-            if ui.button("Delete").clicked() {
-                let Some(wc) = self.state.working_copy.as_mut() else { return };
-                wc.groups.remove(group_idx);
-                self.state.selected_group = if wc.groups.is_empty() {
-                    None
-                } else {
-                    Some(group_idx.min(wc.groups.len() - 1))
-                };
-                self.state.mode = PanelMode::View;
-            }
-        });
-        true
     }
 
     fn render_detail_editable_fields(&mut self, ui: &mut egui::Ui, group_idx: usize) {
