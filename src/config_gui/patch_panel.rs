@@ -454,15 +454,21 @@ impl PatchPanel<'_> {
             });
         });
 
-        // === DMX Address Map side panel ===
+        // === DMX Address Map floating window ===
         if self.state.show_address_map {
             let wc = self.state.working_copy.as_ref().unwrap();
             let addr_map = AddressMap::from_working_copy(wc);
-            egui::SidePanel::right("dmx_address_map")
-                .default_width(200.0)
-                .show_inside(ui, |ui| {
-                    self.render_address_map(ui, wc, &addr_map);
+            let status_colors = self.status_colors;
+            let mut show = self.state.show_address_map;
+            egui::Window::new("DMX Address Map")
+                .open(&mut show)
+                .resizable(true)
+                .default_width(250.0)
+                .vscroll(true)
+                .show(ui.ctx(), |ui| {
+                    render_address_map(ui, wc, &addr_map, status_colors);
                 });
+            self.state.show_address_map = show;
         }
 
         // === Main content ===
@@ -1090,88 +1096,62 @@ impl PatchPanel<'_> {
         self.state.mode = PanelMode::View;
     }
 
-    // -----------------------------------------------------------------------
-    // DMX Address Map (WP6)
-    // -----------------------------------------------------------------------
+}
 
-    fn render_address_map(&self, ui: &mut egui::Ui, wc: &PatchWorkingCopy, addr_map: &AddressMap) {
-        ui.heading("DMX Map");
-        ui.separator();
+// ---------------------------------------------------------------------------
+// DMX Address Map rendering (free function to avoid borrow conflicts with egui::Window)
+// ---------------------------------------------------------------------------
 
-        if wc.groups.is_empty() || addr_map.is_empty() {
-            ui.label("No addresses in use.");
-            return;
+fn render_address_map(
+    ui: &mut egui::Ui,
+    wc: &PatchWorkingCopy,
+    addr_map: &AddressMap,
+    status_colors: &StatusColors,
+) {
+    if wc.groups.is_empty() || addr_map.is_empty() {
+        ui.label("No addresses in use.");
+        return;
+    }
+
+    for universe in addr_map.universes() {
+        ui.label(format!("Universe {universe}"));
+
+        let entries: Vec<_> = addr_map.range_for_universe(universe).collect();
+
+        if entries.is_empty() {
+            ui.label("  (empty)");
+            continue;
         }
 
-        for universe in addr_map.universes() {
-            ui.label(format!("Universe {universe}"));
+        // Group into contiguous runs of the same group.
+        let mut ranges: Vec<(usize, usize, String, bool)> = Vec::new();
 
-            let entries: Vec<_> = addr_map.range_for_universe(universe).collect();
+        for (ua, names) in &entries {
+            let addr = ua.address;
+            let name = &names[0];
+            let is_collision = names.len() > 1;
 
-            if entries.is_empty() {
-                ui.label("  (empty)");
+            if let Some(last) = ranges.last_mut()
+                && last.2 == *name
+                && last.1 + 1 == addr
+                && last.3 == is_collision
+            {
+                last.1 = addr;
                 continue;
             }
+            ranges.push((addr, addr, name.clone(), is_collision));
+        }
 
-            // Group into contiguous runs of the same group.
-            let mut ranges: Vec<(usize, usize, String, bool)> = Vec::new();
-
-            for (ua, names) in &entries {
-                let addr = ua.address;
-                let name = &names[0];
-                let is_collision = names.len() > 1;
-
-                if let Some(last) = ranges.last_mut()
-                    && last.2 == *name
-                    && last.1 + 1 == addr
-                    && last.3 == is_collision
-                {
-                    last.1 = addr;
-                    continue;
-                }
-                ranges.push((addr, addr, name.clone(), is_collision));
-            }
-
-            // Render ranges with gaps shown between them.
-            let mut prev_end: usize = 0;
-            for (start, end, name, is_collision) in &ranges {
-                // Show gap if there's free space before this range.
-                if *start > prev_end + 1 {
-                    let gap_start = prev_end + 1;
-                    let gap_end = start - 1;
-                    let gap_str = if gap_start == gap_end {
-                        format!("{gap_start:>3}")
-                    } else {
-                        format!("{gap_start:>3}-{gap_end}")
-                    };
-                    ui.colored_label(
-                        ui.style().visuals.text_color().gamma_multiply(0.3),
-                        format!("{gap_str}  (free)"),
-                    );
-                }
-
-                let range_str = if start == end {
-                    format!("{start:>3}")
+        // Render ranges with gaps shown between them.
+        let mut prev_end: usize = 0;
+        for (start, end, name, is_collision) in &ranges {
+            if *start > prev_end + 1 {
+                let gap_start = prev_end + 1;
+                let gap_end = start - 1;
+                let gap_str = if gap_start == gap_end {
+                    format!("{gap_start:>3}")
                 } else {
-                    format!("{start:>3}-{end}")
-                };
-
-                let label = format!("{range_str}  {name}");
-                if *is_collision {
-                    ui.colored_label(self.status_colors.error, &label)
-                        .on_hover_text("DMX address collision!");
-                } else {
-                    ui.label(&label);
-                }
-                prev_end = *end;
-            }
-
-            // Show trailing free space.
-            if prev_end < 512 {
-                let gap_str = if prev_end + 1 == 512 {
-                    "512".to_string()
-                } else {
-                    format!("{}-512", prev_end + 1)
+                    format!("{gap_start:>3}-{gap_end}")
                 };
                 ui.colored_label(
                     ui.style().visuals.text_color().gamma_multiply(0.3),
@@ -1179,8 +1159,36 @@ impl PatchPanel<'_> {
                 );
             }
 
-            ui.add_space(4.0);
+            let range_str = if start == end {
+                format!("{start:>3}")
+            } else {
+                format!("{start:>3}-{end}")
+            };
+
+            let label = format!("{range_str}  {name}");
+            if *is_collision {
+                ui.colored_label(status_colors.error, &label)
+                    .on_hover_text("DMX address collision!");
+            } else {
+                ui.label(&label);
+            }
+            prev_end = *end;
         }
+
+        // Show trailing free space.
+        if prev_end < 512 {
+            let gap_str = if prev_end + 1 == 512 {
+                "512".to_string()
+            } else {
+                format!("{}-512", prev_end + 1)
+            };
+            ui.colored_label(
+                ui.style().visuals.text_color().gamma_multiply(0.3),
+                format!("{gap_str}  (free)"),
+            );
+        }
+
+        ui.add_space(4.0);
     }
 }
 
