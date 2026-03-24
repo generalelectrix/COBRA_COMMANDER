@@ -1,5 +1,4 @@
 use eframe::egui;
-use egui::{Pos2, Rect, Shape, Stroke, Vec2, vec2};
 
 use crate::config::Options;
 use crate::fixture::patch::PatchOption;
@@ -7,39 +6,6 @@ use crate::ui_util::STATUS_COLORS;
 
 use super::address_map::{AddressMap, GroupName};
 use super::working_copy::PatchWorkingCopy;
-
-/// A small button that paints a filled triangle pointing up or down.
-pub fn arrow_button(ui: &mut egui::Ui, _id: egui::Id, pointing_up: bool, enabled: bool) -> bool {
-    let size = Vec2::splat(16.0);
-    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-
-    if ui.is_rect_visible(rect) {
-        let color = if enabled {
-            ui.style().visuals.text_color()
-        } else {
-            ui.style().visuals.text_color().gamma_multiply(0.3)
-        };
-
-        let arrow_rect = Rect::from_center_size(rect.center(), vec2(8.0, 5.0));
-        let points = if pointing_up {
-            vec![
-                arrow_rect.left_bottom(),
-                arrow_rect.right_bottom(),
-                Pos2::new(arrow_rect.center().x, arrow_rect.top()),
-            ]
-        } else {
-            vec![
-                arrow_rect.left_top(),
-                arrow_rect.right_top(),
-                Pos2::new(arrow_rect.center().x, arrow_rect.bottom()),
-            ]
-        };
-        ui.painter()
-            .add(Shape::convex_polygon(points, color, Stroke::NONE));
-    }
-
-    enabled && response.clicked()
-}
 
 pub fn default_for_option(opt: &PatchOption) -> String {
     match opt {

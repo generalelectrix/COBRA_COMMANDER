@@ -14,6 +14,10 @@ pub struct StatusColors {
     pub error: Color32,
     /// Inline validation error text.
     pub error_text: Color32,
+    /// Fill color for confirm/accept/apply buttons.
+    pub confirm_button: Color32,
+    /// Fill color for cancel/revert/dismiss buttons.
+    pub cancel_button: Color32,
 }
 
 pub const STATUS_COLORS: StatusColors = StatusColors {
@@ -22,7 +26,27 @@ pub const STATUS_COLORS: StatusColors = StatusColors {
     warning: Color32::from_rgb(255, 165, 0),
     error: Color32::from_rgb(255, 80, 80),
     error_text: Color32::RED,
+    confirm_button: Color32::from_rgb(30, 100, 50),
+    cancel_button: Color32::from_rgb(80, 80, 80),
 };
+
+/// A confirm/accept/apply button with semantic styling.
+pub fn confirm_button(ui: &mut egui::Ui, text: &str) -> bool {
+    ui.add(egui::Button::new(text).fill(STATUS_COLORS.confirm_button))
+        .clicked()
+}
+
+/// A confirm button that can be disabled.
+pub fn confirm_button_enabled(ui: &mut egui::Ui, text: &str, enabled: bool) -> bool {
+    ui.add_enabled(enabled, egui::Button::new(text).fill(STATUS_COLORS.confirm_button))
+        .clicked()
+}
+
+/// A cancel/revert/dismiss button with semantic styling.
+pub fn cancel_button(ui: &mut egui::Ui, text: &str) -> bool {
+    ui.add(egui::Button::new(text).fill(STATUS_COLORS.cancel_button))
+        .clicked()
+}
 
 /// Shared rendering context for GUI panels.
 ///

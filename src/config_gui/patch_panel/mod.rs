@@ -9,11 +9,11 @@ use crate::control::MetaCommand;
 use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
 use crate::gui_state::PatchSnapshot;
-use crate::ui_util::{GuiContext, STATUS_COLORS};
+use crate::ui_util::{GuiContext, STATUS_COLORS, cancel_button, confirm_button, confirm_button_enabled};
 
 use address_map::{AddressMap, UniverseAddress};
 use widgets::{
-    arrow_button, build_options_from_form, default_for_option, render_address_map,
+    build_options_from_form, default_for_option, render_address_map,
     render_option_widget, validate_option,
 };
 use working_copy::PatchWorkingCopy;
@@ -154,38 +154,40 @@ impl PatchPanel<'_> {
             ));
         }
 
-        // Header.
-        ui.horizontal(|ui| {
-            ui.heading("Patch");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("+ Add").clicked() {
-                    let mut form = AddGroupForm::new();
-                    form.sync_options(self.patchers);
-                    self.state.mode = PanelMode::AddGroup(form);
-                }
-            });
-        });
-        ui.separator();
-
-        // Bottom bar.
+        // Bottom bar — content depends on mode.
         egui::TopBottomPanel::bottom("patch_buttons").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Apply").clicked() {
-                    let Some(wc) = self.state.working_copy.as_ref() else { return };
-                    let configs = wc.configs();
-                    if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
-                        self.state.working_copy = None;
-                        self.state.mode = PanelMode::View;
+                match &self.state.mode {
+                    PanelMode::AddGroup(_) => {
+                        // Form buttons handled inline — just show cancel here.
+                        // The confirm button is rendered by render_add_group_form
+                        // since it needs access to validation state.
+                    }
+                    PanelMode::AddFixture(_) => {
+                        // Same — handled inline in render_add_fixture_form.
+                    }
+                    _ => {
+                        if confirm_button(ui, "Apply") {
+                            let Some(wc) = self.state.working_copy.as_ref() else { return };
+                            let configs = wc.configs();
+                            if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
+                                self.state.working_copy = None;
+                                self.state.mode = PanelMode::View;
+                            }
+                        }
+                        if cancel_button(ui, "Revert") {
+                            self.state.working_copy = None;
+                            self.state.selected_group = None;
+                            self.state.mode = PanelMode::View;
+                        }
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                ui.toggle_value(&mut self.state.show_address_map, "DMX Map");
+                            },
+                        );
                     }
                 }
-                if ui.button("Revert").clicked() {
-                    self.state.working_copy = None;
-                    self.state.selected_group = None;
-                    self.state.mode = PanelMode::View;
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.toggle_value(&mut self.state.show_address_map, "DMX Map");
-                });
             });
         });
 
@@ -205,10 +207,14 @@ impl PatchPanel<'_> {
             self.state.show_address_map = show;
         }
 
-        // Main content.
+        // Main content — submenu modes hide the header and group list.
         match &self.state.mode {
             PanelMode::AddGroup(_) => self.render_add_group_form(ui),
-            _ => self.render_main_view(ui),
+            _ => {
+                ui.heading("Groups");
+                ui.separator();
+                self.render_main_view(ui);
+            }
         }
     }
 
@@ -219,15 +225,6 @@ impl PatchPanel<'_> {
     fn render_main_view(&mut self, ui: &mut egui::Ui) {
         let Some(wc) = self.state.working_copy.as_ref() else { return };
 
-        if wc.groups.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.label("No fixtures patched.");
-                ui.label("Click [+ Add] to add a group.");
-            });
-            return;
-        }
-
         let num_groups = wc.groups.len();
         if let Some(sel) = self.state.selected_group
             && sel >= num_groups
@@ -235,51 +232,107 @@ impl PatchPanel<'_> {
             self.state.selected_group = Some(num_groups - 1);
         }
 
-        let mut swap: Option<(usize, usize)> = None;
+        // Compute channel numbers (assigned sequentially to channeled groups).
+        let channel_numbers: Vec<Option<usize>> = {
+            let Some(wc) = self.state.working_copy.as_ref() else { return };
+            let mut ch = 0;
+            wc.groups
+                .iter()
+                .map(|g| {
+                    if g.config.channel {
+                        let n = ch;
+                        ch += 1;
+                        Some(n)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
 
+        let mut swap: Option<(usize, usize)> = None;
+        let mut delete_group: Option<usize> = None;
+
+        // Group table.
         egui::ScrollArea::vertical()
-            .max_height(120.0)
+            .max_height(150.0)
             .id_salt("patch_group_list")
             .show(ui, |ui| {
                 let Some(wc) = self.state.working_copy.as_ref() else { return };
                 let n = wc.groups.len();
-                for i in 0..n {
-                    let group = &wc.groups[i];
-                    let has_channel = group.config.channel;
 
-                    ui.horizontal(|ui| {
-                        if has_channel {
-                            let up_id = ui.id().with(("group_up", i));
-                            let dn_id = ui.id().with(("group_dn", i));
-                            if arrow_button(ui, up_id, true, i > 0) {
-                                swap = Some((i, i - 1));
-                            }
-                            if arrow_button(ui, dn_id, false, i < n - 1) {
-                                swap = Some((i, i + 1));
-                            }
-                        } else {
-                            ui.add_space(36.0);
-                        }
+                if n == 0 {
+                    ui.label("No groups. Click + Add Group below.");
+                    return;
+                }
 
-                        let key = group.config.key();
-                        let fixture_type = &group.config.fixture;
-                        let fix_count = group.config.patches.len();
-                        let label = format!(
-                            "{key} ({fixture_type}){}    {fix_count} fix",
-                            if has_channel { "  ch" } else { "" },
-                        );
+                egui::Grid::new("group_table")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for i in 0..n {
+                            let group = &wc.groups[i];
+                            let has_channel = group.config.channel;
 
-                        let is_selected = self.state.selected_group == Some(i);
-                        if ui.selectable_label(is_selected, &label).clicked() {
-                            self.state.selected_group = Some(i);
-                            if matches!(self.state.mode, PanelMode::AddFixture(_)) {
-                                self.state.mode = PanelMode::View;
+                            // Up/down arrows.
+                            ui.horizontal(|ui| {
+                                if has_channel {
+                                    if ui
+                                        .add_enabled(i > 0, egui::Button::new("▲").small())
+                                        .clicked()
+                                    {
+                                        swap = Some((i, i - 1));
+                                    }
+                                    if ui
+                                        .add_enabled(i < n - 1, egui::Button::new("▼").small())
+                                        .clicked()
+                                    {
+                                        swap = Some((i, i + 1));
+                                    }
+                                } else {
+                                    ui.add_space(36.0);
+                                }
+                            });
+
+                            // Channel number.
+                            match channel_numbers.get(i).copied().flatten() {
+                                Some(ch) => { ui.label(format!("{ch}")); }
+                                None => { ui.label("-"); }
                             }
+
+                            // Selectable name.
+                            let key = group.config.key();
+                            let is_selected = self.state.selected_group == Some(i);
+                            if ui.selectable_label(is_selected, key).clicked() {
+                                self.state.selected_group = Some(i);
+                                if matches!(self.state.mode, PanelMode::AddFixture(_)) {
+                                    self.state.mode = PanelMode::View;
+                                }
+                            }
+
+                            // Type.
+                            ui.label(&group.config.fixture);
+
+                            // Fixture count.
+                            ui.label(format!("{}", group.config.patches.len()));
+
+                            // Delete button.
+                            if ui.button("x").clicked() {
+                                delete_group = Some(i);
+                            }
+
+                            ui.end_row();
                         }
                     });
-                }
             });
 
+        // + Add Group button below the list.
+        if ui.button("+ Add Group").clicked() {
+            let mut form = AddGroupForm::new();
+            form.sync_options(self.patchers);
+            self.state.mode = PanelMode::AddGroup(form);
+        }
+
+        // Apply swap.
         if let Some((a, b)) = swap {
             let Some(wc) = self.state.working_copy.as_mut() else { return };
             wc.groups.swap(a, b);
@@ -290,8 +343,14 @@ impl PatchPanel<'_> {
             }
         }
 
+        // Apply delete.
+        if let Some(idx) = delete_group {
+            self.state.mode = PanelMode::ConfirmDeleteGroup(idx);
+        }
+
         ui.separator();
 
+        // Detail view.
         if let Some(sel) = self.state.selected_group {
             let Some(wc) = self.state.working_copy.as_ref() else { return };
             if sel < wc.groups.len() {
@@ -308,7 +367,6 @@ impl PatchPanel<'_> {
         if self.render_delete_confirmation(ui, group_idx) {
             return;
         }
-        self.render_detail_header(ui, group_idx);
         self.render_detail_editable_fields(ui, group_idx);
         self.render_detail_group_options(ui, group_idx);
         self.render_fixtures_table(ui, group_idx);
@@ -352,22 +410,6 @@ impl PatchPanel<'_> {
             }
         });
         true
-    }
-
-    fn render_detail_header(&mut self, ui: &mut egui::Ui, group_idx: usize) {
-        let Some(wc) = self.state.working_copy.as_ref() else { return };
-        let cfg = &wc.groups[group_idx].config;
-
-        ui.horizontal(|ui| {
-            ui.heading(cfg.key());
-            ui.label(format!("({})", cfg.fixture));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Del").clicked() {
-                    self.state.mode = PanelMode::ConfirmDeleteGroup(group_idx);
-                }
-            });
-        });
-        ui.separator();
     }
 
     fn render_detail_editable_fields(&mut self, ui: &mut egui::Ui, group_idx: usize) {
@@ -485,12 +527,19 @@ impl PatchPanel<'_> {
                         let ch_count = group.channel_counts.get(i).copied().unwrap_or(0);
 
                         ui.horizontal(|ui| {
-                            let up_id = ui.id().with(("fix_up", i));
-                            let dn_id = ui.id().with(("fix_dn", i));
-                            if arrow_button(ui, up_id, true, i > 0) {
+                            if ui
+                                .add_enabled(i > 0, egui::Button::new("▲").small())
+                                .clicked()
+                            {
                                 fixture_swap = Some((i, i - 1));
                             }
-                            if arrow_button(ui, dn_id, false, i < num_patches - 1) {
+                            if ui
+                                .add_enabled(
+                                    i < num_patches - 1,
+                                    egui::Button::new("▼").small(),
+                                )
+                                .clicked()
+                            {
                                 fixture_swap = Some((i, i + 1));
                             }
                         });
@@ -649,14 +698,11 @@ impl PatchPanel<'_> {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if ui.button("Cancel").clicked() {
-                self.state.mode = PanelMode::View;
-            }
-            if ui
-                .add_enabled(all_valid, egui::Button::new("Add Group"))
-                .clicked()
-            {
+            if confirm_button_enabled(ui, "Add Group", all_valid) {
                 self.commit_add_group();
+            }
+            if cancel_button(ui, "Cancel") {
+                self.state.mode = PanelMode::View;
             }
         });
     }
@@ -747,17 +793,11 @@ impl PatchPanel<'_> {
         let count_valid = form.count.parse::<usize>().map(|c| c >= 1).unwrap_or(false);
 
         ui.horizontal(|ui| {
-            if ui.button("Cancel").clicked() {
-                self.state.mode = PanelMode::View;
-            }
-            if ui
-                .add_enabled(
-                    all_valid && addr_valid && count_valid,
-                    egui::Button::new("Add"),
-                )
-                .clicked()
-            {
+            if confirm_button_enabled(ui, "Add", all_valid && addr_valid && count_valid) {
                 self.commit_add_fixture(group_idx);
+            }
+            if cancel_button(ui, "Cancel") {
+                self.state.mode = PanelMode::View;
             }
         });
     }
