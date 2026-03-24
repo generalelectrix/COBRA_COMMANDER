@@ -17,6 +17,7 @@
 
 mod animation_panel;
 mod clock_panel;
+mod dmx_panel;
 mod midi_panel;
 mod osc_panel;
 mod patch_panel;
@@ -32,6 +33,7 @@ use crate::gui_state::SharedGuiState;
 use crate::ui_util::{CloseHandler, ErrorModal, GuiContext, StatusColors};
 use animation_panel::VisualizerPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
+use dmx_panel::{DmxPortPanel, DmxPortPanelState};
 use midi_panel::{MidiPanel, MidiPanelState};
 use patch_panel::{PatchPanel, PatchPanelState};
 
@@ -43,6 +45,7 @@ enum Tab {
     Clocks,
     Animation,
     Patch,
+    Dmx,
 }
 
 struct ConfigApp {
@@ -51,6 +54,7 @@ struct ConfigApp {
     midi_panel: MidiPanelState,
     visualizer_panel: VisualizerPanelState,
     patch_panel: PatchPanelState,
+    dmx_panel: DmxPortPanelState,
     patchers: Vec<crate::fixture::patch::Patcher>,
     close_handler: CloseHandler,
     error_modal: ErrorModal,
@@ -72,6 +76,7 @@ impl eframe::App for ConfigApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Clocks, "Clocks");
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
                 ui.selectable_value(&mut self.active_tab, Tab::Patch, "Patch");
+                ui.selectable_value(&mut self.active_tab, Tab::Dmx, "DMX");
             });
         });
 
@@ -135,6 +140,18 @@ impl eframe::App for ConfigApp {
                 }
                 .ui(ui);
             }
+            Tab::Dmx => {
+                let port_status = self.gui_state.dmx_port_status.load();
+                DmxPortPanel {
+                    ctx: GuiContext {
+                        error_modal: &mut self.error_modal,
+                        client: &self.client,
+                    },
+                    state: &mut self.dmx_panel,
+                    port_status: &port_status,
+                }
+                .ui(ui);
+            }
         });
 
         self.error_modal.ui(ctx);
@@ -160,6 +177,7 @@ pub fn run_config_gui(
                 midi_panel: MidiPanelState::new(),
                 visualizer_panel: VisualizerPanelState::default(),
                 patch_panel: PatchPanelState::new(),
+                dmx_panel: DmxPortPanelState::new(),
                 patchers: Patch::menu(),
                 client,
                 close_handler: CloseHandler::default(),

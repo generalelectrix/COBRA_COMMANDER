@@ -14,7 +14,7 @@ use crate::{
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
-    gui_state::{AnimationSnapshot, PatchSnapshot},
+    gui_state::{AnimationSnapshot, DmxPortStatus, PatchSnapshot},
     gui_state::{GuiDirty, SharedGuiState},
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
@@ -208,7 +208,7 @@ impl Show {
             }
             MetaCommand::AssignDmxPort { universe, port } => {
                 assign_dmx_port(&mut self.dmx_ports, &mut self.dmx_buffers, universe, port)?;
-                Ok(GuiDirty::CLEAN)
+                Ok(GuiDirty::DMX_PORTS)
             }
             MetaCommand::AddMidiDevice(spec) => {
                 self.controller.add_midi_device(spec)?;
@@ -288,7 +288,7 @@ impl Show {
         for buf in &mut self.dmx_buffers {
             buf.fill(0);
         }
-        Ok(GuiDirty::MIDI_SLOTS)
+        Ok(GuiDirty::MIDI_SLOTS | GuiDirty::DMX_PORTS)
     }
 
     /// Handle a single MIDI control message.
@@ -424,6 +424,13 @@ impl Show {
             self.gui_state
                 .clock_status
                 .store(Arc::new(self.clocks.status()));
+        }
+        if dirty.contains(GuiDirty::DMX_PORTS) {
+            self.gui_state.dmx_port_status.store(Arc::new(
+                DmxPortStatus {
+                    ports: self.dmx_ports.iter().map(|p| p.to_string()).collect(),
+                },
+            ));
         }
     }
 

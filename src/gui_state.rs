@@ -21,6 +21,16 @@ pub struct PatchSnapshot {
     pub groups: Vec<FixtureGroupConfig>,
 }
 
+/// Port name from Display impl, used for both display and identity.
+pub type PortName = String;
+
+/// Snapshot of DMX port assignments for the GUI.
+#[derive(Clone, Debug, Default)]
+pub struct DmxPortStatus {
+    /// One entry per universe, from the port's Display impl.
+    pub ports: Vec<PortName>,
+}
+
 bitflags::bitflags! {
     /// GUI state domains that may need re-snapshotting after a control event.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +38,7 @@ bitflags::bitflags! {
         const CLEAN       = 0b0000_0000;
         const MIDI_SLOTS  = 0b0000_0001;
         const CLOCK_STATE = 0b0000_0010;
+        const DMX_PORTS   = 0b0000_0100;
     }
 }
 
@@ -49,6 +60,7 @@ pub struct GuiState {
     pub visualizer_active: AtomicBool,
     pub animation_state: ArcSwap<AnimationSnapshot>,
     pub patch_snapshot: ArcSwap<PatchSnapshot>,
+    pub dmx_port_status: ArcSwap<DmxPortStatus>,
 }
 
 impl GuiState {
@@ -66,6 +78,7 @@ impl GuiState {
             visualizer_active: AtomicBool::new(false),
             animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),
             patch_snapshot: ArcSwap::from_pointee(PatchSnapshot::default()),
+            dmx_port_status: ArcSwap::from_pointee(DmxPortStatus::default()),
         }
     }
 }
