@@ -301,9 +301,8 @@ impl PatchPanel<'_> {
         };
 
         let mut swap: Option<(usize, usize)> = None;
-        let mut delete_group: Option<usize> = None;
 
-        // Group table.
+        // Group table — no buttons in rows; drag to reorder, click to select.
         egui::ScrollArea::vertical()
             .max_height(150.0)
             .id_salt("patch_group_list")
@@ -317,6 +316,7 @@ impl PatchPanel<'_> {
                 }
 
                 let selected = self.state.selected_group;
+                let selection_color = ui.style().visuals.selection.bg_fill;
 
                 egui::Grid::new("group_table")
                     .striped(true)
@@ -331,83 +331,71 @@ impl PatchPanel<'_> {
                         }
                     })
                     .show(ui, |ui| {
-                        ui.label("");
                         ui.label("Ch");
                         ui.label("Name");
                         ui.label("Type");
                         ui.label("Count");
-                        ui.label("");
                         ui.end_row();
 
                         for i in 0..n {
                             let group = &wc.groups[i];
-                            let has_channel = group.config.channel;
                             let row_top = ui.cursor().top();
-
-                            // Up/down arrows.
-                            ui.horizontal(|ui| {
-                                if has_channel {
-                                    if ui
-                                        .add_enabled(i > 0, egui::Button::new("⏶").small())
-                                        .clicked()
-                                    {
-                                        swap = Some((i, i - 1));
-                                    }
-                                    if ui
-                                        .add_enabled(i < n - 1, egui::Button::new("⏷").small())
-                                        .clicked()
-                                    {
-                                        swap = Some((i, i + 1));
-                                    }
-                                } else {
-                                    ui.add_space(36.0);
-                                }
-                            });
 
                             // Channel number.
                             let ch_text = match channel_numbers.get(i).copied().flatten() {
                                 Some(ch) => format!("{ch}"),
                                 None => "-".to_string(),
                             };
-                            ui.add(egui::Label::new(&ch_text).selectable(false));
-
-                            // Name.
-                            ui.add(egui::Label::new(group.config.key()).selectable(false));
-
-                            // Type.
-                            ui.add(egui::Label::new(&group.config.fixture).selectable(false));
-
-                            // Fixture count.
-                            ui.add(
-                                egui::Label::new(format!("{}", group.config.patches.len()))
-                                    .selectable(false),
-                            );
-
-                            // Delete button.
-                            if ui.button("x").clicked() {
-                                delete_group = Some(i);
-                            }
+                            ui.label(&ch_text);
+                            ui.label(group.config.key());
+                            ui.label(&group.config.fixture);
+                            ui.label(format!("{}", group.config.patches.len()));
 
                             ui.end_row();
 
-                            // Row-level click detection.
+                            // Full-row interaction: click to select, drag to reorder.
                             let row_bottom = ui.cursor().top();
                             let row_rect = egui::Rect::from_x_y_ranges(
                                 ui.min_rect().x_range(),
                                 row_top..=row_bottom,
                             );
-                            if ui
-                                .interact(
-                                    row_rect,
-                                    ui.id().with(("group_row", i)),
-                                    egui::Sense::click(),
-                                )
-                                .clicked()
-                            {
+                            let response = ui.interact(
+                                row_rect,
+                                ui.id().with(("group_row", i)),
+                                egui::Sense::click_and_drag(),
+                            );
+
+                            // Cursor feedback.
+                            if response.dragged() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                            } else if response.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                            }
+
+                            // Click → select.
+                            if response.clicked() {
                                 self.state.selected_group = Some(i);
                                 if matches!(self.state.mode, PanelMode::AddFixture(_)) {
                                     self.state.mode = PanelMode::View;
                                 }
+                            }
+
+                            // Drag → reorder via DnD payload.
+                            response.dnd_set_drag_payload(i);
+
+                            if let Some(source_idx) = response.dnd_release_payload::<usize>() {
+                                swap = Some((*source_idx, i));
+                            }
+
+                            // Visual: drop indicator line when hovering during drag.
+                            if let Some(source_idx) = response.dnd_hover_payload::<usize>() {
+                                let stroke = egui::Stroke::new(2.0, selection_color);
+                                let y = if *source_idx <= i {
+                                    row_rect.bottom()
+                                } else {
+                                    row_rect.top()
+                                };
+                                ui.painter().hline(row_rect.x_range(), y, stroke);
                             }
                         }
                     });
@@ -431,11 +419,6 @@ impl PatchPanel<'_> {
             }
         }
 
-        // Trigger delete confirmation modal.
-        if let Some(idx) = delete_group {
-            self.state.pending_delete = Some(idx);
-        }
-
         ui.separator();
 
         // Detail view.
@@ -453,6 +436,11 @@ impl PatchPanel<'_> {
 
     fn render_detail(&mut self, ui: &mut egui::Ui, group_idx: usize) {
         self.render_detail_editable_fields(ui, group_idx);
+
+        // Delete group button.
+        if cancel_button(ui, "Delete Group") {
+            self.state.pending_delete = Some(group_idx);
+        }
         self.render_detail_group_options(ui, group_idx);
         self.render_fixtures_table(ui, group_idx);
 
@@ -1358,6 +1346,7 @@ mod test {
 
     use crate::control::mock::auto_respond_client;
     use crate::ui_util::MessageModal;
+    use egui_kittest::kittest::Queryable;
     use egui_kittest::Harness;
 
     fn snapshot_panel(
@@ -1519,4 +1508,45 @@ mod test {
         );
     }
 
+    // -----------------------------------------------------------------------
+    // Interaction tests
+    // -----------------------------------------------------------------------
+
+    /// Test that clicking "Delete Group" in the detail view triggers the delete modal.
+    #[test]
+    fn click_delete_in_detail_triggers_modal() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_groups();
+        let patchers = test_patchers();
+        let mut modal = MessageModal::default();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+        harness.run();
+
+        // Find and click the "Delete Group" button in the detail view.
+        let del_btn = harness.get_by_label("Delete Group");
+        del_btn.click();
+        harness.run();
+        drop(harness);
+
+        assert_eq!(
+            state.pending_delete,
+            Some(0),
+            "Expected pending_delete=Some(0), got {:?}",
+            state.pending_delete
+        );
+    }
 }
