@@ -22,7 +22,8 @@ mod midi_panel;
 mod osc_panel;
 mod patch_panel;
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use eframe::egui;
@@ -52,7 +53,15 @@ struct ConfigApp {
     client: CommandClient,
     clock_panel: ClockPanelState,
     midi_panel: MidiPanelState,
-    visualizer_panel: VisualizerPanelState,
+    /// Behind Arc<Mutex<>> because this state is shared between the embedded
+    /// Animation tab and the detached viewport (which runs on a separate
+    /// thread via show_viewport_deferred). Only one renders at a time, so the
+    /// mutex is never contended.
+    visualizer_panel: Arc<Mutex<VisualizerPanelState>>,
+    /// Shared with the deferred viewport closure so it can signal "close" back
+    /// to the main thread. Arc<AtomicBool> because the deferred closure is
+    /// 'static + Send + Sync and can't hold a reference to ConfigApp fields.
+    visualizer_detached: Arc<AtomicBool>,
     patch_panel: PatchPanelState,
     dmx_panel: DmxPortPanelState,
     patchers: Vec<crate::fixture::patch::Patcher>,
@@ -66,8 +75,6 @@ impl eframe::App for ConfigApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.close_handler.update("Quit Cobra Commander?", ctx);
 
-        let prev_tab = self.active_tab;
-
         egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
@@ -79,11 +86,34 @@ impl eframe::App for ConfigApp {
             });
         });
 
-        // Notify the show when the visualizer tab becomes active or inactive.
-        if self.active_tab != prev_tab {
-            self.gui_state
-                .visualizer_active
-                .store(self.active_tab == Tab::Animation, Ordering::Relaxed);
+        // Notify the show when the visualizer is visible (either tab or detached window).
+        let detached = self.visualizer_detached.load(Ordering::Relaxed);
+        self.gui_state.visualizer_active.store(
+            detached || self.active_tab == Tab::Animation,
+            Ordering::Relaxed,
+        );
+
+        // Detached animation visualizer — separate OS window via deferred viewport.
+        if detached {
+            let gui_state = self.gui_state.clone();
+            let detached_flag = self.visualizer_detached.clone();
+            let panel = self.visualizer_panel.clone();
+            ctx.show_viewport_deferred(
+                egui::ViewportId::from_hash_of("animation_visualizer"),
+                egui::ViewportBuilder::default()
+                    .with_title("Animation Visualizer")
+                    .with_inner_size(egui::vec2(600.0, 400.0)),
+                move |ctx, _class| {
+                    let Ok(mut panel) = panel.lock() else { return };
+                    let snapshot = gui_state.animation_state.load();
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        panel.ui(ui, &snapshot);
+                    });
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        detached_flag.store(false, Ordering::Relaxed);
+                    }
+                },
+            );
         }
 
         egui::CentralPanel::default().show(ctx, |ui| match self.active_tab {
@@ -120,8 +150,31 @@ impl eframe::App for ConfigApp {
                 osc_panel::ui(ui, &mut ctx, &self.gui_state.osc_listen_addr, &clients);
             }
             Tab::Animation => {
-                let state = self.gui_state.animation_state.load();
-                self.visualizer_panel.ui(ui, &state);
+                if self.visualizer_detached.load(Ordering::Relaxed) {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(40.0);
+                        ui.label("Visualizer is in a separate window.");
+                        if ui.button("Reattach").clicked() {
+                            self.visualizer_detached.store(false, Ordering::Relaxed);
+                        }
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui.button("Detach").clicked() {
+                                    self.visualizer_detached
+                                        .store(true, Ordering::Relaxed);
+                                }
+                            },
+                        );
+                    });
+                    let snapshot = self.gui_state.animation_state.load();
+                    if let Ok(mut panel) = self.visualizer_panel.lock() {
+                        panel.ui(ui, &snapshot);
+                    }
+                }
             }
             Tab::Patch => {
                 let snapshot = self.gui_state.patch_snapshot.load();
@@ -171,7 +224,8 @@ pub fn run_config_gui(
             Ok(Box::new(ConfigApp {
                 clock_panel: ClockPanelState::new(zmq_ctx, &initial_clock_status),
                 midi_panel: MidiPanelState::new(),
-                visualizer_panel: VisualizerPanelState::default(),
+                visualizer_panel: Arc::new(Mutex::new(VisualizerPanelState::default())),
+                visualizer_detached: Arc::new(AtomicBool::new(false)),
                 patch_panel: PatchPanelState::new(),
                 dmx_panel: DmxPortPanelState::new(),
                 patchers: Patch::menu(),
