@@ -8,7 +8,6 @@ pub struct StatusColors {
     pub inactive: Color32,
     /// Connected/running state.
     pub active: Color32,
-    #[expect(unused)]
     /// Degraded/attention-needed state.
     pub warning: Color32,
     /// Disconnected/failed state.

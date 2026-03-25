@@ -350,7 +350,7 @@ impl PatchPanel<'_> {
 
                             // Channel number.
                             let ch_text = match channel_numbers.get(i).copied().flatten() {
-                                Some(ch) => format!("{ch}"),
+                                Some(ch) => format!("{}", ch + 1),
                                 None => "-".to_string(),
                             };
                             ui.label(&ch_text);
@@ -619,8 +619,13 @@ impl PatchPanel<'_> {
 
                         let addr_invalid = start.map(|a| a.validate().is_err()).unwrap_or(false);
 
-                        let text_edit =
+                        let mut text_edit =
                             egui::TextEdit::singleline(&mut addr_str).desired_width(40.0);
+                        if has_collision {
+                            text_edit = text_edit.text_color(STATUS_COLORS.warning);
+                        } else if addr_invalid {
+                            text_edit = text_edit.text_color(STATUS_COLORS.error);
+                        }
                         let response = ui.add(text_edit);
                         if has_collision {
                             response.clone().on_hover_text("DMX address collision!");
@@ -811,18 +816,31 @@ impl PatchPanel<'_> {
         let patcher = self.patchers.iter().find(|p| p.name.0 == *fixture_type);
         let mut all_valid = true;
 
-        ui.horizontal(|ui| {
-            ui.label("Addr:");
-            ui.text_edit_singleline(&mut form.addr)
-                .on_hover_text("1-512");
-            ui.label("Uni:");
-            let uni_edit = egui::TextEdit::singleline(&mut form.universe).desired_width(25.0);
-            ui.add(uni_edit);
-            ui.label("Count:");
-            let count_edit = egui::TextEdit::singleline(&mut form.count).desired_width(25.0);
-            ui.add(count_edit);
-            ui.checkbox(&mut form.mirror, "Mirror");
-        });
+        let is_dmx_fixture = patcher
+            .map(|p| {
+                let opts = build_options_from_form(&form.patch_options);
+                (p.create_patch)(wc.groups[group_idx].config.options.clone(), opts)
+                    .map(|c| c.channel_count > 0)
+                    .unwrap_or(true)
+            })
+            .unwrap_or(true);
+
+        if is_dmx_fixture {
+            ui.horizontal(|ui| {
+                ui.label("Addr:");
+                ui.text_edit_singleline(&mut form.addr)
+                    .on_hover_text("1-512");
+                ui.label("Uni:");
+                let uni_edit =
+                    egui::TextEdit::singleline(&mut form.universe).desired_width(25.0);
+                ui.add(uni_edit);
+                ui.label("Count:");
+                let count_edit =
+                    egui::TextEdit::singleline(&mut form.count).desired_width(25.0);
+                ui.add(count_edit);
+                ui.checkbox(&mut form.mirror, "Mirror");
+            });
+        }
 
         if let Some(patcher) = patcher {
             let patch_menu = (patcher.patch_options)();
@@ -839,12 +857,24 @@ impl PatchPanel<'_> {
             }
         }
 
-        let addr_valid = form
-            .addr
-            .parse::<usize>()
-            .map(|v| DmxAddr::new(v).validate().is_ok())
-            .unwrap_or(false);
-        let count_valid = form.count.parse::<usize>().map(|c| c >= 1).unwrap_or(false);
+        let (addr_valid, count_valid) = if is_dmx_fixture {
+            let addr_ok = form
+                .addr
+                .parse::<usize>()
+                .map(|v| DmxAddr::new(v).validate().is_ok())
+                .unwrap_or(false);
+            if !form.addr.is_empty() && !addr_ok {
+                ui.colored_label(STATUS_COLORS.error_text, "Address must be 1-512");
+            }
+            let count_ok = form
+                .count
+                .parse::<usize>()
+                .map(|c| c >= 1)
+                .unwrap_or(false);
+            (addr_ok, count_ok)
+        } else {
+            (true, true)
+        };
 
         ui.horizontal(|ui| {
             if confirm_button_enabled(ui, "Add", all_valid && addr_valid && count_valid) {
@@ -861,12 +891,7 @@ impl PatchPanel<'_> {
             return;
         };
 
-        let start_addr: usize = match form.addr.parse() {
-            Ok(v) => v,
-            Err(_) => return,
-        };
         let universe: usize = form.universe.parse().unwrap_or(0);
-        let count: usize = form.count.parse().unwrap_or(1).max(1);
         let mirror = form.mirror;
         let patch_options = build_options_from_form(&form.patch_options);
 
@@ -885,24 +910,41 @@ impl PatchPanel<'_> {
             })
             .unwrap_or(0);
 
-        if count == 1 {
+        if ch_count == 0 {
+            // Non-DMX fixture: no address needed.
             group.config.patches.push(PatchBlock {
-                addr: Some(DmxAddrConfig::Single(DmxAddr::new(start_addr))),
+                addr: None,
                 universe,
                 mirror,
                 options: patch_options,
             });
-            group.channel_counts.push(ch_count);
+            group.channel_counts.push(0);
         } else {
-            for c in 0..count {
-                let addr = start_addr + c * ch_count;
+            let start_addr: usize = match form.addr.parse() {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+            let count: usize = form.count.parse().unwrap_or(1).max(1);
+
+            if count == 1 {
                 group.config.patches.push(PatchBlock {
-                    addr: Some(DmxAddrConfig::Single(DmxAddr::new(addr))),
+                    addr: Some(DmxAddrConfig::Single(DmxAddr::new(start_addr))),
                     universe,
                     mirror,
-                    options: patch_options.clone(),
+                    options: patch_options,
                 });
                 group.channel_counts.push(ch_count);
+            } else {
+                for c in 0..count {
+                    let addr = start_addr + c * ch_count;
+                    group.config.patches.push(PatchBlock {
+                        addr: Some(DmxAddrConfig::Single(DmxAddr::new(addr))),
+                        universe,
+                        mirror,
+                        options: patch_options.clone(),
+                    });
+                    group.channel_counts.push(ch_count);
+                }
             }
         }
 
@@ -1000,11 +1042,28 @@ mod test {
         }
     }
 
+    /// Non-DMX fixture with channel_count == 0.
+    fn mock_non_dmx_patcher() -> Patcher {
+        Patcher {
+            name: FixtureType("NonDmx"),
+            create_group: |_, _| unimplemented!(),
+            group_options: || vec![],
+            create_patch: |_, _| {
+                Ok(PatchConfig {
+                    channel_count: 0,
+                    render_mode: None,
+                })
+            },
+            patch_options: || vec![],
+        }
+    }
+
     fn test_patchers() -> Vec<Patcher> {
         vec![
             mock_group_opts_patcher(),
             mock_patch_opts_patcher(),
             mock_simple_patcher(),
+            mock_non_dmx_patcher(),
         ]
     }
 
@@ -1564,5 +1623,84 @@ mod test {
             "Expected pending_delete=Some(0), got {:?}",
             state.pending_delete
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Non-DMX fixture tests
+    // -----------------------------------------------------------------------
+
+    fn non_dmx_group(name: Option<&str>) -> FixtureGroupConfig {
+        FixtureGroupConfig {
+            fixture: "NonDmx".to_string(),
+            group: name.map(|n| FixtureGroupKey(n.to_string())),
+            channel: true,
+            color_organ: false,
+            patches: vec![],
+            options: Options::default(),
+        }
+    }
+
+    #[test]
+    fn commit_add_fixture_non_dmx() {
+        let patchers = test_patchers();
+        let snapshot = PatchSnapshot {
+            groups: vec![non_dmx_group(Some("MyNonDmx"))],
+        };
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        // Simulate commit — the form addr is empty for non-DMX.
+        let PanelMode::AddFixture(ref form) = state.mode else {
+            panic!("expected AddFixture mode");
+        };
+        assert!(form.addr.is_empty(), "non-DMX fixture should have empty addr");
+
+        // Commit via direct method: build a panel and call commit.
+        let client = auto_respond_client();
+        let mut modal = MessageModal::default();
+        let mut panel = PatchPanel {
+            ctx: GuiContext {
+                modal: &mut modal,
+                client: &client,
+            },
+            state: &mut state,
+            snapshot: &snapshot,
+            patchers: &patchers,
+        };
+        panel.commit_add_fixture(0);
+
+        let wc = panel.state.working_copy.as_ref().unwrap();
+        let group = &wc.groups[0];
+        assert_eq!(group.config.patches.len(), 1);
+        assert!(group.config.patches[0].addr.is_none());
+        assert_eq!(group.channel_counts, vec![0]);
+    }
+
+    #[test]
+    fn commit_add_fixture_dmx_preserves_address() {
+        let patchers = test_patchers();
+        let snapshot = test_snapshot_with_groups();
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        let client = auto_respond_client();
+        let mut modal = MessageModal::default();
+        let mut panel = PatchPanel {
+            ctx: GuiContext {
+                modal: &mut modal,
+                client: &client,
+            },
+            state: &mut state,
+            snapshot: &snapshot,
+            patchers: &patchers,
+        };
+        panel.commit_add_fixture(0);
+
+        let wc = panel.state.working_copy.as_ref().unwrap();
+        let group = &wc.groups[0];
+        // Original had 1 patch, now 2 after add.
+        assert_eq!(group.config.patches.len(), 2);
+        assert!(group.config.patches[1].addr.is_some());
+        assert_eq!(group.channel_counts[1], 1);
     }
 }
