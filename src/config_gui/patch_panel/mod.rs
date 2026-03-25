@@ -197,20 +197,27 @@ impl PatchPanel<'_> {
             });
         });
 
-        // DMX Address Map floating window.
+        // DMX Address Map — separate OS window.
         if self.state.show_address_map {
             let Some(wc) = self.state.working_copy.as_ref() else { return };
             let addr_map = AddressMap::from_working_copy(wc);
-            let mut show = self.state.show_address_map;
-            egui::Window::new("DMX Address Map")
-                .open(&mut show)
-                .resizable(true)
-                .default_width(250.0)
-                .vscroll(true)
-                .show(ui.ctx(), |ui| {
-                    render_address_map(ui, wc, &addr_map);
-                });
-            self.state.show_address_map = show;
+
+            ui.ctx().show_viewport_immediate(
+                egui::ViewportId::from_hash_of("dmx_address_map"),
+                egui::ViewportBuilder::default()
+                    .with_title("DMX Address Map")
+                    .with_inner_size(egui::vec2(300.0, 400.0)),
+                |ctx, _class| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            render_address_map(ui, wc, &addr_map);
+                        });
+                    });
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        self.state.show_address_map = false;
+                    }
+                },
+            );
         }
 
         // Main content — submenu modes hide the header and group list.
