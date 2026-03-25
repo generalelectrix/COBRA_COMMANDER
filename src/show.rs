@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     animation::AnimationUIState,
-    channel::{ChannelStateEmitter, Channels, STROBE_CONTROL_CHANNEL},
+    channel::{ChannelStateEmitter, Channels, strobe_control_channel},
     clocks::Clocks,
     color::Hsluv,
     control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
@@ -25,7 +25,7 @@ use crate::{
 pub use crate::channel::ChannelId;
 use tunnels::audio::AudioInput;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use rust_dmx::{DmxPort, OfflineDmxPort};
@@ -41,7 +41,7 @@ pub struct Show {
     animation_ui_state: AnimationUIState,
     clocks: Clocks,
     preview: Previewer,
-    master_strobe_channel: bool,
+    master_strobe_channel: Option<usize>,
     gui_state: SharedGuiState,
 }
 
@@ -53,7 +53,6 @@ const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
 pub const UPDATE_INTERVAL: Duration = Duration::from_micros(25300);
 
 impl Show {
-    #[expect(clippy::too_many_arguments)]
     pub fn new(
         patch: Patch,
         patch_file_path: PathBuf,
@@ -61,17 +60,9 @@ impl Show {
         dmx_ports: Vec<Box<dyn DmxPort>>,
         clocks: Clocks,
         preview: Previewer,
-        master_strobe_channel: bool,
         gui_state: SharedGuiState,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
-
-        if master_strobe_channel && channels.validate_channel(STROBE_CONTROL_CHANNEL).is_ok() {
-            bail!(
-                "cannot use a master strobe channel since the channel is already in use for a fixture group"
-            );
-        }
-
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
@@ -86,7 +77,7 @@ impl Show {
             animation_ui_state,
             clocks,
             preview,
-            master_strobe_channel,
+            master_strobe_channel: None,
             gui_state,
         };
         show.reconcile_submaster_wings()?;
@@ -256,6 +247,17 @@ impl Show {
                 self.controller.deregister_osc_client(client_id);
                 Ok(GuiDirty::CLEAN)
             }
+            MetaCommand::SetMasterStrobeChannel(enable) => {
+                if enable {
+                    let ch = self.resolve_strobe_channel().context(
+                        "cannot enable master strobe: last wing fader is occupied by a fixture group",
+                    )?;
+                    self.set_master_strobe_channel(Some(ch));
+                } else {
+                    self.set_master_strobe_channel(None);
+                }
+                Ok(GuiDirty::CLEAN)
+            }
         }
     }
 
@@ -271,6 +273,10 @@ impl Show {
             },
         );
         self.channels = Channels::from_iter(self.patch.channels().cloned());
+        if self.master_strobe_channel.is_some() {
+            // Re-resolve: channel may have moved to a new wing or become occupied.
+            self.set_master_strobe_channel(self.resolve_strobe_channel());
+        }
         self.reconcile_submaster_wings()?;
         self.refresh_ui();
         let new_universe_count = self.patch.universe_count();
@@ -291,6 +297,47 @@ impl Show {
         Ok(GuiDirty::MIDI_SLOTS | GuiDirty::DMX_PORTS)
     }
 
+    /// Returns `Some(channel_index)` if the last wing fader is available for
+    /// strobe, `None` if it is occupied by a fixture group.
+    fn resolve_strobe_channel(&self) -> Option<usize> {
+        let ch = strobe_control_channel(self.channels.channel_count());
+        if self.channels.validate_channel(ch).is_ok() {
+            None // channel is occupied by a fixture group
+        } else {
+            Some(ch) // available
+        }
+    }
+
+    /// Update the strobe channel state and sync to GUI.
+    fn set_master_strobe_channel(&mut self, value: Option<usize>) {
+        self.master_strobe_channel = value;
+        self.gui_state
+            .master_strobe_fader_channel_mapped
+            .store(value.is_some(), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Handle a channel control message, routing to strobe or fixture groups.
+    fn handle_channel_message(
+        &mut self,
+        msg: &crate::channel::ControlMessage,
+    ) -> Result<()> {
+        let sender = self.controller.sender_with_metadata(None);
+        if let Some(strobe_ch) = self.master_strobe_channel
+            && let crate::channel::ControlMessage::Control { channel_id, msg } = msg
+            && *channel_id == Some(strobe_ch)
+        {
+            self.master_controls.handle_strobe_channel(msg, &sender);
+        } else {
+            self.channels.control(
+                msg,
+                &mut self.patch,
+                &self.animation_ui_state,
+                &sender,
+            )?;
+        }
+        Ok(())
+    }
+
     /// Handle a single MIDI control message.
     fn handle_midi_message(&mut self, msg: &MidiControlMessage) -> Result<()> {
         let sender = self.controller.sender_with_metadata(None);
@@ -299,19 +346,7 @@ impl Show {
         };
         match show_ctrl_msg {
             ShowControlMessage::Channel(msg) => {
-                if self.master_strobe_channel
-                    && let crate::channel::ControlMessage::Control { channel_id, msg } = &msg
-                    && *channel_id == Some(STROBE_CONTROL_CHANNEL)
-                {
-                    self.master_controls.handle_strobe_channel(msg, &sender);
-                } else {
-                    self.channels.control(
-                        &msg,
-                        &mut self.patch,
-                        &self.animation_ui_state,
-                        &sender,
-                    )?;
-                }
+                self.handle_channel_message(&msg)?;
             }
             ShowControlMessage::Clock(msg) => self.clocks.control_clock(msg, sender.controller),
             ShowControlMessage::Audio(msg) => self.clocks.control_audio(msg, &mut self.controller),
@@ -682,7 +717,7 @@ impl Show {
             animation_ui_state: AnimationUIState::new(initial_channel),
             clocks,
             preview: Previewer::Off,
-            master_strobe_channel: false,
+            master_strobe_channel: None,
             gui_state,
         };
         show.reconcile_submaster_wings().unwrap();
@@ -841,5 +876,154 @@ mod tests {
         // The patch has one Dimmer fixture, so fixture_count should be 1.
         let state = show.gui_state.animation_state.load();
         assert_eq!(state.fixture_count, 1);
+    }
+
+    /// Generate YAML for N dimmer fixtures, each on a separate channel.
+    fn n_dimmer_yaml(n: usize) -> String {
+        (0..n)
+            .map(|i| {
+                format!(
+                    "- fixture: Dimmer\n  group: dimmer_{i}\n  patches:\n    - addr: {}\n",
+                    i + 1
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn master_strobe_channel_routing() {
+        // 1 dimmer = 1 channel, 1 wing, strobe on fader 7.
+        let (mut show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        let strobe_ch = strobe_control_channel(show.channels.channel_count());
+        assert_eq!(strobe_ch, 7);
+
+        // Default strobe intensity is 1.0 (full).
+        assert_eq!(
+            show.master_controls.strobe().intensity(),
+            number::UnipolarFloat::ONE
+        );
+
+        // Disabled by default: level to strobe fader goes to fixture, not strobe.
+        show.handle_channel_message(&crate::channel::ControlMessage::Control {
+            channel_id: Some(strobe_ch),
+            msg: crate::channel::ChannelControlMessage::Level(
+                number::UnipolarFloat::new(0.5),
+            ),
+        })
+        // Channel 7 has no fixture group, so this is an out-of-range error.
+        .ok();
+        // Intensity unchanged — message didn't route to strobe.
+        assert_eq!(
+            show.master_controls.strobe().intensity(),
+            number::UnipolarFloat::ONE
+        );
+
+        // Enable strobe.
+        show.handle_meta_command(MetaCommand::SetMasterStrobeChannel(true))
+            .unwrap();
+        assert_eq!(show.master_strobe_channel, Some(7));
+
+        // Level routes to strobe intensity.
+        show.handle_channel_message(&crate::channel::ControlMessage::Control {
+            channel_id: Some(strobe_ch),
+            msg: crate::channel::ChannelControlMessage::Level(
+                number::UnipolarFloat::new(0.75),
+            ),
+        })
+        .unwrap();
+        assert_eq!(
+            show.master_controls.strobe().intensity(),
+            number::UnipolarFloat::new(0.75)
+        );
+
+        // Knob 0 routes to strobe rate.
+        let initial_rate = show.master_controls.strobe().rate_control();
+        show.handle_channel_message(&crate::channel::ControlMessage::Control {
+            channel_id: Some(strobe_ch),
+            msg: crate::channel::ChannelControlMessage::Knob {
+                index: 0,
+                value: crate::channel::KnobValue::Unipolar(
+                    number::UnipolarFloat::new(0.5),
+                ),
+            },
+        })
+        .unwrap();
+        assert_ne!(show.master_controls.strobe().rate_control(), initial_rate);
+
+        // Non-strobe fader (channel 0) doesn't affect strobe.
+        let intensity_before = show.master_controls.strobe().intensity();
+        show.handle_channel_message(&crate::channel::ControlMessage::Control {
+            channel_id: Some(0),
+            msg: crate::channel::ChannelControlMessage::Level(
+                number::UnipolarFloat::new(1.0),
+            ),
+        })
+        .unwrap();
+        assert_eq!(
+            show.master_controls.strobe().intensity(),
+            intensity_before
+        );
+    }
+
+    #[test]
+    fn enable_strobe_fails_when_fader_occupied() {
+        // 8 dimmers = all 8 faders on wing 1 occupied.
+        let yaml = n_dimmer_yaml(8);
+        let (mut show, _dir) = show_from_yaml(&yaml);
+        assert_eq!(show.channels.channel_count(), 8);
+
+        let result = show.handle_meta_command(MetaCommand::SetMasterStrobeChannel(true));
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("occupied"));
+    }
+
+    #[test]
+    fn repatch_auto_disables_strobe_when_fader_occupied() {
+        // 7 dimmers = fader 7 available for strobe.
+        let yaml = n_dimmer_yaml(7);
+        let (mut show, dir) = show_from_yaml(&yaml);
+
+        show.handle_meta_command(MetaCommand::SetMasterStrobeChannel(true))
+            .unwrap();
+        assert_eq!(show.master_strobe_channel, Some(7));
+
+        // Repatch to 8 dimmers — fader 7 now occupied.
+        let yaml_8 = n_dimmer_yaml(8);
+        std::fs::write(dir.path().join("patch.yaml"), &yaml_8).unwrap();
+        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+
+        assert_eq!(show.master_strobe_channel, None);
+        assert!(
+            !show
+                .gui_state
+                .master_strobe_fader_channel_mapped
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
+    }
+
+    #[test]
+    fn repatch_moves_strobe_to_new_wing() {
+        // 7 dimmers = 1 wing, strobe on fader 7.
+        let yaml = n_dimmer_yaml(7);
+        let (mut show, dir) = show_from_yaml(&yaml);
+
+        show.handle_meta_command(MetaCommand::SetMasterStrobeChannel(true))
+            .unwrap();
+        assert_eq!(show.master_strobe_channel, Some(7));
+
+        // Repatch to 9 dimmers — 2 wings, strobe moves to fader 15.
+        let yaml_9 = n_dimmer_yaml(9);
+        std::fs::write(dir.path().join("patch.yaml"), &yaml_9).unwrap();
+        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+
+        assert_eq!(show.master_strobe_channel, Some(15));
+        assert!(
+            show.gui_state
+                .master_strobe_fader_channel_mapped
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
     }
 }

@@ -52,10 +52,6 @@ pub(crate) struct RunArgs {
     #[arg(long)]
     pub artnet: bool,
 
-    /// If true, use the last channel fader as a master strobe control.
-    #[arg(long)]
-    pub master_strobe_channel: bool,
-
     /// The port on which to listen for OSC messages.
     #[arg(long, default_value_t = 8000)]
     pub osc_receive_port: u16,

@@ -327,6 +327,8 @@ pub enum MetaCommand {
     DropOscClient(OscClientId),
     /// Apply a new patch configuration from the GUI editor.
     Repatch(Vec<crate::config::FixtureGroupConfig>),
+    /// Enable or disable the master strobe fader channel.
+    SetMasterStrobeChannel(bool),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -353,6 +355,9 @@ impl fmt::Debug for MetaCommand {
             Self::RegisterOscClient(id) => write!(f, "RegisterOscClient({id})"),
             Self::DropOscClient(id) => write!(f, "DropOscClient({id})"),
             Self::Repatch(groups) => write!(f, "Repatch({} groups)", groups.len()),
+            Self::SetMasterStrobeChannel(enable) => {
+                write!(f, "SetMasterStrobeChannel({enable})")
+            }
         }
     }
 }

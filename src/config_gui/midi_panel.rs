@@ -38,6 +38,7 @@ pub(crate) struct MidiPanel<'a> {
     pub ctx: GuiContext<'a>,
     pub state: &'a mut MidiPanelState,
     pub slots: &'a [SlotStatus],
+    pub master_strobe_fader_channel_mapped: bool,
 }
 
 impl MidiPanel<'_> {
@@ -98,6 +99,20 @@ impl MidiPanel<'_> {
                     ui.end_row();
                 }
             });
+
+        ui.separator();
+        let mut strobe_enabled = self.master_strobe_fader_channel_mapped;
+        if ui
+            .checkbox(
+                &mut strobe_enabled,
+                "Use last wing fader as master strobe control",
+            )
+            .changed()
+        {
+            let _ = self
+                .ctx
+                .send_command(MetaCommand::SetMasterStrobeChannel(strobe_enabled));
+        }
     }
 
     /// Render a combo box for selecting a MIDI port.
@@ -252,6 +267,7 @@ mod tests {
                     output_ports: vec![],
                 },
                 slots: &slots,
+                master_strobe_fader_channel_mapped: false,
             }
             .ui(ui);
         });
@@ -275,6 +291,7 @@ mod tests {
                     output_ports: vec![],
                 },
                 slots: &slots,
+                master_strobe_fader_channel_mapped: false,
             }
             .ui(ui);
         });

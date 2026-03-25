@@ -61,6 +61,8 @@ pub struct GuiState {
     pub animation_state: ArcSwap<AnimationSnapshot>,
     pub patch_snapshot: ArcSwap<PatchSnapshot>,
     pub dmx_port_status: ArcSwap<DmxPortStatus>,
+    /// Whether the master strobe fader channel is mapped.
+    pub master_strobe_fader_channel_mapped: AtomicBool,
 }
 
 impl GuiState {
@@ -79,6 +81,7 @@ impl GuiState {
             animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),
             patch_snapshot: ArcSwap::from_pointee(PatchSnapshot::default()),
             dmx_port_status: ArcSwap::from_pointee(DmxPortStatus::default()),
+            master_strobe_fader_channel_mapped: AtomicBool::new(false),
         }
     }
 }

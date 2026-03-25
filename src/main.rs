@@ -199,7 +199,6 @@ fn run_show_inline(
         args.cli_preview
             .then(Previewer::terminal)
             .unwrap_or_default(),
-        args.master_strobe_channel,
         gui_state,
     )?;
 
@@ -237,7 +236,6 @@ fn run_show_worker(args: RunArgs, controller: Controller, gui_state: SharedGuiSt
         dmx_ports,
         clocks,
         Previewer::default(),
-        args.master_strobe_channel,
         gui_state,
     )?;
 

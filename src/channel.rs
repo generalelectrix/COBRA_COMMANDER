@@ -270,8 +270,11 @@ impl Channels {
     }
 }
 
-/// Use this channel for master strobe control when the show option is set.
-pub const STROBE_CONTROL_CHANNEL: usize = 7;
+/// Compute the strobe control channel index for the given channel count.
+/// Returns the last fader of the last submaster wing.
+pub fn strobe_control_channel(channel_count: usize) -> usize {
+    (crate::midi::slots::submaster_wing_count(channel_count) * 8) - 1
+}
 
 /// Provide methods to emit channel control state changes for a specific channel.
 /// If no channel is set, no state change events will be emitted.

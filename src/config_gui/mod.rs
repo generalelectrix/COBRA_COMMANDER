@@ -131,6 +131,10 @@ impl eframe::App for ConfigApp {
             }
             Tab::Midi => {
                 let midi_slots = self.gui_state.midi_slots.load();
+                let master_strobe = self
+                    .gui_state
+                    .master_strobe_fader_channel_mapped
+                    .load(std::sync::atomic::Ordering::Relaxed);
                 MidiPanel {
                     ctx: GuiContext {
                         modal: &mut self.modal,
@@ -138,6 +142,7 @@ impl eframe::App for ConfigApp {
                     },
                     state: &mut self.midi_panel,
                     slots: &midi_slots,
+                    master_strobe_fader_channel_mapped: master_strobe,
                 }
                 .ui(ui);
             }
