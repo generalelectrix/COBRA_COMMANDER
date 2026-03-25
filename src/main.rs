@@ -41,7 +41,37 @@ mod util;
 mod wled;
 
 fn main() -> Result<()> {
-    let args = Cli::try_parse()?;
+    let args = Cli {
+        debug: false,
+        command: Command::Run(RunArgs {
+            patch_file: "/Users/macklin/src/cobra-commander-universal-app-bundle/patch/test.yaml"
+                .into(),
+            quickstart: false,
+            artnet: false,
+            osc_receive_port: 8000,
+            cli_preview: false,
+            gui: true,
+        }),
+    };
+    // let args = match Cli::try_parse() {
+    //     Ok(args) => args,
+    //     Err(e) if e.kind() == clap::error::ErrorKind::MissingSubcommand => {
+    //         // No subcommand provided (e.g. launched from .app bundle).
+    //         // Default to: run --gui patch/test.yaml
+    //         Cli {
+    //             debug: false,
+    //             command: Command::Run(RunArgs {
+    //                 patch_file: "/Users/macklin/src/cobra-commander-universal-app-bundle/patch/test.yaml".into(),
+    //                 quickstart: false,
+    //                 artnet: false,
+    //                 osc_receive_port: 8000,
+    //                 cli_preview: false,
+    //                 gui: true,
+    //             }),
+    //         }
+    //     }
+    //     Err(e) => return Err(e.into()),
+    // };
 
     let log_level = if args.debug {
         LevelFilter::Debug
