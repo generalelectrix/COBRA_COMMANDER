@@ -546,10 +546,11 @@ impl PatchPanel<'_> {
             let group = &mut wc.groups[group_idx];
             let num_patches = group.config.patches.len();
 
+            let selection_color = ui.style().visuals.selection.bg_fill;
+
             egui::Grid::new("fixtures_grid")
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("");
                     ui.label("#");
                     ui.label("Addr");
                     ui.label("Uni");
@@ -564,25 +565,33 @@ impl PatchPanel<'_> {
                     for i in 0..num_patches {
                         let ch_count = group.channel_counts.get(i).copied().unwrap_or(0);
 
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add_enabled(i > 0, egui::Button::new("⏶").small())
-                                .clicked()
-                            {
-                                fixture_swap = Some((i, i - 1));
-                            }
-                            if ui
-                                .add_enabled(
-                                    i < num_patches - 1,
-                                    egui::Button::new("⏷").small(),
-                                )
-                                .clicked()
-                            {
-                                fixture_swap = Some((i, i + 1));
-                            }
-                        });
-
-                        ui.label(format!("{}", i + 1));
+                        // Row number as drag handle.
+                        let handle = ui.add(
+                            egui::Label::new(format!("{}", i + 1))
+                                .selectable(false)
+                                .sense(egui::Sense::drag()),
+                        );
+                        if handle.dragged() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                        } else if handle.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                        }
+                        handle.dnd_set_drag_payload(i);
+                        if let Some(source_idx) = handle.dnd_release_payload::<usize>() {
+                            fixture_swap = Some((*source_idx, i));
+                        }
+                        if let Some(source_idx) = handle.dnd_hover_payload::<usize>() {
+                            let y = if *source_idx <= i {
+                                handle.rect.bottom()
+                            } else {
+                                handle.rect.top()
+                            };
+                            ui.painter().hline(
+                                ui.min_rect().x_range(),
+                                y,
+                                egui::Stroke::new(2.0, selection_color),
+                            );
+                        }
 
                         let block = &mut group.config.patches[i];
                         let (start, _count) = block.start_count();
