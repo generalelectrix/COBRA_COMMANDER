@@ -52,8 +52,8 @@ typetag = "0.2"
 tempfile = "3"
 egui_kittest = { version = "0.33", features = ["wgpu", "snapshot"] }
 
-[patch.'https://github.com/generalelectrix/tunnels']
-midi_harness = { path = "../tunnels/midi_harness" }
-tunnels = { path = "../tunnels/tunnels" }
-tunnels_lib = { path = "../tunnels/tunnels_lib" }
-zero_configure = { path = "../tunnels/zero_configure" }
+# [patch.'https://github.com/generalelectrix/tunnels']
+# midi_harness = { path = "../tunnels/midi_harness" }
+# tunnels = { path = "../tunnels/tunnels" }
+# tunnels_lib = { path = "../tunnels/tunnels_lib" }
+# zero_configure = { path = "../tunnels/zero_configure" }
