@@ -9,7 +9,7 @@ use crate::control::MetaCommand;
 use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
 use crate::gui_state::PatchSnapshot;
-use crate::ui_util::{GuiContext, STATUS_COLORS, cancel_button, confirm_button, confirm_button_enabled};
+use crate::ui_util::{GuiContext, STATUS_COLORS, cancel_button, confirm_button, confirm_button_enabled, dnd_reorder};
 
 use address_map::{AddressMap, UniverseAddress};
 use widgets::{
@@ -323,7 +323,6 @@ impl PatchPanel<'_> {
                 }
 
                 let selected = self.state.selected_group;
-                let selection_color = ui.style().visuals.selection.bg_fill;
 
                 egui::Grid::new("group_table")
                     .striped(true)
@@ -372,13 +371,6 @@ impl PatchPanel<'_> {
                                 egui::Sense::click_and_drag(),
                             );
 
-                            // Cursor feedback.
-                            if response.dragged() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                            } else if response.hovered() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                            }
-
                             // Click → select.
                             if response.clicked() {
                                 self.state.selected_group = Some(i);
@@ -387,22 +379,10 @@ impl PatchPanel<'_> {
                                 }
                             }
 
-                            // Drag → reorder via DnD payload.
-                            response.dnd_set_drag_payload(i);
-
-                            if let Some(source_idx) = response.dnd_release_payload::<usize>() {
-                                swap = Some((*source_idx, i));
-                            }
-
-                            // Visual: drop indicator line when hovering during drag.
-                            if let Some(source_idx) = response.dnd_hover_payload::<usize>() {
-                                let stroke = egui::Stroke::new(2.0, selection_color);
-                                let y = if *source_idx <= i {
-                                    row_rect.bottom()
-                                } else {
-                                    row_rect.top()
-                                };
-                                ui.painter().hline(row_rect.x_range(), y, stroke);
+                            // Drag → reorder via DnD.
+                            let dnd = dnd_reorder(ui, &response, i, row_rect.x_range());
+                            if dnd.swap.is_some() {
+                                swap = dnd.swap;
                             }
                         }
                     });
@@ -553,8 +533,6 @@ impl PatchPanel<'_> {
             let group = &mut wc.groups[group_idx];
             let num_patches = group.config.patches.len();
 
-            let selection_color = ui.style().visuals.selection.bg_fill;
-
             egui::Grid::new("fixtures_grid")
                 .striped(true)
                 .show(ui, |ui| {
@@ -578,26 +556,9 @@ impl PatchPanel<'_> {
                                 .selectable(false)
                                 .sense(egui::Sense::drag()),
                         );
-                        if handle.dragged() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                        } else if handle.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                        }
-                        handle.dnd_set_drag_payload(i);
-                        if let Some(source_idx) = handle.dnd_release_payload::<usize>() {
-                            fixture_swap = Some((*source_idx, i));
-                        }
-                        if let Some(source_idx) = handle.dnd_hover_payload::<usize>() {
-                            let y = if *source_idx <= i {
-                                handle.rect.bottom()
-                            } else {
-                                handle.rect.top()
-                            };
-                            ui.painter().hline(
-                                ui.min_rect().x_range(),
-                                y,
-                                egui::Stroke::new(2.0, selection_color),
-                            );
+                        let dnd = dnd_reorder(ui, &handle, i, ui.min_rect().x_range());
+                        if dnd.swap.is_some() {
+                            fixture_swap = dnd.swap;
                         }
 
                         let block = &mut group.config.patches[i];

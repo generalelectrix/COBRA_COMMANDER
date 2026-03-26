@@ -72,6 +72,50 @@ impl GuiContext<'_> {
     }
 }
 
+/// Result of a drag-and-drop reorder interaction on a single row.
+pub struct DndReorderResult {
+    /// If `Some`, this row received a drop — the caller should swap source and target.
+    pub swap: Option<(usize, usize)>,
+}
+
+/// Apply drag-and-drop reorder behavior to a response.
+///
+/// Handles cursor feedback (grab/grabbing icons), drag payload management,
+/// and painting a drop-indicator line. Call this once per row in a reorderable
+/// list, then collect the `swap` results to apply after the loop.
+pub fn dnd_reorder(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    row_index: usize,
+    indicator_x_range: impl Into<egui::Rangef>,
+) -> DndReorderResult {
+    if response.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    } else if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+    }
+
+    response.dnd_set_drag_payload(row_index);
+
+    let mut swap = None;
+    if let Some(source_idx) = response.dnd_release_payload::<usize>() {
+        swap = Some((*source_idx, row_index));
+    }
+
+    if let Some(source_idx) = response.dnd_hover_payload::<usize>() {
+        let selection_color = ui.style().visuals.selection.bg_fill;
+        let y = if *source_idx <= row_index {
+            response.rect.bottom()
+        } else {
+            response.rect.top()
+        };
+        ui.painter()
+            .hline(indicator_x_range, y, egui::Stroke::new(2.0, selection_color));
+    }
+
+    DndReorderResult { swap }
+}
+
 /// Displays a modal dialog with a title and message, blocked until dismissed.
 #[derive(Default)]
 pub struct MessageModal {
