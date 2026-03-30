@@ -50,10 +50,16 @@ impl LayoutServer {
         let short_hostname = full.split('.').next().unwrap_or(&full);
         let hostname = format!("{short_hostname}.local.");
         let local_ip = local_ip_address::local_ip().context("failed to get local IP")?;
-        let service_info =
-            ServiceInfo::new(SERVICE_TYPE, short_hostname, &hostname, local_ip, PORT, None)
-                .map_err(|e| anyhow::anyhow!("{e}"))
-                .context("failed to create mDNS service info")?;
+        let service_info = ServiceInfo::new(
+            SERVICE_TYPE,
+            short_hostname,
+            &hostname,
+            local_ip,
+            PORT,
+            None,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))
+        .context("failed to create mDNS service info")?;
         let service_fullname = service_info.get_fullname().to_string();
         mdns.register(service_info)
             .map_err(|e| anyhow::anyhow!("{e}"))

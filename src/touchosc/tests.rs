@@ -1,8 +1,8 @@
 use std::io::Read;
 use std::path::Path;
 
-use super::*;
 use super::parse::extract_xml_from_zip;
+use super::*;
 
 /// Path to the touchosc templates directory.
 fn touchosc_dir() -> &'static Path {
@@ -212,11 +212,7 @@ fn layout_server_serves_xml() {
 
     // Make a raw HTTP request and check the response.
     let mut stream = std::net::TcpStream::connect("127.0.0.1:9658").unwrap();
-    std::io::Write::write_all(
-        &mut stream,
-        b"GET / HTTP/1.0\r\nHost: localhost\r\n\r\n",
-    )
-    .unwrap();
+    std::io::Write::write_all(&mut stream, b"GET / HTTP/1.0\r\nHost: localhost\r\n\r\n").unwrap();
 
     let mut response = Vec::new();
     stream.read_to_end(&mut response).unwrap();
@@ -244,7 +240,11 @@ fn layout_server_serves_xml() {
         "body should be raw XML, got: {:?}",
         &body[..20.min(body.len())]
     );
-    assert_eq!(body, expected_xml.as_slice(), "body doesn't match expected XML");
+    assert_eq!(
+        body,
+        expected_xml.as_slice(),
+        "body doesn't match expected XML"
+    );
 
     server.stop().unwrap();
 }
