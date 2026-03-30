@@ -101,3 +101,113 @@ fn parse_master_basic_structure() {
     // Master tab (index 17)
     assert_eq!(layout.tabpages[17].name, "master");
 }
+
+#[test]
+fn generate_layout_from_patch() {
+    let groups = vec![
+        ("Front", "Color"),
+        ("Top", "Color"),
+        ("TriPhase", "TriPhase"),
+        ("Starlight", "Starlight"),
+    ];
+
+    let output_path = touchosc_dir().join("test.touchosc");
+    generate_layout(
+        groups.iter().map(|(g, f)| (*g, *f)),
+        &output_path,
+    )
+    .unwrap();
+
+    let layout = parse_touchosc(&output_path).unwrap();
+
+    // 4 fixture pages + 6 base pages = 10 total.
+    assert_eq!(layout.tabpages.len(), 10);
+
+    // Fixture pages come first in patch order.
+    assert_eq!(layout.tabpages[0].name, "Front");
+    assert_eq!(layout.tabpages[1].name, "Top");
+    assert_eq!(layout.tabpages[2].name, "TriPhase");
+    assert_eq!(layout.tabpages[3].name, "Starlight");
+
+    // Base pages follow.
+    assert_eq!(layout.tabpages[4].name, "channels");
+
+    // Verify address rewriting on renamed groups.
+    let front_addrs: Vec<_> = layout.tabpages[0]
+        .controls
+        .iter()
+        .filter_map(|c| c.osc_address())
+        .collect();
+    assert!(
+        front_addrs.iter().all(|a| a.starts_with("/Front/")),
+        "Front page has unrewritten addresses: {front_addrs:?}"
+    );
+
+    // TriPhase should keep its original addresses since group == fixture type.
+    let tri_addrs: Vec<_> = layout.tabpages[2]
+        .controls
+        .iter()
+        .filter_map(|c| c.osc_address())
+        .collect();
+    assert!(
+        tri_addrs.iter().all(|a| a.starts_with("/TriPhase/")),
+        "TriPhase addresses changed unexpectedly: {tri_addrs:?}"
+    );
+
+}
+
+/// Applying set_group_name with the same name as the fixture type should
+/// produce byte-identical XML output.
+#[test]
+fn set_group_name_identity() {
+    let templates_dir = touchosc_dir().join("group_templates");
+    for entry in std::fs::read_dir(&templates_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if !path.extension().is_some_and(|ext| ext == "touchosc") {
+            continue;
+        }
+        let fixture_type = path.file_stem().unwrap().to_str().unwrap();
+        let layout = parse_touchosc(&path).unwrap();
+        let original_xml = extract_xml(&path);
+
+        let mut page = layout.tabpages[0].clone();
+        set_group_name(&mut page, fixture_type);
+
+        let mut modified_layout = layout.clone();
+        modified_layout.tabpages[0] = page;
+        let modified_xml = serialize::serialize_xml(&modified_layout);
+
+        assert_eq!(
+            original_xml, modified_xml,
+            "identity rewrite changed XML for {fixture_type}"
+        );
+    }
+}
+
+#[test]
+fn set_group_name_renames_addresses() {
+    let layout = load_group_template("Color").unwrap().unwrap();
+    let mut page = layout.tabpages[0].clone();
+
+    // Verify original addresses.
+    let addrs: Vec<_> = page
+        .controls
+        .iter()
+        .filter_map(|c| c.osc_address().map(String::from))
+        .collect();
+    assert!(addrs.iter().all(|a| a.starts_with("/Color/")));
+
+    // Rename to "FrontWash".
+    set_group_name(&mut page, "FrontWash");
+
+    assert_eq!(page.name, "FrontWash");
+    for ctrl in &page.controls {
+        if let Some(addr) = ctrl.osc_address() {
+            assert!(
+                addr.starts_with("/FrontWash/"),
+                "address not renamed: {addr}"
+            );
+        }
+    }
+}
