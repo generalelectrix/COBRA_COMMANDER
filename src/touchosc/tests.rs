@@ -105,18 +105,14 @@ fn parse_master_basic_structure() {
 #[test]
 fn generate_layout_from_patch() {
     let groups = vec![
-        ("Front", "Color"),
-        ("Top", "Color"),
-        ("TriPhase", "TriPhase"),
-        ("Starlight", "Starlight"),
+        GroupEntry { group_name: "Front", fixture_type: "Color" },
+        GroupEntry { group_name: "Top", fixture_type: "Color" },
+        GroupEntry { group_name: "TriPhase", fixture_type: "TriPhase" },
+        GroupEntry { group_name: "Starlight", fixture_type: "Starlight" },
     ];
 
     let output_path = touchosc_dir().join("test.touchosc");
-    generate_layout(
-        groups.iter().map(|(g, f)| (*g, *f)),
-        &output_path,
-    )
-    .unwrap();
+    generate_layout(groups.into_iter(), &output_path).unwrap();
 
     let layout = parse_touchosc(&output_path).unwrap();
 

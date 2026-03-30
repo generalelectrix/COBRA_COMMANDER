@@ -13,7 +13,7 @@ pub use parse::parse_touchosc_bytes;
 pub use serialize::write_touchosc;
 #[expect(unused)]
 pub use templates::load_base_template;
-pub use generate::generate_layout;
+pub use generate::{GroupEntry, generate_layout};
 pub use regroup::set_group_name;
 pub use templates::load_group_template;
 

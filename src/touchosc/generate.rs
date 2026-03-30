@@ -8,21 +8,29 @@ use super::regroup::set_group_name;
 use super::serialize::write_touchosc;
 use super::templates::{load_base_template, load_group_template};
 
+/// A fixture group entry for layout generation.
+pub struct GroupEntry<'a> {
+    /// The group name used in OSC addresses (e.g. "Front", "Top").
+    pub group_name: &'a str,
+    /// The fixture type name used to look up the template (e.g. "Color", "TriPhase").
+    pub fixture_type: &'a str,
+}
+
 /// Generate a complete TouchOSC layout file for a show.
 ///
-/// Accepts an iterator of (group_name, fixture_type) pairs in patch order.
-/// For each group, loads the fixture type's template and rewrites OSC addresses
-/// to use the group name. Then appends the base pages (channels, animation,
-/// master, audio, clocks, strobe). Writes the result to `output_path`.
+/// Accepts an iterator of fixture groups in patch order. For each group, loads
+/// the fixture type's template and rewrites OSC addresses to use the group name.
+/// Then appends the base pages (channels, animation, master, audio, clocks,
+/// strobe). Writes the result to `output_path`.
 ///
 /// Groups whose fixture type has no template are skipped with a warning.
 pub fn generate_layout<'a>(
-    groups: impl Iterator<Item = (&'a str, &'a str)>,
+    groups: impl Iterator<Item = GroupEntry<'a>>,
     output_path: &Path,
 ) -> Result<()> {
     let mut tabpages = Vec::new();
 
-    for (group_name, fixture_type) in groups {
+    for GroupEntry { group_name, fixture_type } in groups {
         let template = match load_group_template(fixture_type) {
             Some(Ok(layout)) => layout,
             Some(Err(e)) => {
