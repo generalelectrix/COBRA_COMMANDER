@@ -373,9 +373,13 @@ mod test {
     use super::*;
     use crate::{
         channel::mock::no_op_emitter,
-        config::FixtureGroupConfig,
+        config::{FixtureGroupConfig, Options},
         dmx::DmxBuffer,
-        fixture::{color::Model as ColorModel, fixture::EnumRenderModel},
+        fixture::{
+            color::Model as ColorModel,
+            control::{OscControlDescription, OscControlType},
+            fixture::EnumRenderModel,
+        },
     };
     use anyhow::Result;
     use number::UnipolarFloat;
@@ -785,5 +789,120 @@ mod test {
             empty.is_empty(),
             "fixture types with empty TouchOSC templates (no interactive controls): {empty:?}"
         );
+    }
+
+    /// Expand an OscControlDescription into the set of address suffixes
+    /// that would appear in a template (relative to the group prefix).
+    fn expand_control_addresses(control: &OscControlDescription) -> Vec<String> {
+        match &control.control_type {
+            OscControlType::LabeledSelect { labels } => labels
+                .iter()
+                .map(|l| format!("{}/{l}", control.name))
+                .collect(),
+            _ => vec![control.name.clone()],
+        }
+    }
+
+    /// Extract the control address suffix from a full OSC address.
+    /// e.g. "/TriPhase/Dimmer" with group "TriPhase" -> "Dimmer"
+    /// e.g. "/Astroscan/Color/Open" with group "Astroscan" -> "Color/Open"
+    fn strip_group_prefix<'a>(addr: &'a str, group: &str) -> Option<&'a str> {
+        let prefix = format!("/{group}/");
+        addr.strip_prefix(&prefix)
+    }
+
+    #[test]
+    #[ignore]
+    fn template_controls_match_fixture_api() {
+        use std::collections::BTreeSet;
+
+        let mut mismatches = Vec::new();
+
+        for patcher in PATCHERS {
+            let name = patcher.name.0;
+            if FIXTURES_WITHOUT_TEMPLATES.contains(&name) {
+                continue;
+            }
+
+            // Create a fixture group to get its control descriptions.
+            let key = FixtureGroupKey(format!("test_{}", name));
+            let group = match (patcher.create_group)(key.clone(), Default::default()) {
+                Ok(g) => g,
+                Err(_) => {
+                    let menu = (patcher.group_options)();
+                    if menu.is_empty() {
+                        continue;
+                    }
+                    let options = Options::from_entries(
+                        menu.iter()
+                            .map(|(k, opt)| (k.clone(), opt.example_value())),
+                    );
+                    match (patcher.create_group)(key.clone(), options) {
+                        Ok(g) => g,
+                        Err(_) => continue,
+                    }
+                }
+            };
+
+            let controls = group.describe_controls();
+            let api_addrs: BTreeSet<String> = controls
+                .iter()
+                .flat_map(expand_control_addresses)
+                .collect();
+
+            // Load the template and extract OSC addresses.
+            let layout = match crate::touchosc::load_group_template(name) {
+                Some(Ok(l)) => l,
+                _ => continue,
+            };
+            let page = &layout.tabpages[0];
+            // Verify all controls have the correct group prefix, and collect suffixes.
+            let mut template_addrs: BTreeSet<String> = BTreeSet::new();
+            let mut wrong_prefix = Vec::new();
+            for ctrl in &page.controls {
+                if let Some(addr) = ctrl.osc_address() {
+                    if let Some(suffix) = strip_group_prefix(addr, name) {
+                        template_addrs.insert(suffix.to_string());
+                    } else {
+                        wrong_prefix.push(addr.to_string());
+                    }
+                }
+            }
+            if !wrong_prefix.is_empty() {
+                mismatches.push(format!(
+                    "{name}:\n  controls with wrong group prefix (expected /{name}/...): {wrong_prefix:?}"
+                ));
+                continue;
+            }
+
+            let in_api_not_template: BTreeSet<_> =
+                api_addrs.difference(&template_addrs).collect();
+            let in_template_not_api: BTreeSet<_> =
+                template_addrs.difference(&api_addrs).collect();
+
+            if !in_api_not_template.is_empty() || !in_template_not_api.is_empty() {
+                let mut msg = format!("{name}:");
+                if !in_api_not_template.is_empty() {
+                    msg += &format!(
+                        "\n  in API but not template: {:?}",
+                        in_api_not_template
+                    );
+                }
+                if !in_template_not_api.is_empty() {
+                    msg += &format!(
+                        "\n  in template but not API: {:?}",
+                        in_template_not_api
+                    );
+                }
+                mismatches.push(msg);
+            }
+        }
+
+        if !mismatches.is_empty() {
+            panic!(
+                "Template/API control mismatches:\n{}",
+                mismatches.join("\n")
+            );
+        }
     }
 }

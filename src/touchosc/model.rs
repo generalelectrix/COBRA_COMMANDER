@@ -66,6 +66,14 @@ impl Control {
     pub fn is_label(&self) -> bool {
         self.control_type == "labelv" || self.control_type == "labelh"
     }
+
+    /// Get the decoded OSC address, if present.
+    pub fn osc_address(&self) -> Option<&str> {
+        self.mid_attrs
+            .iter()
+            .find(|(k, _)| k == "osc_cs")
+            .map(|(_, v)| v.as_str())
+    }
 }
 
 /// A MIDI binding on a control, stored as a raw attribute string
