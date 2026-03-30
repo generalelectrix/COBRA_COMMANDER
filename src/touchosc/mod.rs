@@ -5,6 +5,7 @@ mod regroup;
 mod serialize;
 mod templates;
 
+#[expect(unused)]
 pub use model::*;
 pub use parse::parse_touchosc;
 #[expect(unused)]

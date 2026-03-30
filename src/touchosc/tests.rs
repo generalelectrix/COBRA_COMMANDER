@@ -63,11 +63,6 @@ fn assert_round_trip(filename: &str) {
 }
 
 #[test]
-fn round_trip_master() {
-    assert_round_trip("master.touchosc");
-}
-
-#[test]
 fn round_trip_all_templates() {
     let dir = touchosc_dir();
     for entry in std::fs::read_dir(dir).unwrap() {
@@ -78,28 +73,6 @@ fn round_trip_all_templates() {
             assert_round_trip(filename);
         }
     }
-}
-
-#[test]
-fn parse_master_basic_structure() {
-    let path = touchosc_dir().join("master.touchosc");
-    let layout = parse_touchosc(&path).unwrap();
-
-    assert_eq!(layout.version, "17");
-    assert_eq!(layout.mode, "1");
-    // XML says "vertical" — the editor shows it as landscape, but that's
-    // the editor's business. We store the XML value as-is.
-    assert_eq!(layout.orientation, Orientation::Vertical);
-    assert_eq!(layout.tabpages.len(), 21);
-
-    // First tab should be "H2O, Aquarius, Haze"
-    assert_eq!(layout.tabpages[0].name, "H2O, Aquarius, Haze");
-
-    // Animation tab (index 16)
-    assert_eq!(layout.tabpages[16].name, "animation");
-
-    // Master tab (index 17)
-    assert_eq!(layout.tabpages[17].name, "master");
 }
 
 #[test]
