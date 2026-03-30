@@ -38,10 +38,6 @@ pub fn assemble_layout<'a>(groups: impl Iterator<Item = GroupEntry<'a>>) -> Resu
                 });
             }
             None => {
-                warn!(
-                    "no TouchOSC template for fixture type '{fixture_type}' \
-                     (group '{group_name}'), skipping"
-                );
                 continue;
             }
         };
