@@ -154,6 +154,7 @@ fn generate_layout_from_patch() {
         "TriPhase addresses changed unexpectedly: {tri_addrs:?}"
     );
 
+    std::fs::remove_file(&output_path).ok();
 }
 
 /// Applying set_group_name with the same name as the fixture type should
