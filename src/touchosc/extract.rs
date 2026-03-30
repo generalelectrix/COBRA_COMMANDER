@@ -87,10 +87,11 @@ pub fn split_fixture_pages(fixture_tabs: &[TabPage]) -> Vec<TabPage> {
 
 /// Shift all controls toward the top of the page.
 ///
+///
 /// In the XML coordinate system, "top of page" in the landscape editor = high x.
 /// We find the highest x+w among interactive controls, compute the gap between
 /// that and the canvas top (~730), and shift all controls up by that amount.
-fn shift_to_top(page: &mut TabPage) {
+pub(super) fn shift_to_top(page: &mut TabPage) {
     const CANVAS_TOP: i32 = 730;
     const TOP_PADDING: i32 = 3;
 

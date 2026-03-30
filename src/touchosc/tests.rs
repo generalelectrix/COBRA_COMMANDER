@@ -222,39 +222,162 @@ fn write_fixtures_template() {
     }
 }
 
+fn default_label_style(name: &str) -> LabelStyle {
+    LabelStyle {
+        t: name.to_string(),
+        c: "gray".to_string(),
+        s: "14".to_string(),
+        o: "false".to_string(),
+        b: "false".to_string(),
+    }
+}
+
+fn default_tabpage(name: &str, controls: Vec<Control>) -> TabPage {
+    TabPage {
+        name: name.to_string(),
+        scalef: "0.0".to_string(),
+        scalet: "1.0".to_string(),
+        osc_cs: None,
+        li: Some(default_label_style(name)),
+        la: Some(default_label_style(name)),
+        controls,
+    }
+}
+
+/// Extract Color controls from the master page (tab 17) and build a Color template.
+fn extract_color_page(layout: &Layout) -> TabPage {
+    let master_tab = &layout.tabpages[17];
+    assert_eq!(master_tab.name, "master");
+
+    let mut controls: Vec<Control> = Vec::new();
+
+    for ctrl in &master_tab.controls {
+        if let Some(addr) = ctrl.osc_address() {
+            if addr.starts_with("/Color/") {
+                controls.push(ctrl.clone());
+            }
+        } else if ctrl.is_label() {
+            // Check if this label overlaps a Color control
+            for interactive in &master_tab.controls {
+                if let Some(addr) = interactive.osc_address() {
+                    if addr.starts_with("/Color/")
+                        && ctrl.center_within(interactive.x, interactive.y, interactive.w, interactive.h)
+                    {
+                        controls.push(ctrl.clone());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut page = default_tabpage("Color", controls);
+    extract::shift_to_top(&mut page);
+    page
+}
+
+/// Build a single-fader Dimmer template using the exact TriPhase dimmer layout.
+///
+/// TriPhase dimmer fader: x=616 y=7 w=84 h=505
+/// TriPhase dimmer label: x=645 y=410 w=29 h=87
+fn build_dimmer_page(name: &str) -> TabPage {
+    let fader = Control {
+        name: "fader1".to_string(),
+        x: 616,
+        y: 7,
+        w: 84,
+        h: 505,
+        color: "yellow".to_string(),
+        control_type: "faderv".to_string(),
+        mid_attrs: vec![
+            ("scalef".to_string(), "0.0".to_string()),
+            ("scalet".to_string(), "1.0".to_string()),
+            ("osc_cs".to_string(), format!("/{name}/Dimmer")),
+        ],
+        extra_attrs: vec![
+            ("response".to_string(), "absolute".to_string()),
+            ("inverted".to_string(), "false".to_string()),
+            ("centered".to_string(), "false".to_string()),
+        ],
+        midi_bindings: Vec::new(),
+    };
+
+    let label = Control {
+        name: "label1".to_string(),
+        x: 645,
+        y: 410,
+        w: 29,
+        h: 87,
+        color: "yellow".to_string(),
+        control_type: "labelv".to_string(),
+        mid_attrs: Vec::new(),
+        extra_attrs: vec![
+            ("text".to_string(), "dimmer".to_string()),
+            ("size".to_string(), "20".to_string()),
+            ("background".to_string(), "true".to_string()),
+            ("outline".to_string(), "false".to_string()),
+        ],
+        midi_bindings: Vec::new(),
+    };
+
+    let mut page = default_tabpage(name, vec![fader, label]);
+    extract::shift_to_top(&mut page);
+    page
+}
+
+fn write_single_page(templates_dir: &Path, layout: &Layout, page: &TabPage) {
+    let single_layout = Layout {
+        version: layout.version.clone(),
+        mode: layout.mode.clone(),
+        orientation: layout.orientation,
+        tabpages: vec![page.clone()],
+    };
+
+    let filename = format!("{}.touchosc", page.name);
+    let output_path = templates_dir.join(&filename);
+    write_touchosc(&single_layout, &output_path).unwrap();
+
+    // Verify round-trip.
+    let reparsed = parse_touchosc(&output_path).unwrap();
+    assert_eq!(reparsed.tabpages.len(), 1);
+    assert_eq!(reparsed.tabpages[0].name, page.name);
+    assert_eq!(reparsed.tabpages[0].controls.len(), page.controls.len());
+}
+
 #[test]
 fn write_group_templates() {
     let path = touchosc_dir().join("master.touchosc");
     let layout = parse_touchosc(&path).unwrap();
 
+    // Extract fixture pages from tabs 0-14.
     let fixture_tabs = &layout.tabpages[..15];
     let fixture_pages = split_fixture_pages(fixture_tabs);
 
     let templates_dir = touchosc_dir().join("group_templates");
     std::fs::create_dir_all(&templates_dir).unwrap();
 
+    // Write pages extracted from fixture tabs.
     for page in &fixture_pages {
-        let single_layout = Layout {
-            version: layout.version.clone(),
-            mode: layout.mode.clone(),
-            orientation: layout.orientation,
-            tabpages: vec![page.clone()],
-        };
-
-        let filename = format!("{}.touchosc", page.name);
-        let output_path = templates_dir.join(&filename);
-        write_touchosc(&single_layout, &output_path).unwrap();
-
-        // Verify round-trip.
-        let reparsed = parse_touchosc(&output_path).unwrap();
-        assert_eq!(reparsed.tabpages.len(), 1);
-        assert_eq!(reparsed.tabpages[0].name, page.name);
-        assert_eq!(reparsed.tabpages[0].controls.len(), page.controls.len());
+        write_single_page(&templates_dir, &layout, page);
     }
 
+    // Extract Color from the master page.
+    let color_page = extract_color_page(&layout);
+    write_single_page(&templates_dir, &layout, &color_page);
+
+    // Build Dimmer and UvLedBrick templates.
+    let dimmer_page = build_dimmer_page("Dimmer");
+    write_single_page(&templates_dir, &layout, &dimmer_page);
+
+    let uv_page = build_dimmer_page("UvLedBrick");
+    write_single_page(&templates_dir, &layout, &uv_page);
+
     eprintln!("\nGroup templates written to touchosc/group_templates/:");
-    for page in &fixture_pages {
-        eprintln!("  {}.touchosc", page.name);
+    let mut all_names: Vec<String> = fixture_pages.iter().map(|p| p.name.clone()).collect();
+    all_names.extend(["Color", "Dimmer", "UvLedBrick"].iter().map(|s| s.to_string()));
+    all_names.sort();
+    for name in &all_names {
+        eprintln!("  {name}.touchosc");
     }
 }
 

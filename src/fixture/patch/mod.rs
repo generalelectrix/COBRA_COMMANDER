@@ -733,4 +733,57 @@ mod test {
             })
             .collect()
     }
+
+    /// Fixture types that intentionally have no TouchOSC template.
+    /// These are either controlled entirely via the fader wing, are utility
+    /// types, or need custom templates that haven't been built yet.
+    const FIXTURES_WITHOUT_TEMPLATES: &[&str] = &[
+        "Comet",
+        "CosmicBurst",
+        "EmptyChannel",
+        "Faderboard",
+        "Leko",
+        "Lumasphere",
+        "RugDoctor",
+        "SwarmolonDerby",
+        "SwarmolonLasers",
+        "SwarmolonStrobe",
+        "Venus",
+    ];
+
+    #[test]
+    fn all_fixture_types_have_touchosc_template() {
+        let mut missing = Vec::new();
+        let mut empty = Vec::new();
+        for patcher in PATCHERS {
+            let name = patcher.name.0;
+            if FIXTURES_WITHOUT_TEMPLATES.contains(&name) {
+                // Explicitly excluded — verify it really has no template.
+                assert!(
+                    crate::touchosc::load_group_template(name).is_none(),
+                    "fixture '{name}' is in FIXTURES_WITHOUT_TEMPLATES but has a template — remove it from the exclusion list"
+                );
+                continue;
+            }
+            match crate::touchosc::load_group_template(name) {
+                None => missing.push(name),
+                Some(Err(e)) => panic!("template for '{name}' failed to parse: {e}"),
+                Some(Ok(layout)) => {
+                    let page = &layout.tabpages[0];
+                    let interactive = page.controls.iter().filter(|c| !c.is_label()).count();
+                    if interactive == 0 {
+                        empty.push(name);
+                    }
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "fixture types missing TouchOSC group templates: {missing:?}"
+        );
+        assert!(
+            empty.is_empty(),
+            "fixture types with empty TouchOSC templates (no interactive controls): {empty:?}"
+        );
+    }
 }
