@@ -1,8 +1,8 @@
 /// A complete TouchOSC layout file.
 ///
 /// All string fields are stored decoded (plain UTF-8).
-/// Coordinates match the XML and editor: x is horizontal (left→right),
-/// y is vertical (top→bottom), w is width, h is height.
+/// Coordinates are stored as raw XML portrait values — see CLAUDE.md
+/// for how these map to the landscape editor view.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
     pub version: String,
@@ -31,12 +31,61 @@ pub struct TabPage {
     pub controls: Vec<Control>,
 }
 
+impl TabPage {
+    /// Rewrite all OSC addresses, replacing the current group prefix with the
+    /// given group name. Also updates the page name and label styling text.
+    ///
+    /// For example, if the page is named `"Color"` with addresses like
+    /// `/Color/Hue` and the group name is `"Front"`, the addresses become
+    /// `/Front/Hue`.
+    pub fn set_group_name(&mut self, group_name: &str) {
+        let fixture_type = self.name.clone();
+        let old_prefix = format!("/{fixture_type}/");
+
+        for ctrl in &mut self.controls {
+            for (key, value) in &mut ctrl.mid_attrs {
+                if key == "osc_cs" {
+                    if let Some(suffix) = value.strip_prefix(&old_prefix) {
+                        *value = format!("/{group_name}/{suffix}");
+                    }
+                }
+            }
+        }
+
+        self.name = group_name.to_string();
+
+        if let Some(ref mut li) = self.li {
+            if li.t == fixture_type {
+                li.t = group_name.to_string();
+            }
+        }
+        if let Some(ref mut la) = self.la {
+            if la.t == fixture_type {
+                la.t = group_name.to_string();
+            }
+        }
+
+        if let Some(ref mut osc) = self.osc_cs {
+            if let Some(suffix) = osc.strip_prefix(&old_prefix) {
+                *osc = format!("/{group_name}/{suffix}");
+            } else if *osc == format!("/{fixture_type}") {
+                *osc = format!("/{group_name}");
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LabelStyle {
+    /// Text content.
     pub t: String,
+    /// Color name.
     pub c: String,
+    /// Font size.
     pub s: String,
+    /// Outline enabled.
     pub o: String,
+    /// Bold enabled.
     pub b: String,
 }
 

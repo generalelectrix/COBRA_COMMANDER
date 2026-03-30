@@ -92,3 +92,20 @@ the editor. This was abandoned because:
 
 The tradeoff is that code creating new controls needs to think in rotated
 coordinates, but this is documented above and was verified empirically.
+
+## Template Registration
+
+Fixture group templates are stored as `.touchosc` files in
+`touchosc/group_templates/` and registered at compile time via a `linkme`
+distributed slice (`TEMPLATES`), mirroring how `PATCHERS` works.
+
+- **`#[derive(PatchFixture)]`** automatically registers a template. The file
+  must exist at `touchosc/group_templates/{StructName}.touchosc` or compilation
+  fails. Use `#[no_touchosc_template]` on the struct to opt out.
+- **`register_patcher!`** does NOT register a template. Use
+  `register_touchosc_template!(Name)` alongside it for fixtures that have one.
+- **`TabPage::set_group_name(name)`** rewrites OSC address prefixes when a
+  group name differs from the fixture type (e.g., fixture `Color` patched as
+  group `Front` → `/Front/Hue`).
+- **`assemble_layout(groups)`** builds a complete `Layout` from group entries.
+  **`generate_layout(groups, path)`** assembles and writes to disk.

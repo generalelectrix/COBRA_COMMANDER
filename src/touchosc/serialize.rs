@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::io::Write;
 use std::path::Path;
 
@@ -31,10 +32,12 @@ pub fn serialize_xml(layout: &Layout) -> String {
         Orientation::Vertical => "vertical",
     };
 
-    out.push_str(&format!(
+    write!(
+        out,
         "<layout version=\"{}\" mode=\"{}\" orientation=\"{}\">",
         layout.version, layout.mode, orientation_xml
-    ));
+    )
+    .unwrap();
 
     for tp in &layout.tabpages {
         serialize_tabpage(&mut out, tp);
@@ -47,8 +50,8 @@ pub fn serialize_xml(layout: &Layout) -> String {
 fn serialize_tabpage(out: &mut String, tp: &TabPage) {
     out.push_str("<tabpage");
     write_attr(out, "name", &encode_b64(&tp.name));
-    out.push_str(&format!(" scalef=\"{}\"", tp.scalef));
-    out.push_str(&format!(" scalet=\"{}\"", tp.scalet));
+    write!(out, " scalef=\"{}\"", tp.scalef).unwrap();
+    write!(out, " scalet=\"{}\"", tp.scalet).unwrap();
     if let Some(ref osc) = tp.osc_cs {
         write_attr(out, "osc_cs", &encode_b64(osc));
     }
@@ -79,10 +82,10 @@ fn serialize_label_style(out: &mut String, prefix: &str, style: &LabelStyle) {
 fn serialize_control(out: &mut String, ctrl: &Control) {
     out.push_str("<control");
     write_attr(out, "name", &encode_b64(&ctrl.name));
-    out.push_str(&format!(" x=\"{}\"", ctrl.x));
-    out.push_str(&format!(" y=\"{}\"", ctrl.y));
-    out.push_str(&format!(" w=\"{}\"", ctrl.w));
-    out.push_str(&format!(" h=\"{}\"", ctrl.h));
+    write!(out, " x=\"{}\"", ctrl.x).unwrap();
+    write!(out, " y=\"{}\"", ctrl.y).unwrap();
+    write!(out, " w=\"{}\"", ctrl.w).unwrap();
+    write!(out, " h=\"{}\"", ctrl.h).unwrap();
     write_attr(out, "color", &ctrl.color);
 
     // Mid attrs (between color and type): scalef, scalet, osc_cs
@@ -121,7 +124,7 @@ fn serialize_control(out: &mut String, ctrl: &Control) {
 }
 
 fn write_attr(out: &mut String, key: &str, value: &str) {
-    out.push_str(&format!(" {key}=\"{value}\""));
+    write!(out, " {key}=\"{value}\"").unwrap();
 }
 
 fn encode_b64(s: &str) -> String {

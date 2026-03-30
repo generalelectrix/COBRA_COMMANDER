@@ -62,6 +62,7 @@ pub struct PatchOptions {
 }
 
 register_patcher!(Color);
+register_touchosc_template!(Color);
 
 impl Color {
     /// Construct a color whose OSC controls are optionally suffixed.

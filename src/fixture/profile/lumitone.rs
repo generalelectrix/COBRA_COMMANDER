@@ -110,6 +110,7 @@ impl PatchFixture for Lumitone {
 }
 
 register_patcher!(Lumitone);
+register_touchosc_template!(Lumitone);
 
 impl NonAnimatedFixture for Lumitone {
     fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}

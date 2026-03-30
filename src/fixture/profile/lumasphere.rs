@@ -30,6 +30,7 @@ const MAX_ROTATION_SPEED: u8 = 100;
 /// 9: lamp 2 dimmer
 #[derive(Debug, PatchFixture)]
 #[channel_count = 9]
+#[no_touchosc_template]
 pub struct Lumasphere {
     controls: GroupControlMap<ControlMessage>,
     lamp_1_intensity: UnipolarFloat,

@@ -72,6 +72,15 @@ pub fn register_patcher(input: TokenStream) -> TokenStream {
     register_patcher_impl(&ident).into()
 }
 
+/// Register a TouchOSC template for a fixture type.
+///
+/// Expects the template file at `touchosc/group_templates/{Name}.touchosc`.
+#[proc_macro]
+pub fn register_touchosc_template(input: TokenStream) -> TokenStream {
+    let ident = parse_macro_input!(input as Ident);
+    register_template_impl(&ident).into()
+}
+
 fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
     quote! {
         use linkme::distributed_slice;
@@ -88,14 +97,30 @@ fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
     }
 }
 
+fn register_template_impl(ident: &Ident) -> proc_macro2::TokenStream {
+    let name = ident.to_string();
+    let file_path = format!("/touchosc/group_templates/{name}.touchosc");
+    quote! {
+        #[linkme::distributed_slice(crate::touchosc::TEMPLATES)]
+        static TOUCHOSC_TEMPLATE: crate::touchosc::TemplateEntry = crate::touchosc::TemplateEntry {
+            name: #name,
+            bytes: include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), #file_path)),
+        };
+    }
+}
+
 /// Derive the PatchFixture trait on a fixture struct.
 /// The fixture must implement Default.
 /// Use the channel_count attribute to specify the DMX channel count.
 /// Registers the fixture type with the patch.
 ///
+/// By default, also registers a TouchOSC template from
+/// `touchosc/group_templates/{Name}.touchosc`. Use `#[no_touchosc_template]`
+/// to opt out (for fixtures that have no template).
+///
 /// If the fixture is capable of using global strobing, annotate the struct with
 /// the #[strobe(Short)] or #[strobe(Long)] attribute.
-#[proc_macro_derive(PatchFixture, attributes(channel_count, strobe))]
+#[proc_macro_derive(PatchFixture, attributes(channel_count, strobe, no_touchosc_template))]
 pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, attrs, .. } = parse_macro_input!(input as DeriveInput);
 
@@ -105,6 +130,12 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
     let name = ident.to_string();
 
     let register = register_patcher_impl(&ident);
+
+    let register_template = if has_attr(&attrs, "no_touchosc_template") {
+        quote! {}
+    } else {
+        register_template_impl(&ident)
+    };
 
     let strobe_mode = if let Some(mode) = get_attr_list(&attrs, "strobe") {
         quote!(Some(crate::strobe::StrobeResponse::#mode))
@@ -139,6 +170,7 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
         }
 
         #register
+        #register_template
     }
     .into()
 }

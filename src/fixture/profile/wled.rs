@@ -56,6 +56,7 @@ impl PatchFixture for Wled {
 }
 
 register_patcher!(Wled);
+register_touchosc_template!(Wled);
 
 impl NonAnimatedFixture for Wled {
     fn render(&self, _: &FixtureGroupControls, _: &mut [u8]) {}

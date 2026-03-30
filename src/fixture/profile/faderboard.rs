@@ -6,6 +6,7 @@ use crate::fixture::prelude::*;
 
 #[derive(Debug, Update, PatchFixture)]
 #[channel_count = 16]
+#[no_touchosc_template]
 pub struct Faderboard {
     controls: GroupControlMap<ControlMessage>,
     vals: Vec<UnipolarFloat>,

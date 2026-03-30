@@ -4,7 +4,6 @@ use anyhow::{Context, Result, anyhow};
 use log::warn;
 
 use super::model::*;
-use super::regroup::set_group_name;
 use super::serialize::write_touchosc;
 use super::templates::{load_base_template, load_group_template};
 
@@ -16,18 +15,14 @@ pub struct GroupEntry<'a> {
     pub fixture_type: &'a str,
 }
 
-/// Generate a complete TouchOSC layout file for a show.
+/// Assemble a complete TouchOSC layout for a show.
 ///
-/// Accepts an iterator of fixture groups in patch order. For each group, loads
-/// the fixture type's template and rewrites OSC addresses to use the group name.
-/// Then appends the base pages (channels, animation, master, audio, clocks,
-/// strobe). Writes the result to `output_path`.
+/// For each group, loads the fixture type's template and rewrites OSC addresses
+/// to use the group name. Then appends the base pages (channels, animation,
+/// master, audio, clocks, strobe).
 ///
 /// Groups whose fixture type has no template are skipped with a warning.
-pub fn generate_layout<'a>(
-    groups: impl Iterator<Item = GroupEntry<'a>>,
-    output_path: &Path,
-) -> Result<()> {
+pub fn assemble_layout<'a>(groups: impl Iterator<Item = GroupEntry<'a>>) -> Result<Layout> {
     let mut tabpages = Vec::new();
 
     for GroupEntry {
@@ -57,7 +52,7 @@ pub fn generate_layout<'a>(
             .next()
             .ok_or_else(|| anyhow!("template for '{fixture_type}' has no pages"))?;
 
-        set_group_name(&mut page, group_name);
+        page.set_group_name(group_name);
         tabpages.push(page);
     }
 
@@ -65,13 +60,20 @@ pub fn generate_layout<'a>(
     let base = load_base_template().context("failed to load base template")?;
     tabpages.extend(base.tabpages);
 
-    let layout = Layout {
+    Ok(Layout {
         version: "17".to_string(),
         mode: "1".to_string(),
         orientation: Orientation::Vertical,
         tabpages,
-    };
+    })
+}
 
+/// Generate a complete TouchOSC layout file for a show and write it to disk.
+pub fn generate_layout<'a>(
+    groups: impl Iterator<Item = GroupEntry<'a>>,
+    output_path: &Path,
+) -> Result<()> {
+    let layout = assemble_layout(groups)?;
     write_touchosc(&layout, output_path)
         .with_context(|| format!("failed to write layout to {}", output_path.display()))
 }

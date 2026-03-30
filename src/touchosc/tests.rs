@@ -156,7 +156,7 @@ fn set_group_name_identity() {
         let original_xml = extract_xml(&path);
 
         let mut page = layout.tabpages[0].clone();
-        set_group_name(&mut page, fixture_type);
+        page.set_group_name(fixture_type);
 
         let mut modified_layout = layout.clone();
         modified_layout.tabpages[0] = page;
@@ -183,7 +183,7 @@ fn set_group_name_renames_addresses() {
     assert!(addrs.iter().all(|a| a.starts_with("/Color/")));
 
     // Rename to "FrontWash".
-    set_group_name(&mut page, "FrontWash");
+    page.set_group_name("FrontWash");
 
     assert_eq!(page.name, "FrontWash");
     for ctrl in &page.controls {

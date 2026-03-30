@@ -13,6 +13,7 @@ mod derby {
     #[derive(Debug, PatchFixture, Control, DescribeControls, Update, EmitState)]
     #[channel_count = 9]
     #[strobe(Short)]
+    #[no_touchosc_template]
     pub struct SwarmolonDerby {
         #[channel_control]
         shutter: ChannelLevelBool<Bool<()>>,
@@ -71,6 +72,7 @@ mod strobe {
     #[derive(Debug, PatchFixture, Control, DescribeControls, Update, EmitState)]
     #[channel_count = 9]
     #[strobe(Short)]
+    #[no_touchosc_template]
     pub struct SwarmolonStrobe {
         #[channel_control]
         pattern_select: ChannelKnobUnipolar<Unipolar<()>>,
@@ -112,6 +114,7 @@ mod lasers {
     #[derive(Debug, PatchFixture, Control, DescribeControls, Update, EmitState)]
     #[channel_count = 9]
     #[strobe(Short)]
+    #[no_touchosc_template]
     pub struct SwarmolonLasers {
         #[channel_control]
         shutter: ChannelLevelBool<Bool<()>>,

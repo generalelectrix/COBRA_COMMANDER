@@ -71,8 +71,8 @@ pub fn parse_xml(xml: &str) -> Result<Layout> {
                         let osc_cs = attr_val(&attrs, "osc_cs")
                             .map(|v| decode_b64(&v))
                             .transpose()?;
-                        let li = parse_label_style(&attrs, "li");
-                        let la = parse_label_style(&attrs, "la");
+                        let li = parse_label_style(&attrs, "li")?;
+                        let la = parse_label_style(&attrs, "la")?;
                         current_tabpage = Some(TabPage {
                             name,
                             scalef: attr_val(&attrs, "scalef").unwrap_or_default(),
@@ -173,21 +173,23 @@ fn decode_b64(s: &str) -> Result<String> {
     String::from_utf8(bytes).with_context(|| format!("base64 decoded to invalid UTF-8: {s}"))
 }
 
-fn parse_label_style(attrs: &[(String, String)], prefix: &str) -> Option<LabelStyle> {
+fn parse_label_style(attrs: &[(String, String)], prefix: &str) -> Result<Option<LabelStyle>> {
     let t_key = format!("{prefix}_t");
     let c_key = format!("{prefix}_c");
     let s_key = format!("{prefix}_s");
     let o_key = format!("{prefix}_o");
     let b_key = format!("{prefix}_b");
 
-    let t = attr_val(attrs, &t_key)?;
-    Some(LabelStyle {
-        t: decode_b64(&t).unwrap_or(t),
+    let Some(t) = attr_val(attrs, &t_key) else {
+        return Ok(None);
+    };
+    Ok(Some(LabelStyle {
+        t: decode_b64(&t)?,
         c: attr_val(attrs, &c_key).unwrap_or_default(),
         s: attr_val(attrs, &s_key).unwrap_or_default(),
         o: attr_val(attrs, &o_key).unwrap_or_default(),
         b: attr_val(attrs, &b_key).unwrap_or_default(),
-    })
+    }))
 }
 
 /// Parse a control element from its raw attributes.
@@ -201,8 +203,8 @@ fn parse_label_style(attrs: &[(String, String)], prefix: &str) -> Option<LabelSt
 ///   - type: the control type
 ///   - Extra attrs: everything after type
 ///
-/// Coordinates are stored as-is from the XML. The XML coordinate system
-/// matches the editor: x is horizontal (left→right), y is vertical (top→bottom).
+/// Coordinates are stored as raw XML portrait values — see CLAUDE.md
+/// for how these map to the landscape editor view.
 fn parse_control(attrs: &[(String, String)]) -> Result<Control> {
     let name = decode_b64(&attr_val(attrs, "name").context("control missing name")?)?;
     let x: i32 = attr_val(attrs, "x").context("control missing x")?.parse()?;
