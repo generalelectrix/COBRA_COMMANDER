@@ -1,4 +1,3 @@
-mod extract;
 mod model;
 mod parse;
 mod serialize;

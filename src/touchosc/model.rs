@@ -62,30 +62,9 @@ pub struct Control {
 }
 
 impl Control {
-    /// Get the decoded OSC address, if present.
-    pub fn osc_address(&self) -> Option<&str> {
-        self.mid_attrs
-            .iter()
-            .find(|(k, _)| k == "osc_cs")
-            .map(|(_, v)| v.as_str())
-    }
-
-    /// Get the OSC group prefix (first path component), if present.
-    pub fn osc_group(&self) -> Option<&str> {
-        self.osc_address()
-            .and_then(|addr| addr.trim_start_matches('/').split('/').next())
-    }
-
     /// Returns true if this is a label control (labelv or labelh).
     pub fn is_label(&self) -> bool {
         self.control_type == "labelv" || self.control_type == "labelh"
-    }
-
-    /// Check if this control's center falls within the given bounding box.
-    pub fn center_within(&self, x: i32, y: i32, w: i32, h: i32) -> bool {
-        let cx = self.x + self.w / 2;
-        let cy = self.y + self.h / 2;
-        cx >= x && cx <= x + w && cy >= y && cy <= y + h
     }
 }
 
