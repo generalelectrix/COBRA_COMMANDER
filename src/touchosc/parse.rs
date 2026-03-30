@@ -10,10 +10,15 @@ use super::model::*;
 
 /// Parse a .touchosc file from disk.
 pub fn parse_touchosc(path: &Path) -> Result<Layout> {
-    let file = std::fs::File::open(path)
-        .with_context(|| format!("failed to open {}", path.display()))?;
-    let mut archive = zip::ZipArchive::new(file)
-        .with_context(|| format!("failed to read ZIP from {}", path.display()))?;
+    let bytes = std::fs::read(path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    parse_touchosc_bytes(&bytes)
+}
+
+/// Parse a .touchosc file from in-memory bytes (ZIP archive).
+pub fn parse_touchosc_bytes(bytes: &[u8]) -> Result<Layout> {
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
+        .context("failed to read ZIP archive")?;
     let mut index = archive
         .by_name("index.xml")
         .context("ZIP archive missing index.xml")?;

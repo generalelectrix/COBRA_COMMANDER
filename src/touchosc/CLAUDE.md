@@ -91,4 +91,4 @@ the editor. This was abandoned because:
 4. The existing fixture layouts parsed from templates work correctly as-is
 
 The tradeoff is that code creating new controls needs to think in rotated
-coordinates, but this is documented and verified by the `write_corner_test` test.
+coordinates, but this is documented above and was verified empirically.
