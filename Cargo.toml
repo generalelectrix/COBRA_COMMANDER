@@ -44,6 +44,9 @@ enum_dispatch = "0.3.13"
 url = { version = "*", features = ["serde"] }
 termion = "4.0.5"
 owo-colors = "4.2.3"
+quick-xml = "0.37"
+zip = "2"
+base64 = "0.22"
 
 [dev-dependencies]
 typetag = "0.2"
