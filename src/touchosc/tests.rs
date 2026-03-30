@@ -2,6 +2,7 @@ use std::io::Read;
 use std::path::Path;
 
 use super::*;
+use super::parse::extract_xml_from_zip;
 
 /// Path to the touchosc templates directory.
 fn touchosc_dir() -> &'static Path {
@@ -194,4 +195,56 @@ fn set_group_name_renames_addresses() {
             );
         }
     }
+}
+
+#[test]
+fn layout_server_serves_xml() {
+    let zip_bytes: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/touchosc/base.touchosc"
+    ));
+    let expected_xml = extract_xml_from_zip(zip_bytes).unwrap();
+
+    let server = serve::LayoutServer::start("TestLayout".to_string(), zip_bytes).unwrap();
+
+    // Give the server thread a moment to start accepting.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Make a raw HTTP request and check the response.
+    let mut stream = std::net::TcpStream::connect("127.0.0.1:9658").unwrap();
+    std::io::Write::write_all(
+        &mut stream,
+        b"GET / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    )
+    .unwrap();
+
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+
+    let header_end = response
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .expect("no header/body separator");
+    let headers = std::str::from_utf8(&response[..header_end]).unwrap();
+    let body = &response[header_end + 4..];
+
+    // Verify headers.
+    assert!(
+        headers.contains("Content-Type: application/touchosc"),
+        "missing content type header: {headers}"
+    );
+    assert!(
+        headers.contains("Content-Disposition: attachment; filename=\"TestLayout.touchosc\""),
+        "missing or wrong content disposition header: {headers}"
+    );
+
+    // Verify body is the raw XML, not the ZIP.
+    assert!(
+        body.starts_with(b"<?xml"),
+        "body should be raw XML, got: {:?}",
+        &body[..20.min(body.len())]
+    );
+    assert_eq!(body, expected_xml.as_slice(), "body doesn't match expected XML");
+
+    server.stop().unwrap();
 }

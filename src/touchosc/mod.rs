@@ -2,7 +2,6 @@ mod generate;
 mod model;
 mod parse;
 mod serialize;
-#[expect(unused)]
 pub mod serve;
 mod templates;
 
