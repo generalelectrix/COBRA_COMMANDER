@@ -1,24 +1,24 @@
 use std::io::{Cursor, Read};
 use std::path::Path;
 
+use super::model::*;
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use quick_xml::Reader;
 use quick_xml::events::Event;
-use super::model::*;
 
 /// Parse a .touchosc file from disk.
 pub fn parse_touchosc(path: &Path) -> Result<Layout> {
-    let bytes = std::fs::read(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let bytes =
+        std::fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     parse_touchosc_bytes(&bytes)
 }
 
 /// Parse a .touchosc file from in-memory bytes (ZIP archive).
 pub fn parse_touchosc_bytes(bytes: &[u8]) -> Result<Layout> {
-    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
-        .context("failed to read ZIP archive")?;
+    let mut archive =
+        zip::ZipArchive::new(Cursor::new(bytes)).context("failed to read ZIP archive")?;
     let mut index = archive
         .by_name("index.xml")
         .context("ZIP archive missing index.xml")?;
@@ -66,8 +66,8 @@ pub fn parse_xml(xml: &str) -> Result<Layout> {
                     }
                     "tabpage" => {
                         let attrs = parse_raw_attrs(e.attributes())?;
-                        let name = decode_b64(&attr_val(&attrs, "name")
-                            .context("tabpage missing name")?)?;
+                        let name =
+                            decode_b64(&attr_val(&attrs, "name").context("tabpage missing name")?)?;
                         let osc_cs = attr_val(&attrs, "osc_cs")
                             .map(|v| decode_b64(&v))
                             .transpose()?;
@@ -99,10 +99,7 @@ pub fn parse_xml(xml: &str) -> Result<Layout> {
                         let raw = std::str::from_utf8(e.as_ref())?;
                         // raw looks like: `midi var ="x" type="1" ...`
                         // Strip the tag name prefix to get just the attrs
-                        let raw_attrs = raw
-                            .strip_prefix("midi ")
-                            .unwrap_or(raw)
-                            .to_string();
+                        let raw_attrs = raw.strip_prefix("midi ").unwrap_or(raw).to_string();
                         if let Some(ref mut ctrl) = current_control {
                             ctrl.midi_bindings.push(MidiBinding { raw_attrs });
                         }
@@ -207,21 +204,11 @@ fn parse_label_style(attrs: &[(String, String)], prefix: &str) -> Option<LabelSt
 /// Coordinates are stored as-is from the XML. The XML coordinate system
 /// matches the editor: x is horizontal (left→right), y is vertical (top→bottom).
 fn parse_control(attrs: &[(String, String)]) -> Result<Control> {
-    let name = decode_b64(
-        &attr_val(attrs, "name").context("control missing name")?,
-    )?;
-    let x: i32 = attr_val(attrs, "x")
-        .context("control missing x")?
-        .parse()?;
-    let y: i32 = attr_val(attrs, "y")
-        .context("control missing y")?
-        .parse()?;
-    let w: i32 = attr_val(attrs, "w")
-        .context("control missing w")?
-        .parse()?;
-    let h: i32 = attr_val(attrs, "h")
-        .context("control missing h")?
-        .parse()?;
+    let name = decode_b64(&attr_val(attrs, "name").context("control missing name")?)?;
+    let x: i32 = attr_val(attrs, "x").context("control missing x")?.parse()?;
+    let y: i32 = attr_val(attrs, "y").context("control missing y")?.parse()?;
+    let w: i32 = attr_val(attrs, "w").context("control missing w")?.parse()?;
+    let h: i32 = attr_val(attrs, "h").context("control missing h")?.parse()?;
     let color = attr_val(attrs, "color").context("control missing color")?;
     let control_type = attr_val(attrs, "type").context("control missing type")?;
 

@@ -5,7 +5,9 @@ use super::*;
 
 /// Path to the touchosc templates directory.
 fn touchosc_dir() -> &'static Path {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("touchosc").leak()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("touchosc")
+        .leak()
 }
 
 /// Extract the raw XML from a .touchosc file for comparison.
@@ -78,10 +80,22 @@ fn round_trip_all_templates() {
 #[test]
 fn generate_layout_from_patch() {
     let groups = vec![
-        GroupEntry { group_name: "Front", fixture_type: "Color" },
-        GroupEntry { group_name: "Top", fixture_type: "Color" },
-        GroupEntry { group_name: "TriPhase", fixture_type: "TriPhase" },
-        GroupEntry { group_name: "Starlight", fixture_type: "Starlight" },
+        GroupEntry {
+            group_name: "Front",
+            fixture_type: "Color",
+        },
+        GroupEntry {
+            group_name: "Top",
+            fixture_type: "Color",
+        },
+        GroupEntry {
+            group_name: "TriPhase",
+            fixture_type: "TriPhase",
+        },
+        GroupEntry {
+            group_name: "Starlight",
+            fixture_type: "Starlight",
+        },
     ];
 
     let output_path = touchosc_dir().join("test.touchosc");

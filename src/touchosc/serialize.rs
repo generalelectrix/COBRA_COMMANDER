@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use zip::write::SimpleFileOptions;
@@ -14,8 +14,7 @@ pub fn write_touchosc(layout: &Layout, path: &Path) -> Result<()> {
     let file = std::fs::File::create(path)
         .with_context(|| format!("failed to create {}", path.display()))?;
     let mut zip = zip::ZipWriter::new(file);
-    let options = SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     zip.start_file("index.xml", options)?;
     zip.write_all(xml.as_bytes())?;
     zip.finish()?;

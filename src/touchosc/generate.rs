@@ -30,7 +30,11 @@ pub fn generate_layout<'a>(
 ) -> Result<()> {
     let mut tabpages = Vec::new();
 
-    for GroupEntry { group_name, fixture_type } in groups {
+    for GroupEntry {
+        group_name,
+        fixture_type,
+    } in groups
+    {
         let template = match load_group_template(fixture_type) {
             Some(Ok(layout)) => layout,
             Some(Err(e)) => {

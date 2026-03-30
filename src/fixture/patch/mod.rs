@@ -834,8 +834,7 @@ mod test {
                         continue;
                     }
                     let options = Options::from_entries(
-                        menu.iter()
-                            .map(|(k, opt)| (k.clone(), opt.example_value())),
+                        menu.iter().map(|(k, opt)| (k.clone(), opt.example_value())),
                     );
                     match (patcher.create_group)(key.clone(), options) {
                         Ok(g) => g,
@@ -845,10 +844,8 @@ mod test {
             };
 
             let controls = group.describe_controls();
-            let api_addrs: BTreeSet<String> = controls
-                .iter()
-                .flat_map(expand_control_addresses)
-                .collect();
+            let api_addrs: BTreeSet<String> =
+                controls.iter().flat_map(expand_control_addresses).collect();
 
             // Load the template and extract OSC addresses.
             let layout = match crate::touchosc::load_group_template(name) {
@@ -875,24 +872,16 @@ mod test {
                 continue;
             }
 
-            let in_api_not_template: BTreeSet<_> =
-                api_addrs.difference(&template_addrs).collect();
-            let in_template_not_api: BTreeSet<_> =
-                template_addrs.difference(&api_addrs).collect();
+            let in_api_not_template: BTreeSet<_> = api_addrs.difference(&template_addrs).collect();
+            let in_template_not_api: BTreeSet<_> = template_addrs.difference(&api_addrs).collect();
 
             if !in_api_not_template.is_empty() || !in_template_not_api.is_empty() {
                 let mut msg = format!("{name}:");
                 if !in_api_not_template.is_empty() {
-                    msg += &format!(
-                        "\n  in API but not template: {:?}",
-                        in_api_not_template
-                    );
+                    msg += &format!("\n  in API but not template: {:?}", in_api_not_template);
                 }
                 if !in_template_not_api.is_empty() {
-                    msg += &format!(
-                        "\n  in template but not API: {:?}",
-                        in_template_not_api
-                    );
+                    msg += &format!("\n  in template but not API: {:?}", in_template_not_api);
                 }
                 mismatches.push(msg);
             }
