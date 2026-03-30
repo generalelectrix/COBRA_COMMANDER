@@ -15,17 +15,24 @@ pub fn parse_touchosc(path: &Path) -> Result<Layout> {
     parse_touchosc_bytes(&bytes)
 }
 
-/// Parse a .touchosc file from in-memory bytes (ZIP archive).
-pub fn parse_touchosc_bytes(bytes: &[u8]) -> Result<Layout> {
+/// Extract the raw index.xml bytes from a .touchosc ZIP archive.
+pub fn extract_xml_from_zip(zip_bytes: &[u8]) -> Result<Vec<u8>> {
     let mut archive =
-        zip::ZipArchive::new(Cursor::new(bytes)).context("failed to read ZIP archive")?;
+        zip::ZipArchive::new(Cursor::new(zip_bytes)).context("failed to read ZIP archive")?;
     let mut index = archive
         .by_name("index.xml")
         .context("ZIP archive missing index.xml")?;
-    let mut xml = String::new();
+    let mut xml = Vec::new();
     index
-        .read_to_string(&mut xml)
+        .read_to_end(&mut xml)
         .context("failed to read index.xml from ZIP")?;
+    Ok(xml)
+}
+
+/// Parse a .touchosc file from in-memory bytes (ZIP archive).
+pub fn parse_touchosc_bytes(bytes: &[u8]) -> Result<Layout> {
+    let xml = extract_xml_from_zip(bytes)?;
+    let xml = String::from_utf8(xml).context("index.xml is not valid UTF-8")?;
     parse_xml(&xml)
 }
 
