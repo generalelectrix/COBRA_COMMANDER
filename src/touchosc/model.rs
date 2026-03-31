@@ -132,3 +132,79 @@ impl Control {
 pub struct MidiBinding {
     pub raw_attrs: String,
 }
+
+/// Raw bytes of a `.touchosc` file (a ZIP archive containing `index.xml`).
+///
+/// Wraps either owned or borrowed bytes. Use `From<Vec<u8>>` or
+/// `From<&'static [u8]>` to construct, or the struct literal for statics.
+#[derive(Debug, Clone)]
+pub struct TouchOscZip(pub std::borrow::Cow<'static, [u8]>);
+
+impl From<Vec<u8>> for TouchOscZip {
+    fn from(v: Vec<u8>) -> Self {
+        Self(std::borrow::Cow::Owned(v))
+    }
+}
+
+impl From<&'static [u8]> for TouchOscZip {
+    fn from(s: &'static [u8]) -> Self {
+        Self(std::borrow::Cow::Borrowed(s))
+    }
+}
+
+impl TouchOscZip {
+    /// Extract the raw XML from this ZIP archive.
+    pub fn extract_xml(&self) -> anyhow::Result<TouchOscXml> {
+        use anyhow::Context;
+        use std::io::{Cursor, Read};
+        let mut archive = zip::ZipArchive::new(Cursor::new(self.0.as_ref()))
+            .context("failed to read ZIP archive")?;
+        let mut index = archive
+            .by_name("index.xml")
+            .context("ZIP archive missing index.xml")?;
+        let mut xml = Vec::new();
+        index
+            .read_to_end(&mut xml)
+            .context("failed to read index.xml from ZIP")?;
+        Ok(TouchOscXml(xml))
+    }
+
+    /// Parse this ZIP into a Layout.
+    pub fn parse(&self) -> anyhow::Result<Layout> {
+        use anyhow::Context;
+        let xml = self.extract_xml()?;
+        let xml = String::from_utf8(xml.0).context("index.xml is not valid UTF-8")?;
+        super::parse::parse_xml(&xml)
+    }
+}
+
+/// Raw XML content extracted from a `.touchosc` file.
+#[derive(Debug, Clone)]
+pub struct TouchOscXml(pub Vec<u8>);
+
+impl Layout {
+    /// Serialize this layout to in-memory .touchosc ZIP bytes.
+    pub fn to_zip(&self) -> anyhow::Result<TouchOscZip> {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        let xml = super::serialize::serialize_xml(self);
+        let mut buf = std::io::Cursor::new(Vec::new());
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            zip.start_file("index.xml", options)?;
+            zip.write_all(xml.as_bytes())?;
+            zip.finish()?;
+        }
+        Ok(TouchOscZip::from(buf.into_inner()))
+    }
+
+    /// Write this layout to a .touchosc file on disk.
+    pub fn write(&self, path: &std::path::Path) -> anyhow::Result<()> {
+        use anyhow::Context;
+        let zip = self.to_zip()?;
+        std::fs::write(path, &zip.0).with_context(|| format!("failed to write {}", path.display()))
+    }
+}

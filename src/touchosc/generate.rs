@@ -1,10 +1,8 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use log::warn;
 
 use super::model::*;
-use super::serialize::write_touchosc;
 use super::templates::{load_base_template, load_group_template};
 
 /// A fixture group entry for layout generation.
@@ -70,6 +68,7 @@ pub fn generate_layout<'a>(
     output_path: &Path,
 ) -> Result<()> {
     let layout = assemble_layout(groups)?;
-    write_touchosc(&layout, output_path)
+    layout
+        .write(output_path)
         .with_context(|| format!("failed to write layout to {}", output_path.display()))
 }

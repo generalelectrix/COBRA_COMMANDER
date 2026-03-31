@@ -1,7 +1,6 @@
 use std::io::Read;
 use std::path::Path;
 
-use super::parse::extract_xml_from_zip;
 use super::*;
 
 /// Path to the touchosc templates directory.
@@ -199,13 +198,11 @@ fn set_group_name_renames_addresses() {
 
 #[test]
 fn layout_server_serves_xml() {
-    let zip_bytes: &[u8] = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/touchosc/base.touchosc"
-    ));
-    let expected_xml = extract_xml_from_zip(zip_bytes).unwrap();
+    use super::templates::BASE_TEMPLATE;
+    let zip = &BASE_TEMPLATE;
+    let expected_xml = zip.extract_xml().unwrap();
 
-    let server = serve::LayoutServer::start("TestLayout".to_string(), zip_bytes).unwrap();
+    let server = serve::LayoutServer::start("TestLayout".to_string(), &zip).unwrap();
 
     // Give the server thread a moment to start accepting.
     std::thread::sleep(std::time::Duration::from_millis(50));
@@ -242,7 +239,7 @@ fn layout_server_serves_xml() {
     );
     assert_eq!(
         body,
-        expected_xml.as_slice(),
+        expected_xml.0.as_slice(),
         "body doesn't match expected XML"
     );
 

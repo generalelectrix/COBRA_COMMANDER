@@ -104,7 +104,9 @@ fn register_template_impl(ident: &Ident) -> proc_macro2::TokenStream {
         #[linkme::distributed_slice(crate::touchosc::TEMPLATES)]
         static TOUCHOSC_TEMPLATE: crate::touchosc::TemplateEntry = crate::touchosc::TemplateEntry {
             name: #name,
-            bytes: include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), #file_path)),
+            zip: crate::touchosc::TouchOscZip(std::borrow::Cow::Borrowed(
+                include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), #file_path)),
+            )),
         };
     }
 }

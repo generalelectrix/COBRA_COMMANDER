@@ -6,13 +6,10 @@ pub mod serve;
 mod templates;
 
 pub use generate::{GroupEntry, generate_layout};
-#[expect(unused)]
 pub use model::*;
 pub use parse::parse_touchosc;
 #[expect(unused)]
-pub use parse::parse_touchosc_bytes;
-#[expect(unused)]
-pub use serialize::write_touchosc;
+pub use templates::BASE_TEMPLATE;
 #[expect(unused)]
 pub use templates::load_base_template;
 pub use templates::{TEMPLATES, TemplateEntry, load_group_template};

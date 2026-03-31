@@ -6,7 +6,7 @@ use log::{error, info};
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tiny_http::{Header, Response, Server};
 
-use super::parse::extract_xml_from_zip;
+use super::model::TouchOscZip;
 
 const PORT: u16 = 9658;
 const SERVICE_TYPE: &str = "_touchosceditor._tcp.local.";
@@ -28,13 +28,12 @@ impl LayoutServer {
     /// Start serving the given layout.
     ///
     /// `layout_name` is the name presented to clients (appears as the filename
-    /// in the download). `touchosc_zip` is the raw `.touchosc` file bytes (a
-    /// ZIP archive containing `index.xml`).
+    /// in the download).
     ///
     /// Registers a `_touchosceditor._tcp` mDNS service and spawns a thread
     /// to handle HTTP requests. Returns immediately.
-    pub fn start(layout_name: String, touchosc_zip: &[u8]) -> Result<Self> {
-        let layout_xml = extract_xml_from_zip(touchosc_zip)?;
+    pub fn start(layout_name: String, zip: &TouchOscZip) -> Result<Self> {
+        let layout_xml = zip.extract_xml()?;
 
         let http_server = Arc::new(
             Server::http(format!("0.0.0.0:{PORT}"))
@@ -69,7 +68,7 @@ impl LayoutServer {
 
         let server = Arc::clone(&http_server);
         let thread = thread::spawn(move || {
-            serve_loop(&server, &layout_xml, &layout_name);
+            serve_loop(&server, &layout_xml.0, &layout_name);
         });
 
         Ok(Self {
