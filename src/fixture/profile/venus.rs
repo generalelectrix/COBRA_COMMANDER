@@ -25,6 +25,7 @@ use crate::fixture::prelude::*;
 /// 8 - Lamp Control
 #[derive(Debug, PatchFixture)]
 #[channel_count = 8]
+#[no_touchosc_template]
 pub struct Venus {
     controls: GroupControlMap<ControlMessage>,
     base_rotation: RampingParameter<BipolarFloat>,

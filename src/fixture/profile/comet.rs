@@ -5,6 +5,7 @@ use crate::{fixture::prelude::*, osc::OscControlMessage, util::unipolar_to_range
 #[derive(Debug, EmitState, Control, DescribeControls, PatchFixture)]
 #[channel_count = 5]
 #[strobe(Long)]
+#[no_touchosc_template]
 pub struct Comet {
     shutter_open: ChannelLevelBool<BoolChannel>,
     trigger_state: TriggerState,

@@ -37,6 +37,7 @@ mod osc;
 mod preview;
 mod show;
 mod strobe;
+mod touchosc;
 mod util;
 mod wled;
 

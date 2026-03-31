@@ -120,6 +120,7 @@ impl AnimatedFixture for FlashBang {
 }
 
 register_patcher!(FlashBang);
+register_touchosc_template!(FlashBang);
 
 fn chases_for_single() -> Result<Chases<5>> {
     const CELLS: usize = 5;

@@ -85,6 +85,7 @@ pub mod prelude {
     pub use anyhow::bail;
     pub use fixture_macros::{
         Control, DescribeControls, EmitState, OptionsMenu, PatchFixture, Update, register_patcher,
+        register_touchosc_template,
     };
     pub use number::{BipolarFloat, Phase, UnipolarFloat};
     pub use serde::Deserialize;
