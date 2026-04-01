@@ -33,9 +33,6 @@ pub(crate) enum Command {
     /// Check that the provided patch file is valid, then quit.
     Check(CheckArgs),
 
-    /// Run the animation visualizer.
-    Viz,
-
     /// Get fixture info.
     Fix(FixArgs),
 }
@@ -55,10 +52,6 @@ pub(crate) struct RunArgs {
     #[arg(long)]
     pub artnet: bool,
 
-    /// If true, use the last channel fader as a master strobe control.
-    #[arg(long)]
-    pub master_strobe_channel: bool,
-
     /// The port on which to listen for OSC messages.
     #[arg(long, default_value_t = 8000)]
     pub osc_receive_port: u16,
@@ -66,6 +59,10 @@ pub(crate) struct RunArgs {
     /// If true, render fixture preview into the CLI.
     #[arg(long)]
     pub cli_preview: bool,
+
+    /// If true, use egui GUI for configuration instead of the CLI.
+    #[arg(long)]
+    pub gui: bool,
 }
 
 #[derive(Args)]
@@ -93,7 +90,6 @@ pub(crate) fn run_cli_configuration(client: CommandClient, universe_count: usize
     let internal_clocks = offer_action(&client, prompt_configure_clocks)?;
     offer_action(&client, |c| prompt_configure_midi(c, internal_clocks))?;
     offer_action(&client, |c| prompt_assign_dmx_ports(c, universe_count))?;
-    offer_action(&client, prompt_start_animation_visualizer)?;
     println!("Show configuration complete.");
     Ok(())
 }
@@ -118,17 +114,12 @@ fn offer_action<T>(
 
 fn prompt_configure_clocks(client: &CommandClient) -> Result<bool> {
     if let Some(service) = prompt_start_clock_service(client.zmq_ctx().clone())? {
-        client
-            .send_command(MetaCommand::UseClockService(service))?
-            .map_err(|e| anyhow::anyhow!(e))?;
+        client.send_command(MetaCommand::UseClockService(service))?;
         return Ok(false);
     }
     // Internal clocks — optionally configure audio input.
-    if let Some(device_name) = prompt_audio()? {
-        client
-            .send_command(MetaCommand::SetAudioDevice(device_name))?
-            .map_err(|e| anyhow::anyhow!(e))?;
-    }
+    let audio_device = prompt_audio()?;
+    client.send_command(MetaCommand::UseInternalClocks(audio_device))?;
     Ok(true)
 }
 
@@ -163,8 +154,7 @@ fn prompt_configure_midi(client: &CommandClient, internal_clocks: bool) -> Resul
 
     for spec in midi_devices {
         let device_name = spec.device.to_string();
-        let response = client.send_command(MetaCommand::AddMidiDevice(spec))?;
-        match &response {
+        match client.send_command(MetaCommand::AddMidiDevice(spec)) {
             Ok(()) => println!("  Added {device_name}."),
             Err(e) => println!("  Error adding {device_name}: {e}"),
         }
@@ -185,8 +175,7 @@ fn prompt_assign_dmx_ports(client: &CommandClient, universe_count: usize) -> Res
     for universe in 0..universe_count {
         println!("Assign port to universe {universe}:");
         let port = prompt_select_port(&mut ports)?;
-        let response = client.send_command(MetaCommand::AssignDmxPort { universe, port })?;
-        if let Err(e) = &response {
+        if let Err(e) = client.send_command(MetaCommand::AssignDmxPort { universe, port }) {
             println!("Error assigning universe {universe}: {e}");
         }
     }
@@ -223,13 +212,4 @@ fn prompt_select_port(ports: &mut Vec<Box<dyn DmxPort>>) -> Result<Box<dyn DmxPo
         }
         return Ok(ports.remove(index));
     }
-}
-
-fn prompt_start_animation_visualizer(client: &CommandClient) -> Result<()> {
-    if !prompt_bool("Start animation visualizer?")? {
-        return Ok(());
-    }
-    client
-        .send_command(MetaCommand::StartAnimationVisualizer)?
-        .map_err(|e| anyhow::anyhow!(e))
 }

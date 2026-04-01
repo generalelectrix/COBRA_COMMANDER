@@ -40,7 +40,7 @@ mod osc_control_test {
     use crate::channel::mock::no_op_emitter;
     use crate::config::{FixtureGroupKey, Options};
     use crate::fixture::control::{OscControlDescription, OscControlType};
-    use crate::fixture::patch::PATCHERS;
+    use crate::fixture::patch::{PATCHERS, PatchOption};
     use crate::osc::{OscClientId, OscControlMessage};
 
     /// Fixtures that cannot be constructed from their declared options menu alone.
@@ -94,6 +94,31 @@ mod osc_control_test {
                     (format!("{}/{}/{}", base, x, y), OscType::Float(1.0))
                 })
                 .collect(),
+        }
+    }
+
+    fn check_no_empty_select(opt: &PatchOption, context: &str) {
+        match opt {
+            PatchOption::Select(choices) => {
+                assert!(
+                    choices.iter().all(|c| !c.is_empty()),
+                    "{context}: Select option must not contain empty string variants"
+                );
+            }
+            PatchOption::Optional(inner) => check_no_empty_select(inner, context),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn no_select_option_has_empty_string() {
+        for patcher in PATCHERS {
+            for (key, opt) in (patcher.group_options)() {
+                check_no_empty_select(&opt, &format!("{}::group::{key}", patcher.name));
+            }
+            for (key, opt) in (patcher.patch_options)() {
+                check_no_empty_select(&opt, &format!("{}::patch::{key}", patcher.name));
+            }
         }
     }
 

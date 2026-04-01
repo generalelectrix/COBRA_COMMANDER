@@ -1,0 +1,4 @@
+#!/bin/sh
+# Auto-format with cargo fmt and stage the results.
+cargo fmt
+git diff --name-only --diff-filter=d | xargs -r git add

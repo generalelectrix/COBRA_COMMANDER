@@ -8,29 +8,31 @@ use midi::Device;
 use midi_harness::install_midi_device_change_handler;
 use rust_dmx::{DmxPort, OfflineDmxPort, available_ports};
 use simplelog::{Config as LogConfig, SimpleLogger};
+use std::sync::Arc;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 use tunnels::midi::list_ports;
 use zmq::Context;
 
-use crate::animation_visualizer::run_animation_visualizer;
 use crate::cli::*;
 use crate::control::{CommandClient, Controller};
+use crate::gui_state::{ClockStatus, GuiState, SharedGuiState};
 use crate::midi::ControlHandler;
 use crate::preview::Previewer;
 use crate::show::Show;
 
 mod animation;
-mod animation_visualizer;
 mod channel;
 mod cli;
 mod clock_service;
 mod clocks;
 mod color;
 mod config;
+mod config_gui;
 mod control;
 mod dmx;
 mod fixture;
+mod gui_state;
 mod master;
 mod midi;
 mod osc;
@@ -38,6 +40,7 @@ mod preview;
 mod show;
 mod strobe;
 mod touchosc;
+mod ui_util;
 mod util;
 mod wled;
 
@@ -55,7 +58,6 @@ fn main() -> Result<()> {
     match args.command {
         Command::Run(args) => run_show(args),
         Command::Check(args) => check_patch(args),
-        Command::Viz => run_animation_visualizer(),
         Command::Fix(args) => fixture_help(args),
     }
 }
@@ -63,11 +65,7 @@ fn main() -> Result<()> {
 const ARTNET_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn run_show(args: RunArgs) -> Result<()> {
-    let patch = Patch::from_file(&args.patch_file)?;
-
     let zmq_ctx = Context::new();
-
-    let clocks = Clocks::internal(None);
 
     match local_ip() {
         Ok(ip) => println!("Listening for OSC at {}:{}.", ip, args.osc_receive_port),
@@ -79,6 +77,60 @@ fn run_show(args: RunArgs) -> Result<()> {
 
     // NOTE: this MUST be called before any other MIDI functions.
     install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
+
+    if args.gui && !args.quickstart {
+        // GUI mode: egui on main thread, Show on worker thread.
+        let gui_client = command_client.clone();
+        let gui_zmq = zmq_ctx.clone();
+
+        let osc_listen_addr = match local_ip() {
+            Ok(ip) => format!("{ip}:{}", args.osc_receive_port),
+            Err(_) => format!("0.0.0.0:{}", args.osc_receive_port),
+        };
+
+        let controller = Controller::new(
+            args.osc_receive_port,
+            vec![],
+            vec![],
+            send_control_msg,
+            recv_control_msg,
+        )?;
+        let osc_client_listener = controller.osc_client_listener();
+
+        let gui_state: SharedGuiState = Arc::new(GuiState::new(
+            vec![],
+            ClockStatus::Internal {
+                audio_device: "Offline".into(),
+            },
+            osc_listen_addr,
+            osc_client_listener,
+        ));
+        let show_gui_state = gui_state.clone();
+
+        std::thread::spawn(move || {
+            if let Err(e) = run_show_worker(args, controller, show_gui_state) {
+                error!("Show worker error: {e:#}");
+            }
+        });
+
+        config_gui::run_config_gui(gui_client, gui_zmq, gui_state)?;
+    } else {
+        // Non-GUI path: existing behavior unchanged.
+        run_show_inline(args, command_client, send_control_msg, recv_control_msg)?;
+    }
+
+    Ok(())
+}
+
+/// Build and run the show on the current thread (non-GUI path).
+fn run_show_inline(
+    args: RunArgs,
+    command_client: CommandClient,
+    send_control_msg: std::sync::mpsc::Sender<crate::control::ControlMessage>,
+    recv_control_msg: std::sync::mpsc::Receiver<crate::control::ControlMessage>,
+) -> Result<()> {
+    let patch = Patch::from_file(&args.patch_file)?;
+    let clocks = Clocks::internal(None);
 
     let midi_devices = if args.quickstart {
         let (midi_inputs, midi_outputs) = list_ports()?;
@@ -126,18 +178,29 @@ fn run_show(args: RunArgs) -> Result<()> {
             .collect()
     };
 
+    let osc_listen_addr = match local_ip() {
+        Ok(ip) => format!("{ip}:{}", args.osc_receive_port),
+        Err(_) => format!("0.0.0.0:{}", args.osc_receive_port),
+    };
+    let osc_client_listener = controller.osc_client_listener();
+
+    let gui_state: SharedGuiState = Arc::new(GuiState::new(
+        vec![],
+        clocks.status(),
+        osc_listen_addr,
+        osc_client_listener,
+    ));
+
     let mut show = Show::new(
         patch,
         args.patch_file,
         controller,
         dmx_ports,
         clocks,
-        None,
         args.cli_preview
             .then(Previewer::terminal)
             .unwrap_or_default(),
-        args.master_strobe_channel,
-        zmq_ctx,
+        gui_state,
     )?;
 
     if !args.quickstart {
@@ -150,7 +213,34 @@ fn run_show(args: RunArgs) -> Result<()> {
     }
 
     println!("Running show.");
+    show.run();
 
+    Ok(())
+}
+
+/// Build and run the show on a worker thread (GUI path).
+fn run_show_worker(args: RunArgs, controller: Controller, gui_state: SharedGuiState) -> Result<()> {
+    let patch = Patch::from_file(&args.patch_file)?;
+    let clocks = Clocks::internal(None);
+
+    let universe_count = patch.universe_count();
+    println!("This show requires {universe_count} universe(s).");
+
+    let dmx_ports: Vec<Box<dyn DmxPort>> = (0..universe_count)
+        .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+        .collect();
+
+    let mut show = Show::new(
+        patch,
+        args.patch_file,
+        controller,
+        dmx_ports,
+        clocks,
+        Previewer::default(),
+        gui_state,
+    )?;
+
+    println!("Running show.");
     show.run();
 
     Ok(())
