@@ -10,14 +10,30 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  controller:
-    runs-on: ubuntu-latest
-
+  fmt:
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Install system dependencies
+      - uses: actions/checkout@v5
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+  clippy:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and test
         run: |
-          sudo apt-get update
-          sudo apt-get install libasound2-dev libavahi-compat-libdnssd-dev libzmq3-dev pkg-config libfontconfig1-dev libudev-dev
-      - name: Run controller tests
-        run: cargo test
+          cargo build
+          cargo test
