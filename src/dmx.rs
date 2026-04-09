@@ -49,6 +49,22 @@ impl Add<usize> for DmxAddr {
 /// A data buffer for one DMX universe.
 pub type DmxBuffer = [u8; 512];
 
+/// A DMX universe: a port paired with its output buffer.
+pub struct DmxUniverse {
+    pub port: Box<dyn rust_dmx::DmxPort>,
+    pub buffer: DmxBuffer,
+}
+
+impl DmxUniverse {
+    /// Create a new universe with an offline port and zeroed buffer.
+    pub fn offline() -> Self {
+        Self {
+            port: Box::new(rust_dmx::OfflineDmxPort),
+            buffer: [0u8; 512],
+        }
+    }
+}
+
 /// Index into the DMX universes.
 pub type UniverseIdx = usize;
 

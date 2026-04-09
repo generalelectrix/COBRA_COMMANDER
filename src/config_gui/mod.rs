@@ -33,7 +33,6 @@ use eframe::egui;
 use local_ip_address::local_ip;
 use log::error;
 use midi_harness::install_midi_device_change_handler;
-use rust_dmx::{DmxPort, OfflineDmxPort};
 
 use crate::clocks::Clocks;
 use crate::control::{CommandClient, Controller};
@@ -226,7 +225,7 @@ impl eframe::App for ConsoleApp {
 /// the show, and runs the main console GUI.
 pub fn run_console(osc_receive_port: u16) -> Result<()> {
     // Phase 1: Welcome screen.
-    let welcome_result = welcome::run_welcome();
+    let welcome_result = welcome::run_welcome()?;
 
     let (show_file_path, initial_configs) = match welcome_result {
         WelcomeResult::LoadShow { path, configs } => (path, configs),
@@ -277,15 +276,15 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
             }
         };
         let universe_count = patch.universe_count();
-        let dmx_ports: Vec<Box<dyn DmxPort>> = (0..universe_count)
-            .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+        let dmx = (0..universe_count)
+            .map(|_| crate::dmx::DmxUniverse::offline())
             .collect();
         let clocks = Clocks::internal(None);
         let show = Show::new(
             patch,
             initial_configs,
             controller,
-            dmx_ports,
+            dmx,
             clocks,
             Previewer::default(),
             show_gui_state,
@@ -327,6 +326,6 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
             }))
         }),
     )
-    .expect("eframe console window failed");
+    .map_err(|e| anyhow::anyhow!("eframe console window failed: {e}"))?;
     Ok(())
 }

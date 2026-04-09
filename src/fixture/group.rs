@@ -18,7 +18,7 @@ use crate::channel::ChannelControlMessage;
 use crate::color::Hsluv;
 use crate::config::FixtureGroupKey;
 use crate::config::Options;
-use crate::dmx::DmxBuffer;
+use crate::dmx::DmxUniverse;
 use crate::fixture::FixtureGroupControls;
 use crate::fixture::fixture::FixtureGroupUpdate;
 use crate::master::MasterControls;
@@ -219,7 +219,7 @@ impl FixtureGroup {
     pub fn render(
         &self,
         master_controls: &MasterControls,
-        dmx_buffers: &mut [DmxBuffer],
+        dmx: &mut [DmxUniverse],
         preview: &Previewer,
     ) {
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
@@ -230,7 +230,7 @@ impl FixtureGroup {
                 continue;
             };
             let phase_offset = phase_offset_per_fixture * i as f64;
-            let Some(dmx_univ_buf) = dmx_buffers.get_mut(cfg.universe) else {
+            let Some(dmx_univ) = dmx.get_mut(cfg.universe) else {
                 error!(
                     "Universe index {} for patch {i} of {} is out of range.",
                     cfg.universe,
@@ -238,7 +238,7 @@ impl FixtureGroup {
                 );
                 continue;
             };
-            let dmx_buf = &mut dmx_univ_buf[dmx_index..dmx_index + cfg.channel_count];
+            let dmx_buf = &mut dmx_univ.buffer[dmx_index..dmx_index + cfg.channel_count];
             self.fixture.render(
                 phase_offset,
                 i,

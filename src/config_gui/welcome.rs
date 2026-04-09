@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use anyhow::Result;
 use eframe::egui;
 
 use crate::config::FixtureGroupConfig;
@@ -80,10 +81,11 @@ impl WelcomeApp {
             return;
         }
 
-        *self.result.lock().expect("welcome result lock") = Some(WelcomeResult::LoadShow {
-            path,
-            configs: show_file.patch,
-        });
+        *self.result.lock().expect("welcome result mutex poisoned") =
+            Some(WelcomeResult::LoadShow {
+                path,
+                configs: show_file.patch,
+            });
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 
@@ -102,13 +104,14 @@ impl WelcomeApp {
             return;
         }
 
-        *self.result.lock().expect("welcome result lock") = Some(WelcomeResult::NewShow { path });
+        *self.result.lock().expect("welcome result mutex poisoned") =
+            Some(WelcomeResult::NewShow { path });
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 }
 
 /// Run the welcome screen. Returns the user's choice.
-pub(crate) fn run_welcome() -> WelcomeResult {
+pub(crate) fn run_welcome() -> Result<WelcomeResult> {
     let result: Arc<Mutex<Option<WelcomeResult>>> = Arc::new(Mutex::new(None));
     let app_result = result.clone();
 
@@ -129,11 +132,11 @@ pub(crate) fn run_welcome() -> WelcomeResult {
             }))
         }),
     )
-    .expect("eframe welcome window failed");
+    .map_err(|e| anyhow::anyhow!("eframe welcome window failed: {e}"))?;
 
-    Arc::try_unwrap(result)
-        .expect("welcome result Arc still shared")
+    let inner = Arc::try_unwrap(result)
+        .map_err(|_| anyhow::anyhow!("welcome result Arc still shared"))?
         .into_inner()
-        .expect("welcome result lock")
-        .unwrap_or(WelcomeResult::Quit)
+        .expect("welcome result mutex poisoned");
+    Ok(inner.unwrap_or(WelcomeResult::Quit))
 }

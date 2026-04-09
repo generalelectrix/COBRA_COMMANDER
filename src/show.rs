@@ -9,7 +9,7 @@ use crate::{
     clocks::Clocks,
     color::Hsluv,
     control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
-    dmx::DmxBuffer,
+    dmx::DmxUniverse,
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
@@ -31,8 +31,7 @@ use rust_dmx::{DmxPort, OfflineDmxPort};
 
 pub struct Show {
     controller: Controller,
-    dmx_ports: Vec<Box<dyn DmxPort>>,
-    dmx_buffers: Vec<DmxBuffer>,
+    dmx: Vec<DmxUniverse>,
     patch: Patch,
     channels: Channels,
     master_controls: MasterControls,
@@ -55,7 +54,7 @@ impl Show {
         patch: Patch,
         initial_configs: Vec<crate::config::FixtureGroupConfig>,
         controller: Controller,
-        dmx_ports: Vec<Box<dyn DmxPort>>,
+        dmx: Vec<DmxUniverse>,
         clocks: Clocks,
         preview: Previewer,
         gui_state: SharedGuiState,
@@ -66,8 +65,7 @@ impl Show {
 
         let mut show = Self {
             controller,
-            dmx_buffers: vec![[0u8; 512]; dmx_ports.len()],
-            dmx_ports,
+            dmx,
             patch,
             channels,
             master_controls: Default::default(),
@@ -119,8 +117,8 @@ impl Show {
             // Render the state of the show.
             if should_render {
                 self.render();
-                for (port, buffer) in self.dmx_ports.iter_mut().zip(&self.dmx_buffers) {
-                    if let Err(e) = port.write(buffer) {
+                for univ in &mut self.dmx {
+                    if let Err(e) = univ.port.write(&univ.buffer) {
                         error!("DMX write error: {e:#}.");
                     }
                 }
@@ -184,7 +182,7 @@ impl Show {
                 Ok(GuiDirty::CLEAN)
             }
             MetaCommand::AssignDmxPort { universe, port } => {
-                assign_dmx_port(&mut self.dmx_ports, &mut self.dmx_buffers, universe, port)?;
+                assign_dmx_port(&mut self.dmx, universe, port)?;
                 Ok(GuiDirty::DMX_PORTS)
             }
             MetaCommand::ClearMidiDevice { slot_name } => {
@@ -261,19 +259,16 @@ impl Show {
         self.reconcile_submaster_wings()?;
         self.refresh_ui();
         let new_universe_count = self.patch.universe_count();
-        let current_len = self.dmx_ports.len();
+        let current_len = self.dmx.len();
         if new_universe_count > current_len {
             for _ in current_len..new_universe_count {
-                self.dmx_ports
-                    .push(Box::new(OfflineDmxPort) as Box<dyn DmxPort>);
-                self.dmx_buffers.push([0u8; 512]);
+                self.dmx.push(DmxUniverse::offline());
             }
         } else if new_universe_count < current_len {
-            self.dmx_ports.truncate(new_universe_count);
-            self.dmx_buffers.truncate(new_universe_count);
+            self.dmx.truncate(new_universe_count);
         }
-        for buf in &mut self.dmx_buffers {
-            buf.fill(0);
+        for univ in &mut self.dmx {
+            univ.buffer.fill(0);
         }
         Ok(GuiDirty::MIDI_SLOTS | GuiDirty::DMX_PORTS)
     }
@@ -438,7 +433,7 @@ impl Show {
             self.gui_state
                 .dmx_port_status
                 .store(Arc::new(DmxPortStatus {
-                    ports: self.dmx_ports.iter().map(|p| p.to_string()).collect(),
+                    ports: self.dmx.iter().map(|u| u.port.to_string()).collect(),
                 }));
         }
     }
@@ -479,7 +474,7 @@ impl Show {
         // NOTE: we don't bother to empty the buffer because we will always
         // overwrite all previously-rendered state.
         for group in self.patch.iter() {
-            group.render(&self.master_controls, &mut self.dmx_buffers, &self.preview);
+            group.render(&self.master_controls, &mut self.dmx, &self.preview);
         }
     }
 
@@ -567,31 +562,30 @@ impl Show {
 /// Validates the universe index, opens the port, zeros the DMX buffer,
 /// and swaps the port into place.
 fn assign_dmx_port(
-    dmx_ports: &mut [Box<dyn DmxPort>],
-    dmx_buffers: &mut [DmxBuffer],
+    dmx: &mut [DmxUniverse],
     universe: usize,
     mut port: Box<dyn DmxPort>,
 ) -> Result<()> {
-    if universe >= dmx_ports.len() {
+    if dmx.get(universe).is_none() {
         bail!(
             "universe {universe} out of range (show has {} universe(s))",
-            dmx_ports.len()
+            dmx.len()
         );
     }
     // Prevent assigning the same port to multiple universes.
     let new_name = port.to_string();
     let offline_name = OfflineDmxPort.to_string();
     if new_name != offline_name {
-        for (i, existing) in dmx_ports.iter().enumerate() {
-            if i != universe && existing.to_string() == new_name {
+        for (i, existing) in dmx.iter().enumerate() {
+            if i != universe && existing.port.to_string() == new_name {
                 bail!("port {new_name} is already assigned to universe {i}");
             }
         }
     }
     port.open()
         .map_err(|e| anyhow::anyhow!("failed to open port {port}: {e}"))?;
-    dmx_buffers[universe].fill(0);
-    dmx_ports[universe] = port;
+    dmx[universe].buffer.fill(0);
+    dmx[universe].port = port;
     Ok(())
 }
 
@@ -671,9 +665,8 @@ impl Show {
         ));
         let mut show = Self {
             controller,
-            dmx_buffers: vec![[0u8; 512]; universe_count],
-            dmx_ports: (0..universe_count)
-                .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+            dmx: (0..universe_count)
+                .map(|_| DmxUniverse::offline())
                 .collect(),
             patch,
             channels,
@@ -718,7 +711,7 @@ mod tests {
     #[test]
     fn assign_dmx_port_success() {
         let mut show = show_from_yaml(TWO_UNIVERSE_PATCH);
-        show.dmx_buffers[1].fill(0xFF);
+        show.dmx[1].buffer.fill(0xFF);
 
         show.handle_meta_command(MetaCommand::AssignDmxPort {
             universe: 1,
@@ -726,8 +719,8 @@ mod tests {
         })
         .unwrap();
 
-        assert!(show.dmx_buffers[1].iter().all(|&b| b == 0));
-        assert_eq!(format!("{}", show.dmx_ports[1]), "mock");
+        assert!(show.dmx[1].buffer.iter().all(|&b| b == 0));
+        assert_eq!(format!("{}", show.dmx[1].port), "mock");
     }
 
     #[test]
@@ -790,21 +783,19 @@ mod tests {
     #[test]
     fn repatch_grows_universes() {
         let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
-        assert_eq!(show.dmx_ports.len(), 1);
+        assert_eq!(show.dmx.len(), 1);
 
         repatch_from_yaml(&mut show, TWO_UNIVERSE_PATCH);
-        assert_eq!(show.dmx_ports.len(), 2);
-        assert_eq!(show.dmx_buffers.len(), 2);
+        assert_eq!(show.dmx.len(), 2);
     }
 
     #[test]
     fn repatch_shrinks_universes() {
         let mut show = show_from_yaml(TWO_UNIVERSE_PATCH);
-        assert_eq!(show.dmx_ports.len(), 2);
+        assert_eq!(show.dmx.len(), 2);
 
         repatch_from_yaml(&mut show, ONE_UNIVERSE_PATCH);
-        assert_eq!(show.dmx_ports.len(), 1);
-        assert_eq!(show.dmx_buffers.len(), 1);
+        assert_eq!(show.dmx.len(), 1);
     }
 
     #[test]

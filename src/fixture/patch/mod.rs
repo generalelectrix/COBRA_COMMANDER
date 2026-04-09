@@ -713,9 +713,9 @@ mod test {
         patch
             .iter()
             .map(|f| {
-                let mut fresh_bufs = vec![[0u8; 512]];
-                f.render(&Default::default(), &mut fresh_bufs, &Default::default());
-                fresh_bufs[0]
+                let mut dmx = vec![crate::dmx::DmxUniverse::offline()];
+                f.render(&Default::default(), &mut dmx, &Default::default());
+                dmx[0].buffer
             })
             .collect()
     }

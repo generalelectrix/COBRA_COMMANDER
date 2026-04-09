@@ -31,11 +31,15 @@ pub fn save(path: &Path, file: &ShowFile) -> Result<()> {
     let contents = serde_yaml::to_string(file).context("unable to serialize show file")?;
     fs::write(&tmp_path, contents)
         .with_context(|| format!("unable to write temporary file \"{}\"", tmp_path.display()))?;
-    fs::rename(&tmp_path, path).with_context(|| {
-        format!(
-            "unable to rename \"{}\" to \"{}\"",
-            tmp_path.display(),
-            path.display()
-        )
-    })
+    if let Err(e) = fs::rename(&tmp_path, path) {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(e).with_context(|| {
+            format!(
+                "unable to rename \"{}\" to \"{}\"",
+                tmp_path.display(),
+                path.display()
+            )
+        });
+    }
+    Ok(())
 }
