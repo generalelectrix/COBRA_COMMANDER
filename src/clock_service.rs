@@ -2,58 +2,58 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
 };
 
 use anyhow::Result;
 use log::error;
 use tunnels::clock_server::{SharedClockData, clock_subscriber};
-use tunnels_lib::prompt::{prompt_bool, prompt_parse};
+use zero_configure::pub_sub::SubscriberService;
 use zmq::Context;
 
-pub struct ClockService(Arc<Mutex<SharedClockData>>);
+pub struct ClockService {
+    data: Arc<Mutex<SharedClockData>>,
+    provider: String,
+}
 
 impl ClockService {
     pub fn get(&self) -> SharedClockData {
-        let val = self.0.lock().unwrap();
+        let val = self.data.lock().unwrap();
         (*val).clone()
+    }
+
+    pub fn provider(&self) -> &str {
+        &self.provider
     }
 }
 
 #[cfg(test)]
 impl ClockService {
     pub fn test_new() -> Self {
-        Self(Arc::new(Mutex::new(SharedClockData::default())))
+        Self {
+            data: Arc::new(Mutex::new(SharedClockData::default())),
+            provider: "test".to_string(),
+        }
     }
 }
 
-/// Prompt the user to start the clock service.
-/// If the user requests to start the service, browse briefly for services,
-/// and present options.  Connect to the service and return a mutex that wraps
-/// the clock state shared with the receiver thread.
-pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> {
-    if !prompt_bool("Listen to clocks and audio from a tunnels controller?")? {
-        return Ok(None);
-    }
-    println!("Browsing for clock providers...");
-    let service = clock_subscriber(ctx.clone());
-    thread::sleep(Duration::from_secs(2));
-    let providers = service.list();
-    if providers.is_empty() {
-        println!("No clock providers found.");
-        // Recurse and ask again.
-        return prompt_start_clock_service(ctx);
-    }
-    println!("Available clock providers:");
-    for provider in &providers {
-        println!("{provider}");
-    }
-    let provider = if providers.len() == 1 {
-        providers[0].clone()
-    } else {
-        prompt_parse("Select a provider", |s| Ok(s.to_string()))?
-    };
-    let mut receiver = service.subscribe(&provider, None)?;
+/// Browse for clock providers. Returns the subscriber service handle.
+///
+/// The returned service continuously discovers providers via zeroconf.
+/// Call `.list()` to get the current set of discovered providers.
+pub fn browse_clock_providers(ctx: Context) -> SubscriberService<SharedClockData> {
+    clock_subscriber(ctx)
+}
+
+/// Connect to a named provider and return the ClockService.
+///
+/// Subscribes to the provider's ZMQ stream and spawns a background thread
+/// that updates the shared clock data. The thread exits when all strong
+/// references to the returned ClockService are dropped.
+pub fn connect_to_provider(
+    service: &SubscriberService<SharedClockData>,
+    provider: &str,
+) -> Result<ClockService> {
+    let mut receiver = service.subscribe(provider, None)?;
     let storage = Arc::new(Mutex::new(SharedClockData::default()));
     let weak_handle = Arc::downgrade(&storage);
     thread::spawn(move || {
@@ -75,6 +75,8 @@ pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> 
             *clock_state = msg;
         }
     });
-    println!("Connected to {provider}.");
-    Ok(Some(ClockService(storage)))
+    Ok(ClockService {
+        data: storage,
+        provider: provider.to_string(),
+    })
 }

@@ -111,6 +111,7 @@ pub enum Previewer {
 }
 
 impl Previewer {
+    #[expect(unused)]
     pub fn terminal() -> Self {
         Self::Terminal(TerminalPreview::default())
     }

@@ -105,17 +105,17 @@ pub fn parse_xml(xml: &str) -> Result<Layout> {
                 let tag = String::from_utf8(e.name().as_ref().to_vec())?;
                 match tag.as_str() {
                     "control" => {
-                        if let Some(ctrl) = current_control.take() {
-                            if let Some(ref mut tp) = current_tabpage {
-                                tp.controls.push(ctrl);
-                            }
+                        if let Some(ctrl) = current_control.take()
+                            && let Some(ref mut tp) = current_tabpage
+                        {
+                            tp.controls.push(ctrl);
                         }
                     }
                     "tabpage" => {
-                        if let Some(tp) = current_tabpage.take() {
-                            if let Some(ref mut l) = layout {
-                                l.tabpages.push(tp);
-                            }
+                        if let Some(tp) = current_tabpage.take()
+                            && let Some(ref mut l) = layout
+                        {
+                            l.tabpages.push(tp);
                         }
                     }
                     "layout" => {}

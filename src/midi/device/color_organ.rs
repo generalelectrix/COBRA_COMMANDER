@@ -40,6 +40,7 @@ impl MidiDevice for ColorOrgan {
 impl InitMidiDevice for ColorOrgan {}
 
 impl ColorOrgan {
+    #[expect(unused)]
     pub fn new(note_low: u8, note_high: u8, channel: u8) -> Result<Self> {
         ensure!(
             note_high > note_low,

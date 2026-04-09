@@ -3,8 +3,6 @@ use anyhow::{Context, Result, anyhow, ensure};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::HashMap;
-use std::fs::File;
-use std::path::Path;
 
 use anyhow::bail;
 use log::info;
@@ -79,11 +77,6 @@ impl Patch {
         Ok(p)
     }
 
-    /// Initialize a patch from a patch file.
-    pub fn from_file(path: &Path) -> Result<Self> {
-        Self::patch_all(&parse_file(path)?)
-    }
-
     /// Initialize a patch from a collection of groups.
     pub fn patch_all(groups: &[FixtureGroupConfig]) -> Result<Self> {
         let mut patch = Self::new();
@@ -102,11 +95,6 @@ impl Patch {
         }
         patch.initialize_color_organs();
         Ok(patch)
-    }
-
-    /// Re-initialize a patch from a file.
-    pub fn repatch_from_file(&mut self, path: &Path) -> Result<()> {
-        self.repatch(&parse_file(path)?)
     }
 
     /// Re-intialize a patch from new configs.
@@ -293,12 +281,6 @@ impl Patch {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FixtureGroup> {
         self.fixtures.values_mut()
     }
-}
-
-fn parse_file(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
-    let patch_file = File::open(path)
-        .with_context(|| format!("unable to read patch file \"{}\"", path.to_string_lossy()))?;
-    Ok(serde_yaml::from_reader(patch_file)?)
 }
 
 /// Mapping between a universe/address pair and the type of fixture already
@@ -731,9 +713,9 @@ mod test {
         patch
             .iter()
             .map(|f| {
-                let mut fresh_bufs = vec![[0u8; 512]];
-                f.render(&Default::default(), &mut fresh_bufs, &Default::default());
-                fresh_bufs[0]
+                let mut dmx = vec![crate::dmx::DmxUniverse::offline()];
+                f.render(&Default::default(), &mut dmx, &Default::default());
+                dmx[0].buffer
             })
             .collect()
     }

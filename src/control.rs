@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use midi_harness::DeviceChange;
+use midi_harness::{DeviceChange, SlotStatus};
 use rosc::OscMessage;
 use tunnels::midi::DeviceSpec;
 
@@ -17,8 +17,8 @@ use crate::{
         MidiControlMessage, MidiController,
     },
     osc::{
-        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscControlMessage, OscControlResponse,
-        OscController, ScopedControlEmitter, TalkbackMode,
+        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscClientListener, OscControlMessage,
+        OscControlResponse, OscController, ScopedControlEmitter, TalkbackMode,
     },
 };
 
@@ -77,19 +77,90 @@ impl Controller {
         self.osc.register(client_id);
     }
 
+    /// Connect a MIDI port to a slot.
+    pub fn connect_midi_port(
+        &mut self,
+        slot_name: &str,
+        device_id: midi_harness::DeviceId,
+        kind: midi_harness::DeviceKind,
+    ) -> Result<()> {
+        self.midi.connect_port(slot_name, device_id, kind)
+    }
+
     /// Deregister an OSC client.
     pub fn deregister_osc_client(&mut self, client_id: OscClientId) {
         self.osc.deregister(client_id);
     }
 
-    /// Add a MIDI device.
-    pub fn add_midi_device(&mut self, spec: DeviceSpec<Device>) -> Result<()> {
-        self.midi.add_device(spec)
+    /// Get a listener handle for the shared OSC client list.
+    pub fn osc_client_listener(&self) -> OscClientListener {
+        self.osc.client_listener()
     }
 
     /// Clear the device assignment from a MIDI slot.
     pub fn clear_midi_device(&mut self, slot_name: &str) -> Result<()> {
         self.midi.clear_device(slot_name)
+    }
+
+    /// Add a MIDI slot without connecting hardware.
+    pub fn add_midi_slot(&mut self, name: String, model: Device) -> Result<()> {
+        self.midi.add_slot(name, model)
+    }
+
+    /// Remove a MIDI slot by name.
+    pub fn remove_midi_slot(&mut self, name: &str) -> Result<()> {
+        self.midi.remove_slot(name)
+    }
+
+    /// Return the names of all MIDI device slots.
+    pub fn midi_slot_names(&self) -> Vec<String> {
+        self.midi.device_names()
+    }
+
+    /// Return a snapshot of the status of every MIDI device slot.
+    pub fn midi_slot_statuses(&self) -> Vec<SlotStatus> {
+        self.midi.slot_statuses()
+    }
+
+    /// Ensure the correct number of submaster wing slots exist for the
+    /// given channel count.
+    pub fn reconcile_submaster_wings(&mut self, channel_count: usize) -> Result<()> {
+        use crate::midi::{
+            device::launch_control_xl::NovationLaunchControlXL,
+            slots::{is_submaster_wing, submaster_wing_count, submaster_wing_name},
+        };
+
+        let desired = submaster_wing_count(channel_count);
+        let slot_names = self.midi_slot_names();
+        let current = slot_names.iter().filter(|n| is_submaster_wing(n)).count();
+
+        for i in (current + 1)..=desired {
+            let model = Device::LaunchControlXL(NovationLaunchControlXL {
+                channel_offset: (i - 1) * 8,
+            });
+            self.add_midi_slot(submaster_wing_name(i), model)?;
+        }
+        for i in ((desired + 1)..=current).rev() {
+            self.remove_midi_slot(&submaster_wing_name(i))?;
+        }
+        Ok(())
+    }
+
+    /// Ensure the clock wing slot exists iff `needs_clock_wing` is true.
+    pub fn reconcile_clock_wing(&mut self, needs_clock_wing: bool) -> Result<()> {
+        use crate::midi::{device::cmd_mm1::BehringerCmdMM1, slots::CLOCK_WING_SLOT};
+
+        let has = self.midi_slot_names().iter().any(|n| n == CLOCK_WING_SLOT);
+
+        if needs_clock_wing && !has {
+            self.add_midi_slot(
+                CLOCK_WING_SLOT.to_string(),
+                Device::CmdMM1(BehringerCmdMM1 {}),
+            )?;
+        } else if !needs_clock_wing && has {
+            self.remove_midi_slot(CLOCK_WING_SLOT)?;
+        }
+        Ok(())
     }
 
     /// Handle a MIDI device change.
@@ -199,25 +270,23 @@ pub type CommandResponse = std::result::Result<(), String>;
 #[derive(Clone)]
 pub struct CommandClient {
     send: Sender<ControlMessage>,
-    zmq_ctx: zmq::Context,
 }
 
 impl CommandClient {
-    pub fn new(send: Sender<ControlMessage>, zmq_ctx: zmq::Context) -> Self {
-        Self { send, zmq_ctx }
-    }
-
-    pub fn zmq_ctx(&self) -> &zmq::Context {
-        &self.zmq_ctx
+    pub fn new(send: Sender<ControlMessage>) -> Self {
+        Self { send }
     }
 
     /// Send a command and block until the show responds.
-    pub fn send_command(&self, cmd: MetaCommand) -> Result<CommandResponse> {
+    pub fn send_command(&self, cmd: MetaCommand) -> Result<()> {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         self.send
             .send(ControlMessage::Meta(cmd, Some(reply_tx)))
             .map_err(|_| anyhow::anyhow!("show control channel disconnected"))?;
-        reply_rx.recv().context("show did not send a response")
+        reply_rx
+            .recv()
+            .context("show did not send a response")?
+            .map_err(|e| anyhow::anyhow!(e))
     }
 }
 
@@ -226,42 +295,52 @@ impl CommandClient {
 ///
 /// Any source with a Sender<ControlMessage> can send these.
 pub enum MetaCommand {
-    ReloadPatch,
     RefreshUI,
     ResetAllAnimations,
-    StartAnimationVisualizer,
     AssignDmxPort {
         universe: usize,
         port: Box<dyn rust_dmx::DmxPort>,
     },
-    AddMidiDevice(DeviceSpec<Device>),
-    #[expect(unused)]
     ClearMidiDevice {
         slot_name: String,
     },
+    ConnectMidiPort {
+        slot_name: String,
+        device_id: midi_harness::DeviceId,
+        kind: midi_harness::DeviceKind,
+    },
     UseClockService(crate::clock_service::ClockService),
-    SetAudioDevice(String),
+    UseInternalClocks(Option<String>),
+    RegisterOscClient(OscClientId),
+    DropOscClient(OscClientId),
+    /// Apply a new patch configuration from the GUI editor.
+    Repatch(Vec<crate::config::FixtureGroupConfig>),
+    /// Enable or disable the master strobe fader channel.
+    SetMasterStrobeChannel(bool),
 }
 
 impl fmt::Debug for MetaCommand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ReloadPatch => write!(f, "ReloadPatch"),
             Self::RefreshUI => write!(f, "RefreshUI"),
             Self::ResetAllAnimations => write!(f, "ResetAllAnimations"),
-            Self::StartAnimationVisualizer => write!(f, "StartAnimationVisualizer"),
             Self::AssignDmxPort { universe, port } => f
                 .debug_struct("AssignDmxPort")
                 .field("universe", universe)
                 .field("port", &format_args!("{port}"))
                 .finish(),
-            Self::AddMidiDevice(spec) => f
-                .debug_struct("AddMidiDevice")
-                .field("device", &spec.device)
-                .finish(),
             Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
+            Self::ConnectMidiPort {
+                slot_name, kind, ..
+            } => write!(f, "ConnectMidiPort({slot_name}, {kind:?})"),
             Self::UseClockService(_) => write!(f, "UseClockService"),
-            Self::SetAudioDevice(name) => write!(f, "SetAudioDevice({name})"),
+            Self::UseInternalClocks(device) => write!(f, "UseInternalClocks({device:?})"),
+            Self::RegisterOscClient(id) => write!(f, "RegisterOscClient({id})"),
+            Self::DropOscClient(id) => write!(f, "DropOscClient({id})"),
+            Self::Repatch(groups) => write!(f, "Repatch({} groups)", groups.len()),
+            Self::SetMasterStrobeChannel(enable) => {
+                write!(f, "SetMasterStrobeChannel({enable})")
+            }
         }
     }
 }
@@ -272,7 +351,6 @@ impl fmt::Debug for MetaCommand {
 /// Returns `Ok(None)` when the message is valid but should be ignored.
 pub fn meta_command_from_osc(msg: &OscControlMessage) -> Result<Option<MetaCommand>> {
     match msg.control() {
-        "ReloadPatch" => Ok(Some(MetaCommand::ReloadPatch)),
         "RefreshUI" => {
             if msg.get_bool()? {
                 Ok(Some(MetaCommand::RefreshUI))
@@ -286,8 +364,6 @@ pub fn meta_command_from_osc(msg: &OscControlMessage) -> Result<Option<MetaComma
 }
 
 pub enum ControlMessage {
-    RegisterClient(OscClientId),
-    DeregisterClient(OscClientId),
     MidiDeviceChange(DeviceChange),
     Osc(OscControlMessage),
     Midi(MidiControlMessage),
@@ -298,6 +374,17 @@ pub enum ControlMessage {
 #[cfg(test)]
 pub mod mock {
     use super::*;
+
+    /// Create a CommandClient that auto-responds Ok(()) to every command.
+    pub fn auto_respond_client() -> CommandClient {
+        let (send, recv) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            while let Ok(ControlMessage::Meta(_, Some(reply))) = recv.recv() {
+                let _ = reply.send(Ok(()));
+            }
+        });
+        CommandClient::new(send)
+    }
 
     /// An emitter that does nothing.
     ///
@@ -346,13 +433,6 @@ mod tests {
     }
 
     #[test]
-    fn meta_command_from_osc_reload_patch() {
-        let msg = make_meta_osc("ReloadPatch", OscType::Float(1.0));
-        let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
-        assert!(matches!(cmd, MetaCommand::ReloadPatch));
-    }
-
-    #[test]
     fn meta_command_from_osc_refresh_ui_truthy() {
         let msg = make_meta_osc("RefreshUI", OscType::Float(1.0));
         let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
@@ -392,5 +472,91 @@ mod tests {
         assert!(debug.contains("AssignDmxPort"));
         assert!(debug.contains("universe: 3"));
         assert!(debug.contains("mock"));
+    }
+
+    use crate::midi::slots;
+
+    fn submaster_wing_count(controller: &Controller) -> usize {
+        controller
+            .midi_slot_names()
+            .iter()
+            .filter(|n| slots::is_submaster_wing(n))
+            .count()
+    }
+
+    fn has_clock_wing(controller: &Controller) -> bool {
+        controller
+            .midi_slot_names()
+            .iter()
+            .any(|n| n == slots::CLOCK_WING_SLOT)
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_one_channel() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_submaster_wings(1).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 1);
+        assert_eq!(controller.midi_slot_names()[0], "Submaster Wing 1");
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_grows() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_submaster_wings(1).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 1);
+
+        // 9 channels → 2 wings
+        controller.reconcile_submaster_wings(9).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 2);
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_shrinks() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_submaster_wings(9).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 2);
+
+        controller.reconcile_submaster_wings(1).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 1);
+    }
+
+    #[test]
+    fn reconcile_submaster_wings_zero_channels_still_one() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_submaster_wings(0).unwrap();
+        assert_eq!(submaster_wing_count(&controller), 1);
+    }
+
+    #[test]
+    fn reconcile_clock_wing_adds_when_needed() {
+        let (mut controller, _send) = Controller::test_new();
+        assert!(!has_clock_wing(&controller));
+
+        controller.reconcile_clock_wing(true).unwrap();
+        assert!(has_clock_wing(&controller));
+    }
+
+    #[test]
+    fn reconcile_clock_wing_removes_when_not_needed() {
+        let (mut controller, _send) = Controller::test_new();
+        controller.reconcile_clock_wing(true).unwrap();
+        assert!(has_clock_wing(&controller));
+
+        controller.reconcile_clock_wing(false).unwrap();
+        assert!(!has_clock_wing(&controller));
+    }
+
+    #[test]
+    fn reconcile_clock_wing_noop_when_already_correct() {
+        let (mut controller, _send) = Controller::test_new();
+
+        // No clock wing, don't need one — no-op.
+        controller.reconcile_clock_wing(false).unwrap();
+        assert!(!has_clock_wing(&controller));
+
+        // Has clock wing, still need one — no-op.
+        controller.reconcile_clock_wing(true).unwrap();
+        controller.reconcile_clock_wing(true).unwrap();
+        assert!(has_clock_wing(&controller));
     }
 }

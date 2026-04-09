@@ -6,8 +6,8 @@ use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use enum_dispatch::enum_dispatch;
 use log::error;
 use midi_harness::{
-    DeviceChange, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice, MidiPortSpec,
-    Output,
+    DeviceChange, DeviceId, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice, Output,
+    SlotStatus,
 };
 use std::{cell::RefCell, fmt::Display, sync::mpsc::Sender};
 
@@ -25,8 +25,9 @@ use tunnels::{
 
 use crate::control::ControlMessage;
 
-mod device;
+pub(crate) mod device;
 mod mapping;
+pub mod slots;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[enum_dispatch(MidiHandler)]
@@ -72,48 +73,7 @@ impl InitMidiDevice for Device {
     }
 }
 
-impl Device {
-    /// Return all known MIDI device types that match the parameters.
-    pub fn all(internal_clocks: bool) -> Vec<Self> {
-        let mut devices = vec![
-            // Self::Apc20(AkaiApc20 { channel_offset: 0 }),
-            Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 0 }),
-            Self::LaunchControlXL(NovationLaunchControlXL { channel_offset: 8 }),
-            Self::CmdDV1(BehringerCmdDV1 {}),
-        ];
-        if internal_clocks {
-            devices.push(Self::CmdMM1(BehringerCmdMM1 {}));
-            devices.push(Self::Amx(AkaiAmx {}));
-        }
-        devices
-    }
-
-    /// Attempt to identify connected devices to automatically configure MIDI.
-    pub fn auto_configure(
-        internal_clocks: bool,
-        input_ports: &[MidiPortSpec],
-        output_ports: &[MidiPortSpec],
-    ) -> Vec<DeviceSpec<Self>> {
-        // For all known devices, see if we have a matching input and output port.
-        Self::all(internal_clocks)
-            .into_iter()
-            .filter_map(|device| {
-                let name = device.device_name().to_string();
-                if let Some(input) = input_ports.iter().find(|p| p.name == name)
-                    && let Some(output) = output_ports.iter().find(|p| p.name == name)
-                {
-                    Some(DeviceSpec {
-                        device,
-                        input_id: input.id.clone(),
-                        output_id: output.id.clone(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-}
+impl Device {}
 
 /// MIDI handling, interpreting a MIDI event as a channel control message.
 #[enum_dispatch]
@@ -194,11 +154,28 @@ impl MidiController {
         Ok(Self(RefCell::new(controller)))
     }
 
-    /// Add a device to the controller.
-    pub fn add_device(&mut self, spec: DeviceSpec<Device>) -> Result<()> {
-        self.0
-            .borrow_mut()
-            .add_from_spec(spec.device, spec.input_id, spec.output_id)
+    /// Add a slot without connecting hardware.
+    pub fn add_slot(&mut self, name: String, model: Device) -> Result<()> {
+        self.0.borrow_mut().add_slot(name, model)
+    }
+
+    /// Remove a slot by name.
+    pub fn remove_slot(&mut self, name: &str) -> Result<()> {
+        self.0.borrow_mut().remove_slot(name)
+    }
+
+    /// Connect a MIDI port to a slot.
+    pub fn connect_port(
+        &mut self,
+        slot_name: &str,
+        device_id: DeviceId,
+        kind: DeviceKind,
+    ) -> Result<()> {
+        let mut mgr = self.0.borrow_mut();
+        match kind {
+            DeviceKind::Input => mgr.connect_input(slot_name, device_id),
+            DeviceKind::Output => mgr.connect_output(slot_name, device_id),
+        }
     }
 
     /// Clear the device assignment from the named slot.
@@ -207,9 +184,13 @@ impl MidiController {
     }
 
     /// Return the names of all device slots.
-    #[expect(unused)]
     pub fn device_names(&self) -> Vec<String> {
         self.0.borrow().slot_names()
+    }
+
+    /// Return a snapshot of the status of every slot.
+    pub fn slot_statuses(&self) -> Vec<SlotStatus> {
+        self.0.borrow().slot_statuses()
     }
 
     /// Handle a device appearing or disappearing.

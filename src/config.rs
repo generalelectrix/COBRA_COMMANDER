@@ -1,11 +1,11 @@
 use crate::dmx::DmxAddr;
 use anyhow::{Result, ensure};
 use itertools::Itertools;
-use serde::{Deserialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, fmt::Display, ops::Deref};
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DmxAddrConfig {
     /// A contiguous block of fixtures.
@@ -14,7 +14,7 @@ pub enum DmxAddrConfig {
     Single(DmxAddr),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FixtureGroupConfig {
     /// The type of fixture to patch.
     pub fixture: String,
@@ -49,7 +49,7 @@ impl FixtureGroupConfig {
 }
 
 /// One or more instances of a fixture to patch in the context of a group.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PatchBlock {
     /// The DMX address(es) to patch at, either a single address or a start/count.
     #[serde(default)]
@@ -89,7 +89,7 @@ const fn _true() -> bool {
 /// Options that will be passed to a fixture to parse into a strong type.
 /// Using Mapping allows us to accept any valid yaml as the keys and values,
 /// so fixtures are pretty free to structure their options structs.
-#[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Options {
     #[serde(flatten)]
     value: Mapping,
@@ -102,13 +102,19 @@ impl Options {
     }
 
     /// Build Options programmatically from key-value pairs.
-    #[cfg(test)]
     pub fn from_entries(entries: impl IntoIterator<Item = (String, serde_yaml::Value)>) -> Self {
         let mut mapping = serde_yaml::Mapping::new();
         for (key, value) in entries {
             mapping.insert(serde_yaml::Value::String(key), value);
         }
         Self { value: mapping }
+    }
+
+    /// Get a string value by key.
+    pub fn get_string(&self, key: &str) -> Option<String> {
+        self.value
+            .get(Value::String(key.to_string()))
+            .map(string_value)
     }
 
     /// Return an error if the options are not empty.
@@ -119,6 +125,38 @@ impl Options {
             self.value.keys().map(string_value).join(", ")
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+impl Options {
+    /// Set a string value by key.
+    pub fn set_string(&mut self, key: &str, val: &str) {
+        self.value.insert(
+            Value::String(key.to_string()),
+            Value::String(val.to_string()),
+        );
+    }
+
+    /// Get a bool value by key.
+    pub fn get_bool(&self, key: &str) -> Option<bool> {
+        self.value
+            .get(Value::String(key.to_string()))
+            .and_then(|v| match v {
+                Value::Bool(b) => Some(*b),
+                _ => None,
+            })
+    }
+
+    /// Set a bool value by key.
+    pub fn set_bool(&mut self, key: &str, val: bool) {
+        self.value
+            .insert(Value::String(key.to_string()), Value::Bool(val));
+    }
+
+    /// Remove a key from the options.
+    pub fn remove(&mut self, key: &str) {
+        self.value.remove(Value::String(key.to_string()));
     }
 }
 
@@ -136,7 +174,7 @@ fn string_value(v: &Value) -> String {
 }
 
 /// Uniquely identify a specific fixture group.
-#[derive(Clone, PartialEq, Eq, Hash, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct FixtureGroupKey(pub String);
 
 impl Display for FixtureGroupKey {
@@ -175,5 +213,38 @@ mod test {
     fn test_missing_fields() {
         assert_fail_parse("- foobar: Baz", "missing field `fixture`");
         assert_fail_parse("- fixture: Foo", "missing field `patches`");
+    }
+
+    #[test]
+    fn options_string_round_trip() {
+        let mut opts = Options::default();
+        assert_eq!(opts.get_string("foo"), None);
+        opts.set_string("foo", "bar");
+        assert_eq!(opts.get_string("foo").as_deref(), Some("bar"));
+    }
+
+    #[test]
+    fn options_bool_round_trip() {
+        let mut opts = Options::default();
+        assert_eq!(opts.get_bool("flag"), None);
+        opts.set_bool("flag", true);
+        assert_eq!(opts.get_bool("flag"), Some(true));
+        opts.set_bool("flag", false);
+        assert_eq!(opts.get_bool("flag"), Some(false));
+    }
+
+    #[test]
+    fn options_remove() {
+        let mut opts = Options::default();
+        opts.set_string("key", "value");
+        assert!(opts.get_string("key").is_some());
+        opts.remove("key");
+        assert_eq!(opts.get_string("key"), None);
+    }
+
+    #[test]
+    fn options_remove_missing_key_is_noop() {
+        let mut opts = Options::default();
+        opts.remove("nonexistent"); // should not panic
     }
 }
