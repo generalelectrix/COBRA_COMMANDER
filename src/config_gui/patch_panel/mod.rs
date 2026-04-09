@@ -194,6 +194,10 @@ impl PatchPanel<'_> {
                                 self.autosave(&configs);
                                 self.state.working_copy = None;
                                 self.state.mode = PanelMode::View;
+                                self.ctx.modal.show(
+                                    "Patch Applied",
+                                    "Patch configuration updated successfully.",
+                                );
                             }
                         }
                         if cancel_button(ui, "Revert") {
