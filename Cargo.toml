@@ -52,6 +52,7 @@ base64 = "0.22"
 tiny_http = "0.12"
 mdns-sd = "0.13"
 gethostname = "1"
+rfd = "0.15"
 
 [dev-dependencies]
 typetag = "0.2"

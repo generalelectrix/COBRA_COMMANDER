@@ -8,7 +8,6 @@ use std::{
 use anyhow::Result;
 use log::error;
 use tunnels::clock_server::{SharedClockData, clock_subscriber};
-use tunnels_lib::prompt::{prompt_bool, prompt_parse};
 use zero_configure::pub_sub::SubscriberService;
 use zmq::Context;
 
@@ -81,35 +80,4 @@ pub fn connect_to_provider(
         data: storage,
         provider: provider.to_string(),
     })
-}
-
-/// Prompt the user to start the clock service.
-/// If the user requests to start the service, browse briefly for services,
-/// and present options.  Connect to the service and return a mutex that wraps
-/// the clock state shared with the receiver thread.
-pub fn prompt_start_clock_service(ctx: Context) -> Result<Option<ClockService>> {
-    if !prompt_bool("Listen to clocks and audio from a tunnels controller?")? {
-        return Ok(None);
-    }
-    println!("Browsing for clock providers...");
-    let service = browse_clock_providers(ctx.clone());
-    thread::sleep(Duration::from_secs(2));
-    let providers = service.list();
-    if providers.is_empty() {
-        println!("No clock providers found.");
-        // Recurse and ask again.
-        return prompt_start_clock_service(ctx);
-    }
-    println!("Available clock providers:");
-    for provider in &providers {
-        println!("{provider}");
-    }
-    let provider = if providers.len() == 1 {
-        providers[0].clone()
-    } else {
-        prompt_parse("Select a provider", |s| Ok(s.to_string()))?
-    };
-    let clock_service = connect_to_provider(&service, &provider)?;
-    println!("Connected to {provider}.");
-    Ok(Some(clock_service))
 }

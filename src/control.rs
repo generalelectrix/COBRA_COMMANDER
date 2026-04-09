@@ -275,16 +275,11 @@ pub type CommandResponse = std::result::Result<(), String>;
 #[derive(Clone)]
 pub struct CommandClient {
     send: Sender<ControlMessage>,
-    zmq_ctx: zmq::Context,
 }
 
 impl CommandClient {
-    pub fn new(send: Sender<ControlMessage>, zmq_ctx: zmq::Context) -> Self {
-        Self { send, zmq_ctx }
-    }
-
-    pub fn zmq_ctx(&self) -> &zmq::Context {
-        &self.zmq_ctx
+    pub fn new(send: Sender<ControlMessage>) -> Self {
+        Self { send }
     }
 
     /// Send a command and block until the show responds.
@@ -305,7 +300,6 @@ impl CommandClient {
 ///
 /// Any source with a Sender<ControlMessage> can send these.
 pub enum MetaCommand {
-    ReloadPatch,
     RefreshUI,
     ResetAllAnimations,
     AssignDmxPort {
@@ -334,7 +328,6 @@ pub enum MetaCommand {
 impl fmt::Debug for MetaCommand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ReloadPatch => write!(f, "ReloadPatch"),
             Self::RefreshUI => write!(f, "RefreshUI"),
             Self::ResetAllAnimations => write!(f, "ResetAllAnimations"),
             Self::AssignDmxPort { universe, port } => f
@@ -368,7 +361,6 @@ impl fmt::Debug for MetaCommand {
 /// Returns `Ok(None)` when the message is valid but should be ignored.
 pub fn meta_command_from_osc(msg: &OscControlMessage) -> Result<Option<MetaCommand>> {
     match msg.control() {
-        "ReloadPatch" => Ok(Some(MetaCommand::ReloadPatch)),
         "RefreshUI" => {
             if msg.get_bool()? {
                 Ok(Some(MetaCommand::RefreshUI))
@@ -448,13 +440,6 @@ mod tests {
             OscClientId::example(),
         )
         .unwrap()
-    }
-
-    #[test]
-    fn meta_command_from_osc_reload_patch() {
-        let msg = make_meta_osc("ReloadPatch", OscType::Float(1.0));
-        let cmd = meta_command_from_osc(&msg).unwrap().unwrap();
-        assert!(matches!(cmd, MetaCommand::ReloadPatch));
     }
 
     #[test]

@@ -147,9 +147,19 @@ pub(crate) struct PatchPanel<'a> {
     pub state: &'a mut PatchPanelState,
     pub snapshot: &'a PatchSnapshot,
     pub patchers: &'a [Patcher],
+    pub show_file_path: &'a std::path::Path,
 }
 
 impl PatchPanel<'_> {
+    fn autosave(&mut self, configs: &[FixtureGroupConfig]) {
+        let show_file = crate::show_file::ShowFile {
+            patch: configs.to_vec(),
+        };
+        if let Err(e) = crate::show_file::save(self.show_file_path, &show_file) {
+            self.ctx.modal.show("Autosave Failed", &format!("{e:#}"));
+        }
+    }
+
     pub fn ui(mut self, ui: &mut egui::Ui) {
         if self.state.working_copy.is_none() {
             self.state.working_copy = Some(PatchWorkingCopy::from_snapshot(
@@ -176,13 +186,14 @@ impl PatchPanel<'_> {
                                 return;
                             };
                             let configs = wc.configs();
-                            if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
+                            if self
+                                .ctx
+                                .send_command(MetaCommand::Repatch(configs.clone()))
+                                .is_ok()
+                            {
+                                self.autosave(&configs);
                                 self.state.working_copy = None;
                                 self.state.mode = PanelMode::View;
-                                self.ctx.modal.show(
-                                    "Patch Applied",
-                                    "Patch configuration updated successfully.",
-                                );
                             }
                         }
                         if cancel_button(ui, "Revert") {
@@ -1434,6 +1445,7 @@ mod test {
                 state,
                 snapshot,
                 patchers,
+                show_file_path: std::path::Path::new(""),
             }
             .ui(ui);
         });
@@ -1595,6 +1607,7 @@ mod test {
                 state: &mut state,
                 snapshot: &snapshot,
                 patchers: &patchers,
+                show_file_path: std::path::Path::new(""),
             }
             .ui(ui);
         });
@@ -1658,6 +1671,7 @@ mod test {
             state: &mut state,
             snapshot: &snapshot,
             patchers: &patchers,
+            show_file_path: std::path::Path::new(""),
         };
         panel.commit_add_fixture(0);
 
@@ -1685,6 +1699,7 @@ mod test {
             state: &mut state,
             snapshot: &snapshot,
             patchers: &patchers,
+            show_file_path: std::path::Path::new(""),
         };
         panel.commit_add_fixture(0);
 

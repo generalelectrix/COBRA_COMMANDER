@@ -1,11 +1,11 @@
 use crate::dmx::DmxAddr;
 use anyhow::{Result, ensure};
 use itertools::Itertools;
-use serde::{Deserialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, fmt::Display, ops::Deref};
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DmxAddrConfig {
     /// A contiguous block of fixtures.
@@ -14,7 +14,7 @@ pub enum DmxAddrConfig {
     Single(DmxAddr),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FixtureGroupConfig {
     /// The type of fixture to patch.
     pub fixture: String,
@@ -49,7 +49,7 @@ impl FixtureGroupConfig {
 }
 
 /// One or more instances of a fixture to patch in the context of a group.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PatchBlock {
     /// The DMX address(es) to patch at, either a single address or a start/count.
     #[serde(default)]
@@ -89,7 +89,7 @@ const fn _true() -> bool {
 /// Options that will be passed to a fixture to parse into a strong type.
 /// Using Mapping allows us to accept any valid yaml as the keys and values,
 /// so fixtures are pretty free to structure their options structs.
-#[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Options {
     #[serde(flatten)]
     value: Mapping,
@@ -174,7 +174,7 @@ fn string_value(v: &Value) -> String {
 }
 
 /// Uniquely identify a specific fixture group.
-#[derive(Clone, PartialEq, Eq, Hash, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 pub struct FixtureGroupKey(pub String);
 
 impl Display for FixtureGroupKey {

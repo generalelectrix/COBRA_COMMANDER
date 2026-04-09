@@ -21,22 +21,34 @@ mod dmx_panel;
 mod midi_panel;
 mod osc_panel;
 mod patch_panel;
+mod welcome;
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use eframe::egui;
+use local_ip_address::local_ip;
+use log::error;
+use midi_harness::install_midi_device_change_handler;
+use rust_dmx::{DmxPort, OfflineDmxPort};
 
-use crate::control::CommandClient;
+use crate::clocks::Clocks;
+use crate::control::{CommandClient, Controller};
 use crate::fixture::Patch;
-use crate::gui_state::SharedGuiState;
+use crate::gui_state::{ClockStatus, GuiState, SharedGuiState};
+use crate::midi::ControlHandler;
+use crate::preview::Previewer;
+use crate::show::Show;
 use crate::ui_util::{CloseHandler, GuiContext, MessageModal};
 use animation_panel::VisualizerPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
 use midi_panel::{MidiPanel, MidiPanelState};
 use patch_panel::{PatchPanel, PatchPanelState};
+use welcome::WelcomeResult;
 
 #[derive(Default, PartialEq, Clone, Copy)]
 enum Tab {
@@ -49,8 +61,9 @@ enum Tab {
     Dmx,
 }
 
-struct ConfigApp {
+struct ConsoleApp {
     client: CommandClient,
+    show_file_path: PathBuf,
     clock_panel: ClockPanelState,
     midi_panel: MidiPanelState,
     /// Behind Arc<Mutex<>> because this state is shared between the embedded
@@ -60,7 +73,7 @@ struct ConfigApp {
     visualizer_panel: Arc<Mutex<VisualizerPanelState>>,
     /// Shared with the deferred viewport closure so it can signal "close" back
     /// to the main thread. Arc<AtomicBool> because the deferred closure is
-    /// 'static + Send + Sync and can't hold a reference to ConfigApp fields.
+    /// 'static + Send + Sync and can't hold a reference to ConsoleApp fields.
     visualizer_detached: Arc<AtomicBool>,
     patch_panel: PatchPanelState,
     dmx_panel: DmxPortPanelState,
@@ -71,7 +84,7 @@ struct ConfigApp {
     gui_state: SharedGuiState,
 }
 
-impl eframe::App for ConfigApp {
+impl eframe::App for ConsoleApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.close_handler.update("Quit Cobra Commander?", ctx);
 
@@ -187,6 +200,7 @@ impl eframe::App for ConfigApp {
                     state: &mut self.patch_panel,
                     snapshot: &snapshot,
                     patchers: &self.patchers,
+                    show_file_path: &self.show_file_path,
                 }
                 .ui(ui);
             }
@@ -208,29 +222,104 @@ impl eframe::App for ConfigApp {
     }
 }
 
-pub fn run_config_gui(
-    client: CommandClient,
-    zmq_ctx: zmq::Context,
-    gui_state: SharedGuiState,
-) -> Result<()> {
+/// Single entry point for the console. Runs the welcome screen, initializes
+/// the show, and runs the main console GUI.
+pub fn run_console(osc_receive_port: u16) -> Result<()> {
+    // Phase 1: Welcome screen.
+    let welcome_result = welcome::run_welcome();
+
+    let (show_file_path, initial_configs) = match welcome_result {
+        WelcomeResult::LoadShow { path, configs } => (path, configs),
+        WelcomeResult::NewShow { path } => (path, vec![]),
+        WelcomeResult::Quit => return Ok(()),
+    };
+
+    // Phase 2: Create all infrastructure.
+    let osc_listen_addr = match local_ip() {
+        Ok(ip) => format!("{ip}:{osc_receive_port}"),
+        Err(_) => format!("0.0.0.0:{osc_receive_port}"),
+    };
+
+    let zmq_ctx = zmq::Context::new();
+    let (send_control_msg, recv_control_msg) = channel();
+    let command_client = CommandClient::new(send_control_msg.clone(), zmq_ctx.clone());
+
+    // NOTE: this MUST be called before any other MIDI functions.
+    install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
+
+    let controller = Controller::new(
+        osc_receive_port,
+        vec![],
+        vec![],
+        send_control_msg,
+        recv_control_msg,
+    )?;
+    let osc_client_listener = controller.osc_client_listener();
+
+    let gui_state: SharedGuiState = Arc::new(GuiState::new(
+        vec![],
+        ClockStatus::Internal {
+            audio_device: "Offline".into(),
+        },
+        osc_listen_addr,
+        osc_client_listener,
+    ));
+
+    // Phase 3: Spawn the show thread.
+    // Patch is created on the show thread because it contains non-Send types.
+    let show_gui_state = gui_state.clone();
+    std::thread::spawn(move || {
+        let patch = match Patch::patch_all(&initial_configs) {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Show patch error: {e:#}");
+                return;
+            }
+        };
+        let universe_count = patch.universe_count();
+        let dmx_ports: Vec<Box<dyn DmxPort>> = (0..universe_count)
+            .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
+            .collect();
+        let clocks = Clocks::internal(None);
+        let show = Show::new(
+            patch,
+            initial_configs,
+            controller,
+            dmx_ports,
+            clocks,
+            Previewer::default(),
+            show_gui_state,
+        );
+        match show {
+            Ok(mut show) => show.run(),
+            Err(e) => error!("Show initialization error: {e:#}"),
+        }
+    });
+
+    // Phase 4: Run the console GUI.
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([600.0, 500.0]),
         ..Default::default()
     };
-    let initial_clock_status = gui_state.clock_status.load();
     eframe::run_native(
         "Cobra Commander",
         options,
         Box::new(move |_cc| {
-            Ok(Box::new(ConfigApp {
-                clock_panel: ClockPanelState::new(zmq_ctx, &initial_clock_status),
+            Ok(Box::new(ConsoleApp {
+                clock_panel: ClockPanelState::new(
+                    zmq_ctx,
+                    &ClockStatus::Internal {
+                        audio_device: "Offline".into(),
+                    },
+                ),
                 midi_panel: MidiPanelState::new(),
                 visualizer_panel: Arc::new(Mutex::new(VisualizerPanelState::default())),
                 visualizer_detached: Arc::new(AtomicBool::new(false)),
                 patch_panel: PatchPanelState::new(),
                 dmx_panel: DmxPortPanelState::new(),
                 patchers: Patch::menu(),
-                client,
+                client: command_client,
+                show_file_path,
                 close_handler: CloseHandler::default(),
                 modal: MessageModal::default(),
                 active_tab: Tab::default(),
@@ -238,6 +327,6 @@ pub fn run_config_gui(
             }))
         }),
     )
-    .unwrap();
+    .expect("eframe console window failed");
     Ok(())
 }

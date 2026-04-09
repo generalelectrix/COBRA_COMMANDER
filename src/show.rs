@@ -1,5 +1,4 @@
 use std::{
-    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -35,7 +34,6 @@ pub struct Show {
     dmx_ports: Vec<Box<dyn DmxPort>>,
     dmx_buffers: Vec<DmxBuffer>,
     patch: Patch,
-    patch_file_path: PathBuf,
     channels: Channels,
     master_controls: MasterControls,
     animation_ui_state: AnimationUIState,
@@ -55,7 +53,7 @@ pub const UPDATE_INTERVAL: Duration = Duration::from_micros(25300);
 impl Show {
     pub fn new(
         patch: Patch,
-        patch_file_path: PathBuf,
+        initial_configs: Vec<crate::config::FixtureGroupConfig>,
         controller: Controller,
         dmx_ports: Vec<Box<dyn DmxPort>>,
         clocks: Clocks,
@@ -71,7 +69,6 @@ impl Show {
             dmx_buffers: vec![[0u8; 512]; dmx_ports.len()],
             dmx_ports,
             patch,
-            patch_file_path,
             channels,
             master_controls: Default::default(),
             animation_ui_state,
@@ -84,12 +81,9 @@ impl Show {
         show.reconcile_clock_wing()?;
         show.refresh_ui();
         show.snapshot_gui_state(GuiDirty::all());
-        // Populate initial patch snapshot for the GUI.
-        if let Ok(groups) = crate::fixture::patch::parse_file(&show.patch_file_path) {
-            show.gui_state
-                .patch_snapshot
-                .store(Arc::new(PatchSnapshot { groups }));
-        }
+        show.gui_state.patch_snapshot.store(Arc::new(PatchSnapshot {
+            groups: initial_configs,
+        }));
         Ok(show)
     }
 
@@ -171,14 +165,6 @@ impl Show {
     /// Handle a meta-command.
     fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<GuiDirty> {
         match cmd {
-            MetaCommand::ReloadPatch => {
-                let groups = crate::fixture::patch::parse_file(&self.patch_file_path)?;
-                self.patch.repatch(&groups)?;
-                self.gui_state
-                    .patch_snapshot
-                    .store(Arc::new(PatchSnapshot { groups }));
-                self.post_repatch()
-            }
             MetaCommand::Repatch(groups) => {
                 self.patch.repatch(&groups)?;
                 self.gui_state
@@ -650,15 +636,11 @@ pub mod test_support {
         let (send_tx, send_rx) = std::sync::mpsc::sync_channel(0);
 
         std::thread::spawn(move || {
-            let dir = tempfile::tempdir().unwrap();
-            let patch_path = dir.path().join("patch.yaml");
-            std::fs::write(
-                &patch_path,
-                "- fixture: Dimmer\n  patches:\n    - addr: 1\n",
-            )
-            .unwrap();
-            let patch = Patch::from_file(&patch_path).unwrap();
-            let (mut show, send) = Show::test_new(patch, patch_path);
+            let yaml = "- fixture: Dimmer\n  patches:\n    - addr: 1\n";
+            let configs: Vec<crate::config::FixtureGroupConfig> =
+                serde_yaml::from_str(yaml).unwrap();
+            let patch = Patch::patch_all(&configs).unwrap();
+            let (mut show, send) = Show::test_new(patch);
 
             // Send the client handle back to the calling thread.
             send_tx
@@ -681,10 +663,7 @@ pub mod test_support {
 
 #[cfg(test)]
 impl Show {
-    fn test_new(
-        patch: Patch,
-        patch_file_path: PathBuf,
-    ) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
+    fn test_new(patch: Patch) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
         let (controller, send) = Controller::test_new();
         let universe_count = patch.universe_count();
         let channels = Channels::from_iter(patch.channels().cloned());
@@ -704,7 +683,6 @@ impl Show {
                 .map(|_| Box::new(OfflineDmxPort) as Box<dyn DmxPort>)
                 .collect(),
             patch,
-            patch_file_path,
             channels,
             master_controls: Default::default(),
             animation_ui_state: AnimationUIState::new(initial_channel),
@@ -737,20 +715,16 @@ mod tests {
       universe: 1
 ";
 
-    /// Create a Show backed by a temporary patch file.
-    /// Returns the TempDir too — it must outlive the Show for reload tests.
-    fn show_from_yaml(yaml: &str) -> (Show, tempfile::TempDir) {
-        let dir = tempfile::tempdir().unwrap();
-        let patch_path = dir.path().join("patch.yaml");
-        std::fs::write(&patch_path, yaml).unwrap();
-        let patch = Patch::from_file(&patch_path).unwrap();
-        let (show, _send) = Show::test_new(patch, patch_path);
-        (show, dir)
+    fn show_from_yaml(yaml: &str) -> Show {
+        let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
+        let patch = Patch::patch_all(&configs).unwrap();
+        let (show, _send) = Show::test_new(patch);
+        show
     }
 
     #[test]
     fn assign_dmx_port_success() {
-        let (mut show, _dir) = show_from_yaml(TWO_UNIVERSE_PATCH);
+        let mut show = show_from_yaml(TWO_UNIVERSE_PATCH);
         show.dmx_buffers[1].fill(0xFF);
 
         show.handle_meta_command(MetaCommand::AssignDmxPort {
@@ -765,7 +739,7 @@ mod tests {
 
     #[test]
     fn assign_dmx_port_open_fails() {
-        let (mut show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
 
         let result = show.handle_meta_command(MetaCommand::AssignDmxPort {
             universe: 0,
@@ -782,7 +756,7 @@ mod tests {
 
     #[test]
     fn assign_dmx_port_universe_out_of_range() {
-        let (mut show, _dir) = show_from_yaml(TWO_UNIVERSE_PATCH);
+        let mut show = show_from_yaml(TWO_UNIVERSE_PATCH);
 
         let result = show.handle_meta_command(MetaCommand::AssignDmxPort {
             universe: 5,
@@ -796,7 +770,7 @@ mod tests {
 
     #[test]
     fn assign_dmx_port_rejects_duplicate() {
-        let (mut show, _dir) = show_from_yaml(TWO_UNIVERSE_PATCH);
+        let mut show = show_from_yaml(TWO_UNIVERSE_PATCH);
 
         // Assign a mock port to universe 0.
         show.handle_meta_command(MetaCommand::AssignDmxPort {
@@ -814,31 +788,35 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("already assigned"));
     }
 
+    fn repatch_from_yaml(show: &mut Show, yaml: &str) {
+        let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
+        show.handle_meta_command(MetaCommand::Repatch(configs))
+            .unwrap();
+    }
+
     #[test]
-    fn reload_patch_grows_universes() {
-        let (mut show, dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+    fn repatch_grows_universes() {
+        let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
         assert_eq!(show.dmx_ports.len(), 1);
 
-        std::fs::write(dir.path().join("patch.yaml"), TWO_UNIVERSE_PATCH).unwrap();
-        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        repatch_from_yaml(&mut show, TWO_UNIVERSE_PATCH);
         assert_eq!(show.dmx_ports.len(), 2);
         assert_eq!(show.dmx_buffers.len(), 2);
     }
 
     #[test]
-    fn reload_patch_shrinks_universes() {
-        let (mut show, dir) = show_from_yaml(TWO_UNIVERSE_PATCH);
+    fn repatch_shrinks_universes() {
+        let mut show = show_from_yaml(TWO_UNIVERSE_PATCH);
         assert_eq!(show.dmx_ports.len(), 2);
 
-        std::fs::write(dir.path().join("patch.yaml"), ONE_UNIVERSE_PATCH).unwrap();
-        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        repatch_from_yaml(&mut show, ONE_UNIVERSE_PATCH);
         assert_eq!(show.dmx_ports.len(), 1);
         assert_eq!(show.dmx_buffers.len(), 1);
     }
 
     #[test]
     fn snapshot_animation_state_skipped_when_inactive() {
-        let (mut show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
 
         // Visualizer is inactive by default.
         assert!(
@@ -857,7 +835,7 @@ mod tests {
 
     #[test]
     fn snapshot_animation_state_updates_when_active() {
-        let (mut show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
 
         // Activate the visualizer.
         show.gui_state
@@ -886,7 +864,7 @@ mod tests {
     #[test]
     fn master_strobe_channel_routing() {
         // 1 dimmer = 1 channel, 1 wing, strobe on fader 7.
-        let (mut show, _dir) = show_from_yaml(ONE_UNIVERSE_PATCH);
+        let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
         let strobe_ch = strobe_control_channel(show.channels.channel_count());
         assert_eq!(strobe_ch, 7);
 
@@ -951,7 +929,7 @@ mod tests {
     fn enable_strobe_fails_when_fader_occupied() {
         // 8 dimmers = all 8 faders on wing 1 occupied.
         let yaml = n_dimmer_yaml(8);
-        let (mut show, _dir) = show_from_yaml(&yaml);
+        let mut show = show_from_yaml(&yaml);
         assert_eq!(show.channels.channel_count(), 8);
 
         let result = show.handle_meta_command(MetaCommand::SetMasterStrobeChannel(true));
@@ -963,7 +941,7 @@ mod tests {
     fn repatch_auto_disables_strobe_when_fader_occupied() {
         // 7 dimmers = fader 7 available for strobe.
         let yaml = n_dimmer_yaml(7);
-        let (mut show, dir) = show_from_yaml(&yaml);
+        let mut show = show_from_yaml(&yaml);
 
         show.handle_meta_command(MetaCommand::SetMasterStrobeChannel(true))
             .unwrap();
@@ -971,8 +949,7 @@ mod tests {
 
         // Repatch to 8 dimmers — fader 7 now occupied.
         let yaml_8 = n_dimmer_yaml(8);
-        std::fs::write(dir.path().join("patch.yaml"), &yaml_8).unwrap();
-        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        repatch_from_yaml(&mut show, &yaml_8);
 
         assert_eq!(show.master_strobe_channel, None);
         assert!(
@@ -987,7 +964,7 @@ mod tests {
     fn repatch_moves_strobe_to_new_wing() {
         // 7 dimmers = 1 wing, strobe on fader 7.
         let yaml = n_dimmer_yaml(7);
-        let (mut show, dir) = show_from_yaml(&yaml);
+        let mut show = show_from_yaml(&yaml);
 
         show.handle_meta_command(MetaCommand::SetMasterStrobeChannel(true))
             .unwrap();
@@ -995,8 +972,7 @@ mod tests {
 
         // Repatch to 9 dimmers — 2 wings, strobe moves to fader 15.
         let yaml_9 = n_dimmer_yaml(9);
-        std::fs::write(dir.path().join("patch.yaml"), &yaml_9).unwrap();
-        show.handle_meta_command(MetaCommand::ReloadPatch).unwrap();
+        repatch_from_yaml(&mut show, &yaml_9);
 
         assert_eq!(show.master_strobe_channel, Some(15));
         assert!(
