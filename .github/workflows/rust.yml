@@ -36,4 +36,4 @@ jobs:
       - name: Build and test
         run: |
           cargo build
-          cargo test
+          RUST_BACKTRACE=1 cargo test
