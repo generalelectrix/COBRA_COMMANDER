@@ -242,7 +242,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
 
     let zmq_ctx = zmq::Context::new();
     let (send_control_msg, recv_control_msg) = channel();
-    let command_client = CommandClient::new(send_control_msg.clone(), zmq_ctx.clone());
+    let command_client = CommandClient::new(send_control_msg.clone());
 
     // NOTE: this MUST be called before any other MIDI functions.
     install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;

@@ -2,7 +2,6 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
 };
 
 use anyhow::Result;

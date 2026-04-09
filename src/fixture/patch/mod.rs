@@ -3,8 +3,6 @@ use anyhow::{Context, Result, anyhow, ensure};
 use itertools::Itertools;
 use ordermap::{OrderMap, OrderSet};
 use std::collections::HashMap;
-use std::fs::File;
-use std::path::Path;
 
 use anyhow::bail;
 use log::info;
@@ -77,11 +75,6 @@ impl Patch {
             bail!("unknown fixture type \"{name}\"");
         };
         Ok(p)
-    }
-
-    /// Initialize a patch from a patch file.
-    pub fn from_file(path: &Path) -> Result<Self> {
-        Self::patch_all(&parse_file(path)?)
     }
 
     /// Initialize a patch from a collection of groups.
@@ -288,12 +281,6 @@ impl Patch {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FixtureGroup> {
         self.fixtures.values_mut()
     }
-}
-
-pub(crate) fn parse_file(path: &Path) -> Result<Vec<FixtureGroupConfig>> {
-    let patch_file = File::open(path)
-        .with_context(|| format!("unable to read patch file \"{}\"", path.to_string_lossy()))?;
-    Ok(serde_yaml::from_reader(patch_file)?)
 }
 
 /// Mapping between a universe/address pair and the type of fixture already

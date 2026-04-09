@@ -97,11 +97,6 @@ impl Controller {
         self.osc.client_listener()
     }
 
-    /// Add a MIDI device.
-    pub fn add_midi_device(&mut self, spec: DeviceSpec<Device>) -> Result<()> {
-        self.midi.add_device(spec)
-    }
-
     /// Clear the device assignment from a MIDI slot.
     pub fn clear_midi_device(&mut self, slot_name: &str) -> Result<()> {
         self.midi.clear_device(slot_name)
@@ -306,7 +301,6 @@ pub enum MetaCommand {
         universe: usize,
         port: Box<dyn rust_dmx::DmxPort>,
     },
-    AddMidiDevice(DeviceSpec<Device>),
     ClearMidiDevice {
         slot_name: String,
     },
@@ -334,10 +328,6 @@ impl fmt::Debug for MetaCommand {
                 .debug_struct("AssignDmxPort")
                 .field("universe", universe)
                 .field("port", &format_args!("{port}"))
-                .finish(),
-            Self::AddMidiDevice(spec) => f
-                .debug_struct("AddMidiDevice")
-                .field("device", &spec.device)
                 .finish(),
             Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
             Self::ConnectMidiPort {
@@ -393,7 +383,7 @@ pub mod mock {
                 let _ = reply.send(Ok(()));
             }
         });
-        CommandClient::new(send, zmq::Context::new())
+        CommandClient::new(send)
     }
 
     /// An emitter that does nothing.

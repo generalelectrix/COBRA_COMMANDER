@@ -24,6 +24,7 @@ pub struct LayoutServer {
     service_fullname: String,
 }
 
+#[expect(unused)]
 impl LayoutServer {
     /// Start serving the given layout.
     ///

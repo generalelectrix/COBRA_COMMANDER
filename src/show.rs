@@ -187,11 +187,6 @@ impl Show {
                 assign_dmx_port(&mut self.dmx_ports, &mut self.dmx_buffers, universe, port)?;
                 Ok(GuiDirty::DMX_PORTS)
             }
-            MetaCommand::AddMidiDevice(spec) => {
-                self.controller.add_midi_device(spec)?;
-                self.refresh_ui();
-                Ok(GuiDirty::MIDI_SLOTS)
-            }
             MetaCommand::ClearMidiDevice { slot_name } => {
                 self.controller.clear_midi_device(&slot_name)?;
                 self.refresh_ui();
@@ -643,9 +638,7 @@ pub mod test_support {
             let (mut show, send) = Show::test_new(patch);
 
             // Send the client handle back to the calling thread.
-            send_tx
-                .send(CommandClient::new(send, zmq::Context::new()))
-                .unwrap();
+            send_tx.send(CommandClient::new(send)).unwrap();
 
             // Process commands until the client is dropped.
             loop {

@@ -112,11 +112,13 @@ pub struct Control {
 
 impl Control {
     /// Returns true if this is a label control (labelv or labelh).
+    #[expect(unused)]
     pub fn is_label(&self) -> bool {
         self.control_type == "labelv" || self.control_type == "labelh"
     }
 
     /// Get the decoded OSC address, if present.
+    #[expect(unused)]
     pub fn osc_address(&self) -> Option<&str> {
         self.mid_attrs
             .iter()
