@@ -98,7 +98,8 @@ fn generate_layout_from_patch() {
         },
     ];
 
-    let output_path = touchosc_dir().join("test.touchosc");
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let output_path = tmp_dir.path().join("test.touchosc");
     generate_layout(groups.into_iter(), &output_path).unwrap();
 
     let layout = parse_touchosc(&output_path).unwrap();
@@ -136,8 +137,6 @@ fn generate_layout_from_patch() {
         tri_addrs.iter().all(|a| a.starts_with("/TriPhase/")),
         "TriPhase addresses changed unexpectedly: {tri_addrs:?}"
     );
-
-    std::fs::remove_file(&output_path).ok();
 }
 
 /// Applying set_group_name with the same name as the fixture type should
