@@ -54,6 +54,11 @@ mdns-sd = "0.13"
 gethostname = "1"
 rfd = "0.15"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5"
+objc2-app-kit = "0.2"
+objc2-foundation = "0.2"
+
 [dev-dependencies]
 typetag = "0.2"
 tempfile = "3"
