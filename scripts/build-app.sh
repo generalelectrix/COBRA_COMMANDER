@@ -80,6 +80,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+echo "==> Signing app bundle..."
+codesign -s - --force --deep --identifier com.generalelectrix.cobra-commander "$APP"
+
 # --- Create DMG ---
 
 echo "==> Creating DMG..."
