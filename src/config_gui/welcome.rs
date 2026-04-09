@@ -69,14 +69,14 @@ impl WelcomeApp {
         let show_file = match show_file::load(&path) {
             Ok(f) => f,
             Err(e) => {
-                self.modal.show("Failed to Load", &format!("{e:#}"));
+                self.modal.show("Failed to Load", format!("{e:#}"));
                 return;
             }
         };
 
         // Validate the patch by building it (discards the result — Patch isn't Send).
         if let Err(e) = Patch::patch_all(&show_file.patch) {
-            self.modal.show("Invalid Show File", &format!("{e:#}"));
+            self.modal.show("Invalid Show File", format!("{e:#}"));
             return;
         }
 
@@ -98,7 +98,7 @@ impl WelcomeApp {
 
         let empty = ShowFile { patch: vec![] };
         if let Err(e) = show_file::save(&path, &empty) {
-            self.modal.show("Failed to Create Show", &format!("{e:#}"));
+            self.modal.show("Failed to Create Show", format!("{e:#}"));
             return;
         }
 

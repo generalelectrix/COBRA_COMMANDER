@@ -156,7 +156,7 @@ impl PatchPanel<'_> {
             patch: configs.to_vec(),
         };
         if let Err(e) = crate::show_file::save(self.show_file_path, &show_file) {
-            self.ctx.modal.show("Autosave Failed", &format!("{e:#}"));
+            self.ctx.modal.show("Autosave Failed", format!("{e:#}"));
         }
     }
 

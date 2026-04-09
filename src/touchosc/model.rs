@@ -44,25 +44,25 @@ impl TabPage {
 
         for ctrl in &mut self.controls {
             for (key, value) in &mut ctrl.mid_attrs {
-                if key == "osc_cs" {
-                    if let Some(suffix) = value.strip_prefix(&old_prefix) {
-                        *value = format!("/{group_name}/{suffix}");
-                    }
+                if key == "osc_cs"
+                    && let Some(suffix) = value.strip_prefix(&old_prefix)
+                {
+                    *value = format!("/{group_name}/{suffix}");
                 }
             }
         }
 
         self.name = group_name.to_string();
 
-        if let Some(ref mut li) = self.li {
-            if li.t == fixture_type {
-                li.t = group_name.to_string();
-            }
+        if let Some(ref mut li) = self.li
+            && li.t == fixture_type
+        {
+            li.t = group_name.to_string();
         }
-        if let Some(ref mut la) = self.la {
-            if la.t == fixture_type {
-                la.t = group_name.to_string();
-            }
+        if let Some(ref mut la) = self.la
+            && la.t == fixture_type
+        {
+            la.t = group_name.to_string();
         }
 
         if let Some(ref mut osc) = self.osc_cs {
