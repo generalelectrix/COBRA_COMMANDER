@@ -2,13 +2,57 @@
 # Build the complete "Cobra Commander.app" bundle and DMG from scratch.
 # Usage: VERSION=2026.04.09-1 scripts/build-app.sh
 #
-# Prerequisites: brew install create-dmg
+# Prerequisites: brew install create-dmg poppler
+#                pip install Pillow
 #                rustup target add x86_64-apple-darwin aarch64-apple-darwin
 set -e
 
 VERSION="${VERSION:?VERSION env var is required (e.g. 2026.04.09-1)}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# --- Assemble icon ---
+# Icons are checked in under resources/icons/. To regenerate from the source
+# PDF (resources/emblem.pdf), run: python3 resources/generate_icons.py
+
+echo "==> Converting PNGs to icns..."
+ICNS="$PROJECT_DIR/resources/CobraCommander.icns"
+ICONSET=$(mktemp -d)/CobraCommander.iconset
+mkdir -p "$ICONSET"
+
+ICON_DIR="$PROJECT_DIR/resources/icons"
+cp "$ICON_DIR/icon_16.png"   "$ICONSET/icon_16x16.png"
+cp "$ICON_DIR/icon_32.png"   "$ICONSET/icon_16x16@2x.png"
+cp "$ICON_DIR/icon_32.png"   "$ICONSET/icon_32x32.png"
+cp "$ICON_DIR/icon_64.png"   "$ICONSET/icon_32x32@2x.png"
+cp "$ICON_DIR/icon_128.png"  "$ICONSET/icon_128x128.png"
+cp "$ICON_DIR/icon_256.png"  "$ICONSET/icon_128x128@2x.png"
+cp "$ICON_DIR/icon_256.png"  "$ICONSET/icon_256x256.png"
+cp "$ICON_DIR/icon_512.png"  "$ICONSET/icon_256x256@2x.png"
+cp "$ICON_DIR/icon_512.png"  "$ICONSET/icon_512x512.png"
+cp "$ICON_DIR/icon_1024.png" "$ICONSET/icon_512x512@2x.png"
+
+iconutil -c icns "$ICONSET" -o "$ICNS"
+rm -rf "$(dirname "$ICONSET")"
+
+echo "==> Converting document PNGs to icns..."
+DOC_ICNS="$PROJECT_DIR/resources/CobraShow.icns"
+DOC_ICONSET=$(mktemp -d)/CobraShow.iconset
+mkdir -p "$DOC_ICONSET"
+
+cp "$ICON_DIR/doc_16.png"   "$DOC_ICONSET/icon_16x16.png"
+cp "$ICON_DIR/doc_32.png"   "$DOC_ICONSET/icon_16x16@2x.png"
+cp "$ICON_DIR/doc_32.png"   "$DOC_ICONSET/icon_32x32.png"
+cp "$ICON_DIR/doc_64.png"   "$DOC_ICONSET/icon_32x32@2x.png"
+cp "$ICON_DIR/doc_128.png"  "$DOC_ICONSET/icon_128x128.png"
+cp "$ICON_DIR/doc_256.png"  "$DOC_ICONSET/icon_128x128@2x.png"
+cp "$ICON_DIR/doc_256.png"  "$DOC_ICONSET/icon_256x256.png"
+cp "$ICON_DIR/doc_512.png"  "$DOC_ICONSET/icon_256x256@2x.png"
+cp "$ICON_DIR/doc_512.png"  "$DOC_ICONSET/icon_512x512.png"
+cp "$ICON_DIR/doc_1024.png" "$DOC_ICONSET/icon_512x512@2x.png"
+
+iconutil -c icns "$DOC_ICONSET" -o "$DOC_ICNS"
+rm -rf "$(dirname "$DOC_ICONSET")"
 
 # --- Build universal binary ---
 
@@ -38,11 +82,8 @@ mkdir -p "$APP/Contents/Resources"
 cp "$PROJECT_DIR/dist/cobra_commander" "$APP/Contents/MacOS/Cobra Commander"
 chmod +x "$APP/Contents/MacOS/Cobra Commander"
 
-# Bundle icon if it exists.
-ICNS="$PROJECT_DIR/resources/CobraCommander.icns"
-if [ -f "$ICNS" ]; then
-  cp "$ICNS" "$APP/Contents/Resources/CobraCommander.icns"
-fi
+cp "$ICNS" "$APP/Contents/Resources/CobraCommander.icns"
+cp "$DOC_ICNS" "$APP/Contents/Resources/CobraShow.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -72,6 +113,35 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <string>10.13</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeExtensions</key>
+            <array><string>cobra</string></array>
+            <key>CFBundleTypeName</key>
+            <string>Cobra Show</string>
+            <key>CFBundleTypeIconFile</key>
+            <string>CobraShow</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+        </dict>
+    </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.generalelectrix.cobra-commander.show</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string></array>
+            <key>UTTypeDescription</key>
+            <string>Cobra Show</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>cobra</string></array>
+            </dict>
+        </dict>
+    </array>
     <key>NSMicrophoneUsageDescription</key>
     <string>COBRA COMMANDER DEMANDS ACCESS TO YOUR AUDIO INPUT.</string>
     <key>NSLocalNetworkUsageDescription</key>
