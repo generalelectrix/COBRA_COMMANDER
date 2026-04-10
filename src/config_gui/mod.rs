@@ -52,12 +52,12 @@ use welcome::WelcomeResult;
 #[derive(Default, PartialEq, Clone, Copy)]
 enum Tab {
     #[default]
+    Patch,
+    Dmx,
     Midi,
     Osc,
     Clocks,
     Animation,
-    Patch,
-    Dmx,
 }
 
 struct ConsoleApp {
@@ -90,12 +90,12 @@ impl eframe::App for ConsoleApp {
 
         egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.active_tab, Tab::Patch, "Patch");
+                ui.selectable_value(&mut self.active_tab, Tab::Dmx, "DMX");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
                 ui.selectable_value(&mut self.active_tab, Tab::Clocks, "Clocks");
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
-                ui.selectable_value(&mut self.active_tab, Tab::Patch, "Patch");
-                ui.selectable_value(&mut self.active_tab, Tab::Dmx, "DMX");
             });
         });
 

@@ -51,6 +51,32 @@ pub fn cancel_button(ui: &mut egui::Ui, text: &str) -> bool {
         .clicked()
 }
 
+// ---------------------------------------------------------------------------
+// Layout helpers — font-scaled sizing for scroll areas and text fields.
+//
+// These compute dimensions relative to the current font and spacing so that
+// layouts adapt automatically when the font or theme changes.
+// ---------------------------------------------------------------------------
+
+/// Compute the height needed for `rows` table rows, scaled to the current font and spacing.
+///
+/// Useful for setting `ScrollArea::max_height` or `min_scrolled_height` so that
+/// a table shows a predictable number of rows regardless of font size.
+pub fn row_height_for(ui: &egui::Ui, rows: usize) -> f32 {
+    let row_height = ui.text_style_height(&egui::TextStyle::Body) + ui.spacing().item_spacing.y;
+    row_height * rows as f32
+}
+
+/// Compute the width needed for `chars` characters of text, scaled to the current font.
+///
+/// Useful for setting `TextEdit::desired_width` on numeric fields so they
+/// don't stretch to fill available space. Includes padding for the text
+/// edit frame.
+pub fn char_width_for(ui: &egui::Ui, chars: usize) -> f32 {
+    let char_width = ui.text_style_height(&egui::TextStyle::Body) * 0.6;
+    char_width * chars as f32 + ui.spacing().button_padding.x * 2.0
+}
+
 /// Shared rendering context for GUI panels.
 ///
 /// Bundles the dependencies common to all panel renderers so they don't

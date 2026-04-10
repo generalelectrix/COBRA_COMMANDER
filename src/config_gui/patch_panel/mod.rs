@@ -10,7 +10,8 @@ use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
 use crate::gui_state::PatchSnapshot;
 use crate::ui_util::{
-    GuiContext, STATUS_COLORS, cancel_button, confirm_button, confirm_button_enabled, dnd_reorder,
+    GuiContext, STATUS_COLORS, cancel_button, char_width_for, confirm_button,
+    confirm_button_enabled, dnd_reorder, row_height_for,
 };
 
 use address_map::{AddressMap, UniverseAddress};
@@ -337,90 +338,121 @@ impl PatchPanel<'_> {
 
         let mut swap: Option<(usize, usize)> = None;
 
-        // Group table — no buttons in rows; drag to reorder, click to select.
-        egui::ScrollArea::vertical()
-            .max_height(150.0)
-            .id_salt("patch_group_list")
-            .show(ui, |ui| {
-                let Some(wc) = self.state.working_copy.as_ref() else {
-                    return;
-                };
-                let n = wc.groups.len();
+        // Group list (left) + selected group detail (right).
+        ui.horizontal(|ui| {
+            // Left column: group table + Add Group button.
+            ui.vertical(|ui| {
+                // 8 data rows + 1 header row, scaled to current font.
+                let group_list_height = row_height_for(ui, 9);
 
-                if n == 0 {
-                    ui.label("No groups. Click + Add Group below.");
-                    return;
-                }
-
-                let selected = self.state.selected_group;
-
-                egui::Grid::new("group_table")
-                    .striped(true)
-                    .with_row_color(move |row, style| {
-                        if row == 0 {
-                            return None;
-                        }
-                        if selected == Some(row - 1) {
-                            Some(style.visuals.selection.bg_fill)
-                        } else {
-                            None
-                        }
-                    })
+                egui::ScrollArea::vertical()
+                    .min_scrolled_height(group_list_height)
+                    .max_height(group_list_height)
+                    .id_salt("patch_group_list")
                     .show(ui, |ui| {
-                        ui.label("Ch");
-                        ui.label("Name");
-                        ui.label("Type");
-                        ui.label("Count");
-                        ui.end_row();
+                        let Some(wc) = self.state.working_copy.as_ref() else {
+                            return;
+                        };
+                        let n = wc.groups.len();
 
-                        for i in 0..n {
-                            let group = &wc.groups[i];
-                            let row_top = ui.cursor().top();
-
-                            // Channel number.
-                            let ch_text = match channel_numbers.get(i).copied().flatten() {
-                                Some(ch) => format!("{}", ch + 1),
-                                None => "-".to_string(),
-                            };
-                            ui.label(&ch_text);
-                            ui.label(group.config.key());
-                            ui.label(&group.config.fixture);
-                            ui.label(format!("{}", group.config.patches.len()));
-
-                            ui.end_row();
-
-                            // Full-row interaction: click to select, drag to reorder.
-                            let row_bottom = ui.cursor().top();
-                            let row_rect = egui::Rect::from_x_y_ranges(
-                                ui.min_rect().x_range(),
-                                row_top..=row_bottom,
-                            );
-                            let response = ui.interact(
-                                row_rect,
-                                ui.id().with(("group_row", i)),
-                                egui::Sense::click_and_drag(),
-                            );
-
-                            // Click → select.
-                            if response.clicked() {
-                                self.state.selected_group = Some(i);
-                            }
-
-                            // Drag → reorder via DnD.
-                            let dnd = dnd_reorder(ui, &response, i, row_rect.x_range());
-                            if dnd.swap.is_some() {
-                                swap = dnd.swap;
-                            }
+                        if n == 0 {
+                            ui.label("No groups. Click + Add Group below.");
+                            return;
                         }
+
+                        let selected = self.state.selected_group;
+
+                        egui::Grid::new("group_table")
+                            .striped(true)
+                            .with_row_color(move |row, style| {
+                                if row == 0 {
+                                    return None;
+                                }
+                                if selected == Some(row - 1) {
+                                    Some(style.visuals.selection.bg_fill)
+                                } else {
+                                    None
+                                }
+                            })
+                            .show(ui, |ui| {
+                                ui.label("Ch");
+                                ui.label("Name");
+                                ui.label("Type");
+                                ui.label("Count");
+                                ui.end_row();
+
+                                for i in 0..n {
+                                    let group = &wc.groups[i];
+                                    let row_top = ui.cursor().top();
+
+                                    // Channel number.
+                                    let ch_text = match channel_numbers.get(i).copied().flatten() {
+                                        Some(ch) => format!("{}", ch + 1),
+                                        None => "-".to_string(),
+                                    };
+                                    ui.label(&ch_text);
+                                    ui.label(group.config.key());
+                                    ui.label(&group.config.fixture);
+                                    ui.label(format!("{}", group.config.patches.len()));
+
+                                    ui.end_row();
+
+                                    // Full-row interaction: click to select, drag to reorder.
+                                    let row_bottom = ui.cursor().top();
+                                    let row_rect = egui::Rect::from_x_y_ranges(
+                                        ui.min_rect().x_range(),
+                                        row_top..=row_bottom,
+                                    );
+                                    let response = ui.interact(
+                                        row_rect,
+                                        ui.id().with(("group_row", i)),
+                                        egui::Sense::click_and_drag(),
+                                    );
+
+                                    // Click → select.
+                                    if response.clicked() {
+                                        self.state.selected_group = Some(i);
+                                    }
+
+                                    // Drag → reorder via DnD.
+                                    let dnd = dnd_reorder(ui, &response, i, row_rect.x_range());
+                                    if dnd.swap.is_some() {
+                                        swap = dnd.swap;
+                                    }
+                                }
+                            });
                     });
+
+                // + Add Group button below the list.
+                if ui.button("+ Add Group").clicked() {
+                    let mut form = AddGroupForm::new();
+                    form.sync_options(self.patchers);
+                    self.state.mode = PanelMode::AddGroup(form);
+                }
             });
 
-        // + Add Group button below the list.
-        if ui.button("+ Add Group").clicked() {
-            let mut form = AddGroupForm::new();
-            form.sync_options(self.patchers);
-            self.state.mode = PanelMode::AddGroup(form);
-        }
+            ui.separator();
+
+            // Right column: selected group detail.
+            ui.vertical(|ui| {
+                ui.set_min_width(ui.available_width());
+                if let Some(sel) = self.state.selected_group {
+                    let Some(wc) = self.state.working_copy.as_ref() else {
+                        return;
+                    };
+                    if sel < wc.groups.len() {
+                        self.render_detail_editable_fields(ui, sel);
+                        self.render_detail_group_options(ui, sel);
+
+                        ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                            if cancel_button(ui, "Delete Group") {
+                                self.state.pending_delete = Some(sel);
+                            }
+                        });
+                    }
+                }
+            });
+        });
 
         // Apply swap.
         if let Some((a, b)) = swap {
@@ -437,26 +469,20 @@ impl PatchPanel<'_> {
 
         ui.separator();
 
-        // Detail view.
+        // Fixtures section — full width below.
         if let Some(sel) = self.state.selected_group {
             let Some(wc) = self.state.working_copy.as_ref() else {
                 return;
             };
             if sel < wc.groups.len() {
-                self.render_detail(ui, sel);
+                self.render_fixtures_table(ui, sel);
             }
         }
     }
 
     // -----------------------------------------------------------------------
-    // Detail view
+    // Detail view (right column of group list)
     // -----------------------------------------------------------------------
-
-    fn render_detail(&mut self, ui: &mut egui::Ui, group_idx: usize) {
-        self.render_detail_editable_fields(ui, group_idx);
-        self.render_detail_group_options(ui, group_idx);
-        self.render_fixtures_table(ui, group_idx);
-    }
 
     fn render_detail_editable_fields(&mut self, ui: &mut egui::Ui, group_idx: usize) {
         {
@@ -483,14 +509,7 @@ impl PatchPanel<'_> {
                 return;
             };
             let cfg = &mut wc.groups[group_idx].config;
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut cfg.channel, "Assign To Submaster Channel");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if cancel_button(ui, "Delete Group") {
-                        self.state.pending_delete = Some(group_idx);
-                    }
-                });
-            });
+            ui.checkbox(&mut cfg.channel, "Assign To Submaster Channel");
         }
     }
 
@@ -544,13 +563,27 @@ impl PatchPanel<'_> {
             }
         }
 
-        ui.heading("Add Fixture To Group");
+        let fixtures_height = ui.available_height();
+        ui.horizontal(|ui| {
+            // Left column: fixtures heading + table.
+            ui.vertical(|ui| {
+                ui.set_min_height(fixtures_height);
+                ui.heading("Fixtures In Group");
+                self.render_fixture_grid(ui, group_idx, &addr_map);
+            });
 
-        // Inline add-fixture form.
-        self.render_inline_add_fixture(ui, group_idx);
+            ui.separator();
 
-        ui.heading("Fixtures");
+            // Right column: add fixture form.
+            ui.vertical(|ui| {
+                ui.set_min_width(ui.available_width());
+                ui.heading("Add Fixture To Group");
+                self.render_inline_add_fixture(ui, group_idx);
+            });
+        });
+    }
 
+    fn render_fixture_grid(&mut self, ui: &mut egui::Ui, group_idx: usize, addr_map: &AddressMap) {
         let patch_opts: Vec<(String, PatchOption)> = {
             let Some(wc) = self.state.working_copy.as_ref() else {
                 return;
@@ -580,7 +613,7 @@ impl PatchPanel<'_> {
                     .show(ui, |ui| {
                         ui.label("#");
                         ui.label("Addr");
-                        ui.label("Uni");
+                        ui.label("Univ");
                         ui.label("Ch");
                         ui.label("Mir");
                         for (opt_key, _) in &patch_opts {
@@ -840,17 +873,19 @@ impl PatchPanel<'_> {
             .unwrap_or(true);
 
         if is_dmx_fixture {
+            let field_width = char_width_for(ui, 4);
             ui.horizontal(|ui| {
-                ui.label("Addr:");
-                ui.text_edit_singleline(&mut form.addr)
+                ui.label("Address:");
+                ui.add(egui::TextEdit::singleline(&mut form.addr).desired_width(field_width))
                     .on_hover_text("1-512");
-                ui.label("Uni:");
-                let uni_edit = egui::TextEdit::singleline(&mut form.universe).desired_width(25.0);
-                ui.add(uni_edit);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Universe:");
+                ui.add(egui::TextEdit::singleline(&mut form.universe).desired_width(field_width));
+            });
+            ui.horizontal(|ui| {
                 ui.label("Count:");
-                let count_edit = egui::TextEdit::singleline(&mut form.count).desired_width(25.0);
-                ui.add(count_edit);
-                ui.checkbox(&mut form.mirror, "Mirror");
+                ui.add(egui::TextEdit::singleline(&mut form.count).desired_width(field_width));
             });
         }
 
@@ -884,7 +919,13 @@ impl PatchPanel<'_> {
             (true, true)
         };
 
-        if confirm_button_enabled(ui, "Add Fixture", all_valid && addr_valid && count_valid) {
+        if ui
+            .add_enabled(
+                all_valid && addr_valid && count_valid,
+                egui::Button::new("+ Add Fixture"),
+            )
+            .clicked()
+        {
             self.commit_add_fixture(group_idx);
         }
     }
@@ -1490,6 +1531,22 @@ mod test {
             &test_patchers(),
             &mut state,
             "patch_panel_with_groups",
+        );
+    }
+
+    #[test]
+    fn render_many_groups() {
+        let groups: Vec<_> = (0..10)
+            .map(|i| simple_group(Some(&format!("Group{i}")), &[i * 10 + 1]))
+            .collect();
+        let snapshot = PatchSnapshot { groups };
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+        snapshot_panel(
+            &snapshot,
+            &test_patchers(),
+            &mut state,
+            "patch_panel_many_groups",
         );
     }
 
