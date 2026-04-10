@@ -20,9 +20,10 @@ Inputs:
 
 Outputs:
     resources/splash.png       — white insignia on transparent background
-    resources/icons/icon_N.png — square icons at 16, 32, 64, 128, 256, 512, 1024px
-        - 128px and above: full mark, white on black, centered in square
-        - 64px and below:  cropped to center three cobra heads, white on black
+    resources/icons/icon_N.png — app icons (white on black)
+    resources/icons/doc_N.png  — document icons (black on white)
+        - 128px and above: full mark, centered in square
+        - 64px and below:  cropped to center three cobra heads
 """
 
 import subprocess
@@ -192,6 +193,19 @@ def main():
     for px in SMALL_ICON_SIZES:
         out = str(ICON_DIR / f"icon_{px}.png")
         cropped.resize((px, px), Image.LANCZOS).save(out)
+        print(f"  -> {out}")
+
+    # --- Document icons (black on white — inverse of app icons) ---
+    doc_square = pad_to_square(trimmed, (255, 255, 255))
+    for px in LARGE_ICON_SIZES:
+        out = str(ICON_DIR / f"doc_{px}.png")
+        doc_square.resize((px, px), Image.LANCZOS).save(out)
+        print(f"  -> {out}")
+
+    doc_cropped = trimmed.crop((left, top, right, bottom))
+    for px in SMALL_ICON_SIZES:
+        out = str(ICON_DIR / f"doc_{px}.png")
+        doc_cropped.resize((px, px), Image.LANCZOS).save(out)
         print(f"  -> {out}")
 
     print("Done.")

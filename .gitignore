@@ -5,3 +5,4 @@ dist/
 *.diff.png
 *.old.png
 resources/CobraCommander.icns
+resources/CobraShow.icns
