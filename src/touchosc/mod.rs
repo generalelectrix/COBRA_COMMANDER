@@ -6,7 +6,8 @@ pub mod serve;
 mod templates;
 
 #[expect(unused)]
-pub use generate::{GroupEntry, generate_layout};
+pub use generate::generate_layout;
+pub use generate::{GroupEntry, assemble_layout};
 pub use model::*;
 #[expect(unused)]
 pub use parse::parse_touchosc;

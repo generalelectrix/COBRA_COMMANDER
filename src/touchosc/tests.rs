@@ -201,7 +201,7 @@ fn layout_server_serves_xml() {
     let zip = &BASE_TEMPLATE;
     let expected_xml = zip.extract_xml().unwrap();
 
-    let server = serve::LayoutServer::start("TestLayout".to_string(), &zip).unwrap();
+    let server = serve::LayoutServer::start("TestLayout".to_string(), &expected_xml).unwrap();
 
     // Give the server thread a moment to start accepting.
     std::thread::sleep(std::time::Duration::from_millis(50));

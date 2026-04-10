@@ -74,6 +74,7 @@ struct ConsoleApp {
     /// to the main thread. Arc<AtomicBool> because the deferred closure is
     /// 'static + Send + Sync and can't hold a reference to ConsoleApp fields.
     visualizer_detached: Arc<AtomicBool>,
+    osc_panel: osc_panel::OscPanelState,
     patch_panel: PatchPanelState,
     dmx_panel: DmxPortPanelState,
     patchers: Vec<crate::fixture::patch::Patcher>,
@@ -160,11 +161,19 @@ impl eframe::App for ConsoleApp {
             }
             Tab::Osc => {
                 let clients = self.gui_state.osc_clients.load();
-                let mut ctx = GuiContext {
-                    modal: &mut self.modal,
-                    client: &self.client,
-                };
-                osc_panel::ui(ui, &mut ctx, &self.gui_state.osc_listen_addr, &clients);
+                let patch_snapshot = self.gui_state.patch_snapshot.load();
+                osc_panel::OscPanel {
+                    ctx: GuiContext {
+                        modal: &mut self.modal,
+                        client: &self.client,
+                    },
+                    state: &mut self.osc_panel,
+                    listen_addr: &self.gui_state.osc_listen_addr,
+                    clients: &clients,
+                    groups: &patch_snapshot.groups,
+                    show_file_path: &self.show_file_path,
+                }
+                .ui(ui);
             }
             Tab::Animation => {
                 if self.visualizer_detached.load(Ordering::Relaxed) {
@@ -316,6 +325,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
                 midi_panel: MidiPanelState::new(),
                 visualizer_panel: Arc::new(Mutex::new(VisualizerPanelState::default())),
                 visualizer_detached: Arc::new(AtomicBool::new(false)),
+                osc_panel: osc_panel::OscPanelState::new(),
                 patch_panel: PatchPanelState::new(),
                 dmx_panel: DmxPortPanelState::new(),
                 patchers: Patch::menu(),
