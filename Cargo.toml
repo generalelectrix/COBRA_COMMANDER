@@ -24,7 +24,6 @@ color_organ = { git = "https://github.com/generalelectrix/color_organ", branch =
 
 arc-swap = "1"
 bitflags = "2"
-zmq = "0.10"
 anyhow = { version = "1", features = ["backtrace"] }
 thiserror = "2"
 num-traits = "0.2"

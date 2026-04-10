@@ -239,7 +239,6 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         Err(_) => format!("0.0.0.0:{osc_receive_port}"),
     };
 
-    let zmq_ctx = zmq::Context::new();
     let (send_control_msg, recv_control_msg) = channel();
     let command_client = CommandClient::new(send_control_msg.clone());
 
@@ -307,12 +306,9 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         options,
         Box::new(move |_cc| {
             Ok(Box::new(ConsoleApp {
-                clock_panel: ClockPanelState::new(
-                    zmq_ctx,
-                    &ClockStatus::Internal {
-                        audio_device: "Offline".into(),
-                    },
-                ),
+                clock_panel: ClockPanelState::new(&ClockStatus::Internal {
+                    audio_device: "Offline".into(),
+                }),
                 midi_panel: MidiPanelState::new(),
                 visualizer_panel: Arc::new(Mutex::new(VisualizerPanelState::default())),
                 visualizer_detached: Arc::new(AtomicBool::new(false)),
