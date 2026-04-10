@@ -185,6 +185,11 @@ impl TouchOscZip {
 pub struct TouchOscXml(pub Vec<u8>);
 
 impl Layout {
+    /// Serialize this layout to raw XML bytes.
+    pub fn to_xml(&self) -> TouchOscXml {
+        TouchOscXml(super::serialize::serialize_xml(self).into_bytes())
+    }
+
     /// Serialize this layout to in-memory .touchosc ZIP bytes.
     pub fn to_zip(&self) -> anyhow::Result<TouchOscZip> {
         use std::io::Write;

@@ -6,7 +6,7 @@ use log::{error, info};
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tiny_http::{Header, Response, Server};
 
-use super::model::TouchOscZip;
+use super::model::TouchOscXml;
 
 const PORT: u16 = 9658;
 const SERVICE_TYPE: &str = "_touchosceditor._tcp.local.";
@@ -24,7 +24,6 @@ pub struct LayoutServer {
     service_fullname: String,
 }
 
-#[expect(unused)]
 impl LayoutServer {
     /// Start serving the given layout.
     ///
@@ -33,8 +32,8 @@ impl LayoutServer {
     ///
     /// Registers a `_touchosceditor._tcp` mDNS service and spawns a thread
     /// to handle HTTP requests. Returns immediately.
-    pub fn start(layout_name: String, zip: &TouchOscZip) -> Result<Self> {
-        let layout_xml = zip.extract_xml()?;
+    pub fn start(layout_name: String, xml: &TouchOscXml) -> Result<Self> {
+        let layout_xml = xml.0.clone();
 
         let http_server = Arc::new(
             Server::http(format!("0.0.0.0:{PORT}"))
@@ -69,7 +68,7 @@ impl LayoutServer {
 
         let server = Arc::clone(&http_server);
         let thread = thread::spawn(move || {
-            serve_loop(&server, &layout_xml.0, &layout_name);
+            serve_loop(&server, &layout_xml, &layout_name);
         });
 
         Ok(Self {
@@ -81,6 +80,7 @@ impl LayoutServer {
     }
 
     /// Stop the server, deregister mDNS, and wait for the thread to finish.
+    #[expect(unused)]
     pub fn stop(mut self) -> Result<()> {
         info!("stopping TouchOSC layout server");
         self.shutdown();

@@ -47,6 +47,9 @@ pub fn assemble_layout<'a>(groups: impl Iterator<Item = GroupEntry<'a>>) -> Resu
             .ok_or_else(|| anyhow!("template for '{fixture_type}' has no pages"))?;
 
         page.set_group_name(group_name);
+        // Suppress the page tab's own OSC message; without this TouchOSC
+        // auto-sends /{group_name} whenever the tab is selected.
+        page.osc_cs = Some("/ignore".to_string());
         tabpages.push(page);
     }
 
