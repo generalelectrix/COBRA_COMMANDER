@@ -41,6 +41,7 @@ ordermap = "1"
 ansi-escapes = "0.2.0"
 egui_plot = "0.34"
 eframe = "0.33"
+egui_extras = { version = "0.33", features = ["image"] }
 enum_dispatch = "0.3.13"
 url = { version = "*", features = ["serde"] }
 termion = "4.0.5"

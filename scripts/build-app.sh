@@ -2,13 +2,38 @@
 # Build the complete "Cobra Commander.app" bundle and DMG from scratch.
 # Usage: VERSION=2026.04.09-1 scripts/build-app.sh
 #
-# Prerequisites: brew install create-dmg
+# Prerequisites: brew install create-dmg poppler
+#                pip install Pillow
 #                rustup target add x86_64-apple-darwin aarch64-apple-darwin
 set -e
 
 VERSION="${VERSION:?VERSION env var is required (e.g. 2026.04.09-1)}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# --- Assemble icon ---
+# Icons are checked in under resources/icons/. To regenerate from the source
+# PDF (resources/emblem.pdf), run: python3 resources/generate_icons.py
+
+echo "==> Converting PNGs to icns..."
+ICNS="$PROJECT_DIR/resources/CobraCommander.icns"
+ICONSET=$(mktemp -d)/CobraCommander.iconset
+mkdir -p "$ICONSET"
+
+ICON_DIR="$PROJECT_DIR/resources/icons"
+cp "$ICON_DIR/icon_16.png"   "$ICONSET/icon_16x16.png"
+cp "$ICON_DIR/icon_32.png"   "$ICONSET/icon_16x16@2x.png"
+cp "$ICON_DIR/icon_32.png"   "$ICONSET/icon_32x32.png"
+cp "$ICON_DIR/icon_64.png"   "$ICONSET/icon_32x32@2x.png"
+cp "$ICON_DIR/icon_128.png"  "$ICONSET/icon_128x128.png"
+cp "$ICON_DIR/icon_256.png"  "$ICONSET/icon_128x128@2x.png"
+cp "$ICON_DIR/icon_256.png"  "$ICONSET/icon_256x256.png"
+cp "$ICON_DIR/icon_512.png"  "$ICONSET/icon_256x256@2x.png"
+cp "$ICON_DIR/icon_512.png"  "$ICONSET/icon_512x512.png"
+cp "$ICON_DIR/icon_1024.png" "$ICONSET/icon_512x512@2x.png"
+
+iconutil -c icns "$ICONSET" -o "$ICNS"
+rm -rf "$(dirname "$ICONSET")"
 
 # --- Build universal binary ---
 
@@ -38,11 +63,7 @@ mkdir -p "$APP/Contents/Resources"
 cp "$PROJECT_DIR/dist/cobra_commander" "$APP/Contents/MacOS/Cobra Commander"
 chmod +x "$APP/Contents/MacOS/Cobra Commander"
 
-# Bundle icon if it exists.
-ICNS="$PROJECT_DIR/resources/CobraCommander.icns"
-if [ -f "$ICNS" ]; then
-  cp "$ICNS" "$APP/Contents/Resources/CobraCommander.icns"
-fi
+cp "$ICNS" "$APP/Contents/Resources/CobraCommander.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

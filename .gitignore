@@ -4,3 +4,4 @@ dist/
 *.new.png
 *.diff.png
 *.old.png
+resources/CobraCommander.icns

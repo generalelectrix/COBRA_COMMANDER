@@ -49,6 +49,15 @@ use midi_panel::{MidiPanel, MidiPanelState};
 use patch_panel::{PatchPanel, PatchPanelState};
 use welcome::WelcomeResult;
 
+fn apply_dark_theme(ctx: &egui::Context) {
+    let mut visuals = egui::Visuals::dark();
+    visuals.panel_fill = egui::Color32::BLACK;
+    visuals.window_fill = egui::Color32::BLACK;
+    visuals.extreme_bg_color = egui::Color32::from_rgb(20, 20, 20);
+    visuals.faint_bg_color = egui::Color32::from_rgb(10, 10, 10);
+    ctx.set_visuals(visuals);
+}
+
 #[derive(Default, PartialEq, Clone, Copy)]
 enum Tab {
     #[default]
@@ -313,7 +322,8 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
     eframe::run_native(
         "Cobra Commander",
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            apply_dark_theme(&cc.egui_ctx);
             Ok(Box::new(ConsoleApp {
                 clock_panel: ClockPanelState::new(&ClockStatus::Internal {
                     audio_device: "Offline".into(),

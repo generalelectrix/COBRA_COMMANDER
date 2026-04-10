@@ -30,27 +30,53 @@ struct WelcomeApp {
 
 impl eframe::App for WelcomeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+        let frame = egui::Frame::central_panel(&ctx.style());
+        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
             ui.vertical_centered(|ui| {
-                ui.add_space(60.0);
-                ui.heading(egui::RichText::new("COBRA COMMANDER").size(32.0).strong());
-                ui.add_space(40.0);
+                ui.add(egui::Image::new(egui::ImageSource::Bytes {
+                    uri: "bytes://emblem".into(),
+                    bytes: egui::load::Bytes::Static(include_bytes!("../../resources/splash.png")),
+                }));
 
-                if ui
-                    .add_sized([200.0, 40.0], egui::Button::new("Load Show"))
-                    .clicked()
-                {
-                    self.handle_load(ctx);
-                }
+                ui.heading(egui::RichText::new("COBRA COMMANDER").size(60.0).strong());
 
-                ui.add_space(12.0);
-
-                if ui
-                    .add_sized([200.0, 40.0], egui::Button::new("New Show"))
-                    .clicked()
-                {
-                    self.handle_new(ctx);
-                }
+                ui.horizontal(|ui| {
+                    let button_width = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+                    let button_size = egui::vec2(button_width, 50.0);
+                    let button_font = egui::FontId::proportional(20.0);
+                    let button_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+                    if ui
+                        .add_sized(
+                            button_size,
+                            egui::Button::new(
+                                egui::RichText::new("NEW")
+                                    .font(button_font.clone())
+                                    .color(egui::Color32::WHITE),
+                            )
+                            .fill(egui::Color32::BLACK)
+                            .stroke(button_stroke),
+                        )
+                        .clicked()
+                    {
+                        self.handle_new(ctx);
+                    }
+                    if ui
+                        .add_sized(
+                            button_size,
+                            egui::Button::new(
+                                egui::RichText::new("LOAD")
+                                    .font(button_font)
+                                    .color(egui::Color32::WHITE),
+                            )
+                            .fill(egui::Color32::BLACK)
+                            .stroke(button_stroke),
+                        )
+                        .clicked()
+                    {
+                        self.handle_load(ctx);
+                    }
+                });
             });
         });
 
@@ -117,7 +143,7 @@ pub(crate) fn run_welcome() -> Result<WelcomeResult> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 300.0])
+            .with_inner_size([624.0, 634.0])
             .with_resizable(false)
             .with_icon(std::sync::Arc::new(egui::IconData::default())),
         ..Default::default()
@@ -126,7 +152,9 @@ pub(crate) fn run_welcome() -> Result<WelcomeResult> {
     eframe::run_native(
         "Cobra Commander",
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            super::apply_dark_theme(&cc.egui_ctx);
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             Ok(Box::new(WelcomeApp {
                 result: app_result,
                 modal: MessageModal::default(),
