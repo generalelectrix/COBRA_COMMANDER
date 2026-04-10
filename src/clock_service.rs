@@ -8,8 +8,6 @@ use anyhow::Result;
 use log::error;
 use tunnels::clock_server::{SharedClockData, clock_subscriber};
 use zero_configure::pub_sub::SubscriberService;
-use zmq::Context;
-
 pub struct ClockService {
     data: Arc<Mutex<SharedClockData>>,
     provider: String,
@@ -40,8 +38,8 @@ impl ClockService {
 ///
 /// The returned service continuously discovers providers via zeroconf.
 /// Call `.list()` to get the current set of discovered providers.
-pub fn browse_clock_providers(ctx: Context) -> SubscriberService<SharedClockData> {
-    clock_subscriber(ctx)
+pub fn browse_clock_providers() -> SubscriberService<SharedClockData> {
+    clock_subscriber()
 }
 
 /// Connect to a named provider and return the ClockService.
@@ -53,7 +51,7 @@ pub fn connect_to_provider(
     service: &SubscriberService<SharedClockData>,
     provider: &str,
 ) -> Result<ClockService> {
-    let mut receiver = service.subscribe(provider, None)?;
+    let mut receiver = service.subscribe(provider, 0)?;
     let storage = Arc::new(Mutex::new(SharedClockData::default()));
     let weak_handle = Arc::downgrade(&storage);
     thread::spawn(move || {

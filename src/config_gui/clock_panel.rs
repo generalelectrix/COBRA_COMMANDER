@@ -40,14 +40,14 @@ pub struct ClockPanelState {
 }
 
 impl ClockPanelState {
-    pub fn new(zmq_ctx: zmq::Context, clock_status: &ClockStatus) -> Self {
+    pub fn new(clock_status: &ClockStatus) -> Self {
         let audio_devices = tunnels::audio::AudioInput::devices().unwrap_or_default();
 
         let mut panel = Self {
             mode: ClockMode::Internal,
             selected_audio: None,
             selected_provider: None,
-            clock_browser: Box::new(ZeroConfClockBrowser(browse_clock_providers(zmq_ctx))),
+            clock_browser: Box::new(ZeroConfClockBrowser(browse_clock_providers())),
             audio_devices,
         };
         panel.sync_from_status(clock_status);
