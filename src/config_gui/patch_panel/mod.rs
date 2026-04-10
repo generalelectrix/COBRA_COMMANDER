@@ -114,7 +114,6 @@ impl AddFixtureForm {
 enum PanelMode {
     View,
     AddGroup(AddGroupForm),
-    AddFixture(AddFixtureForm),
 }
 
 pub struct PatchPanelState {
@@ -124,6 +123,10 @@ pub struct PatchPanelState {
     mode: PanelMode,
     /// Group index pending delete confirmation via modal.
     pending_delete: Option<usize>,
+    /// Persistent add-fixture form, rebuilt when the selected group changes.
+    add_fixture_form: Option<AddFixtureForm>,
+    /// Which group index the current add_fixture_form was built for.
+    add_fixture_group: Option<usize>,
 }
 
 impl PatchPanelState {
@@ -134,6 +137,8 @@ impl PatchPanelState {
             show_address_map: false,
             mode: PanelMode::View,
             pending_delete: None,
+            add_fixture_form: None,
+            add_fixture_group: None,
         }
     }
 }
@@ -177,10 +182,7 @@ impl PatchPanel<'_> {
                         // The confirm button is rendered by render_add_group_form
                         // since it needs access to validation state.
                     }
-                    PanelMode::AddFixture(_) => {
-                        // Same — handled inline in render_add_fixture_form.
-                    }
-                    _ => {
+                    PanelMode::View => {
                         if confirm_button(ui, "Apply") {
                             let Some(wc) = self.state.working_copy.as_ref() else {
                                 return;
@@ -193,6 +195,8 @@ impl PatchPanel<'_> {
                             {
                                 self.autosave(&configs);
                                 self.state.working_copy = None;
+                                self.state.add_fixture_form = None;
+                                self.state.add_fixture_group = None;
                                 self.state.mode = PanelMode::View;
                                 self.ctx.modal.show(
                                     "Patch Applied",
@@ -203,6 +207,8 @@ impl PatchPanel<'_> {
                         if cancel_button(ui, "Revert") {
                             self.state.working_copy = None;
                             self.state.selected_group = None;
+                            self.state.add_fixture_form = None;
+                            self.state.add_fixture_group = None;
                             self.state.mode = PanelMode::View;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -398,9 +404,6 @@ impl PatchPanel<'_> {
                             // Click → select.
                             if response.clicked() {
                                 self.state.selected_group = Some(i);
-                                if matches!(self.state.mode, PanelMode::AddFixture(_)) {
-                                    self.state.mode = PanelMode::View;
-                                }
                             }
 
                             // Drag → reorder via DnD.
@@ -451,18 +454,8 @@ impl PatchPanel<'_> {
 
     fn render_detail(&mut self, ui: &mut egui::Ui, group_idx: usize) {
         self.render_detail_editable_fields(ui, group_idx);
-
-        // Delete group button.
-        if cancel_button(ui, "Delete Group") {
-            self.state.pending_delete = Some(group_idx);
-        }
         self.render_detail_group_options(ui, group_idx);
         self.render_fixtures_table(ui, group_idx);
-
-        if matches!(self.state.mode, PanelMode::AddFixture(_)) {
-            ui.separator();
-            self.render_add_fixture_form(ui, group_idx);
-        }
     }
 
     fn render_detail_editable_fields(&mut self, ui: &mut egui::Ui, group_idx: usize) {
@@ -471,7 +464,19 @@ impl PatchPanel<'_> {
                 return;
             };
             let cfg = &mut wc.groups[group_idx].config;
-            ui.checkbox(&mut cfg.channel, "Channel");
+            ui.horizontal(|ui| {
+                ui.label("Group name:");
+                let mut name = cfg.group.as_ref().map(|k| k.0.clone()).unwrap_or_default();
+                let hint_text = &cfg.fixture;
+                let response = ui.add(egui::TextEdit::singleline(&mut name).hint_text(hint_text));
+                if response.changed() {
+                    cfg.group = if name.is_empty() {
+                        None
+                    } else {
+                        Some(FixtureGroupKey(name))
+                    };
+                }
+            });
         }
         {
             let Some(wc) = self.state.working_copy.as_mut() else {
@@ -479,15 +484,12 @@ impl PatchPanel<'_> {
             };
             let cfg = &mut wc.groups[group_idx].config;
             ui.horizontal(|ui| {
-                ui.label("Group name:");
-                let mut name = cfg.group.as_ref().map(|k| k.0.clone()).unwrap_or_default();
-                if ui.text_edit_singleline(&mut name).changed() {
-                    cfg.group = if name.is_empty() {
-                        None
-                    } else {
-                        Some(FixtureGroupKey(name))
-                    };
-                }
+                ui.checkbox(&mut cfg.channel, "Assign To Submaster Channel");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if cancel_button(ui, "Delete Group") {
+                        self.state.pending_delete = Some(group_idx);
+                    }
+                });
             });
         }
     }
@@ -502,13 +504,12 @@ impl PatchPanel<'_> {
             let group_opts = (patcher.group_options)();
             if !group_opts.is_empty() {
                 ui.add_space(4.0);
-                ui.label("Group Options");
                 egui::Grid::new("group_options_grid")
                     .striped(true)
                     .show(ui, |ui| {
                         for (opt_key, _) in &group_opts {
                             let val = cfg.options.get_string(opt_key).unwrap_or_default();
-                            ui.label(opt_key);
+                            ui.label(format!("{opt_key}:"));
                             ui.label(&val);
                             ui.end_row();
                         }
@@ -527,31 +528,28 @@ impl PatchPanel<'_> {
             AddressMap::from_working_copy(wc)
         };
 
-        ui.horizontal(|ui| {
-            ui.label("Fixtures");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("+ Add").clicked() {
-                    let Some(wc) = self.state.working_copy.as_ref() else {
-                        return;
-                    };
-                    let fixture_type = &wc.groups[group_idx].config.fixture;
-                    match self.patchers.iter().find(|p| p.name.0 == *fixture_type) {
-                        Some(patcher) => {
-                            let form = AddFixtureForm::new_for_group(
-                                &wc.groups[group_idx],
-                                patcher,
-                                &addr_map,
-                            );
-                            self.state.mode = PanelMode::AddFixture(form);
-                        }
-                        None => {
-                            self.ctx
-                                .report_error(format!("Unknown fixture type: {fixture_type}"));
-                        }
-                    }
-                }
-            });
-        });
+        // Ensure the add-fixture form exists and matches the selected group.
+        if self.state.add_fixture_group != Some(group_idx) {
+            let Some(wc) = self.state.working_copy.as_ref() else {
+                return;
+            };
+            let fixture_type = &wc.groups[group_idx].config.fixture;
+            if let Some(patcher) = self.patchers.iter().find(|p| p.name.0 == *fixture_type) {
+                self.state.add_fixture_form = Some(AddFixtureForm::new_for_group(
+                    &wc.groups[group_idx],
+                    patcher,
+                    &addr_map,
+                ));
+                self.state.add_fixture_group = Some(group_idx);
+            }
+        }
+
+        ui.heading("Add Fixture To Group");
+
+        // Inline add-fixture form.
+        self.render_inline_add_fixture(ui, group_idx);
+
+        ui.heading("Fixtures");
 
         let patch_opts: Vec<(String, PatchOption)> = {
             let Some(wc) = self.state.working_copy.as_ref() else {
@@ -568,107 +566,111 @@ impl PatchPanel<'_> {
         let mut fixture_swap: Option<(usize, usize)> = None;
         let mut fixture_delete: Option<usize> = None;
 
-        {
-            let Some(wc) = self.state.working_copy.as_mut() else {
-                return;
-            };
-            let group = &mut wc.groups[group_idx];
-            let num_patches = group.config.patches.len();
+        egui::ScrollArea::vertical()
+            .id_salt("patch_fixture_list")
+            .show(ui, |ui| {
+                let Some(wc) = self.state.working_copy.as_mut() else {
+                    return;
+                };
+                let group = &mut wc.groups[group_idx];
+                let num_patches = group.config.patches.len();
 
-            egui::Grid::new("fixtures_grid")
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.label("#");
-                    ui.label("Addr");
-                    ui.label("Uni");
-                    ui.label("Ch");
-                    ui.label("Mir");
-                    for (opt_key, _) in &patch_opts {
-                        ui.label(opt_key);
-                    }
-                    ui.label("");
-                    ui.end_row();
-
-                    for i in 0..num_patches {
-                        let ch_count = group.channel_counts.get(i).copied().unwrap_or(0);
-
-                        // Row number as drag handle.
-                        let handle = ui.add(
-                            egui::Label::new(format!("{}", i + 1))
-                                .selectable(false)
-                                .sense(egui::Sense::drag()),
-                        );
-                        let dnd = dnd_reorder(ui, &handle, i, ui.min_rect().x_range());
-                        if dnd.swap.is_some() {
-                            fixture_swap = dnd.swap;
-                        }
-
-                        let block = &mut group.config.patches[i];
-                        let (start, _count) = block.start_count();
-                        let mut addr_str = start.map(|a| format!("{a}")).unwrap_or_default();
-
-                        let has_collision = start
-                            .map(|a| {
-                                (0..ch_count).any(|ch| {
-                                    addr_map
-                                        .collision_at(UniverseAddress {
-                                            universe: block.universe,
-                                            address: a.dmx_index() + 1 + ch,
-                                        })
-                                        .is_some()
-                                })
-                            })
-                            .unwrap_or(false);
-
-                        let addr_invalid = start.map(|a| a.validate().is_err()).unwrap_or(false);
-
-                        let mut text_edit =
-                            egui::TextEdit::singleline(&mut addr_str).desired_width(40.0);
-                        if has_collision {
-                            text_edit = text_edit.text_color(STATUS_COLORS.warning);
-                        } else if addr_invalid {
-                            text_edit = text_edit.text_color(STATUS_COLORS.error);
-                        }
-                        let response = ui.add(text_edit);
-                        if has_collision {
-                            response.clone().on_hover_text("DMX address collision!");
-                        } else if addr_invalid {
-                            response.clone().on_hover_text("Address must be 1-512");
-                        }
-                        if response.changed() {
-                            let digits: String =
-                                addr_str.chars().filter(|c| c.is_ascii_digit()).collect();
-                            if let Ok(v) = digits.parse::<usize>() {
-                                block.addr = Some(DmxAddrConfig::Single(DmxAddr::new(v)));
-                            } else {
-                                block.addr = None;
-                            }
-                        }
-
-                        let mut uni_str = format!("{}", block.universe);
-                        let uni_edit = egui::TextEdit::singleline(&mut uni_str).desired_width(25.0);
-                        if ui.add(uni_edit).changed()
-                            && let Ok(v) = uni_str.parse::<usize>()
-                        {
-                            block.universe = v;
-                        }
-
-                        ui.label(format!("{ch_count}"));
-                        ui.checkbox(&mut block.mirror, "");
-
+                egui::Grid::new("fixtures_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label("#");
+                        ui.label("Addr");
+                        ui.label("Uni");
+                        ui.label("Ch");
+                        ui.label("Mir");
                         for (opt_key, _) in &patch_opts {
-                            let val = block.options.get_string(opt_key).unwrap_or_default();
-                            ui.label(&val);
+                            ui.label(opt_key);
                         }
-
-                        if ui.button("x").clicked() {
-                            fixture_delete = Some(i);
-                        }
-
+                        ui.label("");
                         ui.end_row();
-                    }
-                });
-        }
+
+                        for i in 0..num_patches {
+                            let ch_count = group.channel_counts.get(i).copied().unwrap_or(0);
+
+                            // Row number as drag handle.
+                            let handle = ui.add(
+                                egui::Label::new(format!("{}", i + 1))
+                                    .selectable(false)
+                                    .sense(egui::Sense::drag()),
+                            );
+                            let dnd = dnd_reorder(ui, &handle, i, ui.min_rect().x_range());
+                            if dnd.swap.is_some() {
+                                fixture_swap = dnd.swap;
+                            }
+
+                            let block = &mut group.config.patches[i];
+                            let (start, _count) = block.start_count();
+                            let mut addr_str = start.map(|a| format!("{a}")).unwrap_or_default();
+
+                            let has_collision = start
+                                .map(|a| {
+                                    (0..ch_count).any(|ch| {
+                                        addr_map
+                                            .collision_at(UniverseAddress {
+                                                universe: block.universe,
+                                                address: a.dmx_index() + 1 + ch,
+                                            })
+                                            .is_some()
+                                    })
+                                })
+                                .unwrap_or(false);
+
+                            let addr_invalid =
+                                start.map(|a| a.validate().is_err()).unwrap_or(false);
+
+                            let mut text_edit =
+                                egui::TextEdit::singleline(&mut addr_str).desired_width(40.0);
+                            if has_collision {
+                                text_edit = text_edit.text_color(STATUS_COLORS.warning);
+                            } else if addr_invalid {
+                                text_edit = text_edit.text_color(STATUS_COLORS.error);
+                            }
+                            let response = ui.add(text_edit);
+                            if has_collision {
+                                response.clone().on_hover_text("DMX address collision!");
+                            } else if addr_invalid {
+                                response.clone().on_hover_text("Address must be 1-512");
+                            }
+                            if response.changed() {
+                                let digits: String =
+                                    addr_str.chars().filter(|c| c.is_ascii_digit()).collect();
+                                if let Ok(v) = digits.parse::<usize>() {
+                                    block.addr = Some(DmxAddrConfig::Single(DmxAddr::new(v)));
+                                } else {
+                                    block.addr = None;
+                                }
+                            }
+
+                            let mut uni_str = format!("{}", block.universe);
+                            let uni_edit =
+                                egui::TextEdit::singleline(&mut uni_str).desired_width(25.0);
+                            if ui.add(uni_edit).changed()
+                                && let Ok(v) = uni_str.parse::<usize>()
+                            {
+                                block.universe = v;
+                            }
+
+                            ui.label(format!("{ch_count}"));
+                            ui.checkbox(&mut block.mirror, "");
+
+                            for (opt_key, _) in &patch_opts {
+                                let val = block.options.get_string(opt_key).unwrap_or_default();
+                                ui.label(&val);
+                            }
+
+                            if ui.button("x").clicked() {
+                                fixture_delete = Some(i);
+                            }
+
+                            ui.end_row();
+                        }
+                    });
+            });
 
         if let Some((a, b)) = fixture_swap {
             let Some(wc) = self.state.working_copy.as_mut() else {
@@ -708,7 +710,7 @@ impl PatchPanel<'_> {
             .map(|p| p.name.0)
             .unwrap_or("(none)");
 
-        egui::ComboBox::from_label("Fixture Type")
+        egui::ComboBox::from_id_salt("fixture_type")
             .selected_text(selected_name)
             .show_ui(ui, |ui| {
                 for (i, p) in self.patchers.iter().enumerate() {
@@ -731,15 +733,19 @@ impl PatchPanel<'_> {
             ));
         }
 
+        let hint = self
+            .patchers
+            .get(form.fixture_type_idx)
+            .map(|p| p.name.0)
+            .unwrap_or("");
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label("Group Name:");
-            ui.text_edit_singleline(&mut form.group_name);
+            ui.add(egui::TextEdit::singleline(&mut form.group_name).hint_text(hint));
         });
-        ui.label("(optional — defaults to fixture type)");
 
         ui.add_space(4.0);
-        ui.checkbox(&mut form.channel, "Channel");
+        ui.checkbox(&mut form.channel, "Assign To Submaster Channel");
 
         let patcher = self.patchers.get(form.fixture_type_idx);
         let mut all_valid = true;
@@ -748,7 +754,6 @@ impl PatchPanel<'_> {
             let menu = (patcher.group_options)();
             if !menu.is_empty() {
                 ui.add_space(4.0);
-                ui.label("Group Options");
                 for (menu_key, menu_opt) in &menu {
                     if let Some(entry) = form.group_options.iter_mut().find(|(k, _)| k == menu_key)
                     {
@@ -810,13 +815,11 @@ impl PatchPanel<'_> {
     }
 
     // -----------------------------------------------------------------------
-    // Add fixture form
+    // Inline add fixture form (always visible above fixture list)
     // -----------------------------------------------------------------------
 
-    fn render_add_fixture_form(&mut self, ui: &mut egui::Ui, group_idx: usize) {
-        ui.label("Add Fixture");
-
-        let PanelMode::AddFixture(ref mut form) = self.state.mode else {
+    fn render_inline_add_fixture(&mut self, ui: &mut egui::Ui, group_idx: usize) {
+        let Some(form) = self.state.add_fixture_form.as_mut() else {
             return;
         };
 
@@ -881,18 +884,13 @@ impl PatchPanel<'_> {
             (true, true)
         };
 
-        ui.horizontal(|ui| {
-            if confirm_button_enabled(ui, "Add", all_valid && addr_valid && count_valid) {
-                self.commit_add_fixture(group_idx);
-            }
-            if cancel_button(ui, "Cancel") {
-                self.state.mode = PanelMode::View;
-            }
-        });
+        if confirm_button_enabled(ui, "Add Fixture", all_valid && addr_valid && count_valid) {
+            self.commit_add_fixture(group_idx);
+        }
     }
 
     fn commit_add_fixture(&mut self, group_idx: usize) {
-        let PanelMode::AddFixture(ref form) = self.state.mode else {
+        let Some(ref form) = self.state.add_fixture_form else {
             return;
         };
 
@@ -955,7 +953,22 @@ impl PatchPanel<'_> {
             }
         }
 
-        self.state.mode = PanelMode::View;
+        // Rebuild the form with fresh defaults (next available address, etc.).
+        let patcher = self.patchers.iter().find(|p| {
+            p.name.0
+                == self.state.working_copy.as_ref().unwrap().groups[group_idx]
+                    .config
+                    .fixture
+        });
+        if let Some(patcher) = patcher {
+            let wc = self.state.working_copy.as_ref().unwrap();
+            let new_addr_map = AddressMap::from_working_copy(wc);
+            self.state.add_fixture_form = Some(AddFixtureForm::new_for_group(
+                &wc.groups[group_idx],
+                patcher,
+                &new_addr_map,
+            ));
+        }
     }
 }
 
@@ -1556,8 +1569,12 @@ mod test {
         let fixture_type = &wc.groups[group_idx].config.fixture;
         let patcher = patchers.iter().find(|p| p.name.0 == *fixture_type).unwrap();
         let addr_map = AddressMap::from_working_copy(wc);
-        let form = AddFixtureForm::new_for_group(&wc.groups[group_idx], patcher, &addr_map);
-        state.mode = PanelMode::AddFixture(form);
+        state.add_fixture_form = Some(AddFixtureForm::new_for_group(
+            &wc.groups[group_idx],
+            patcher,
+            &addr_map,
+        ));
+        state.add_fixture_group = Some(group_idx);
     }
 
     #[test]
@@ -1656,9 +1673,10 @@ mod test {
         setup_add_fixture(&snapshot, &patchers, 0, &mut state);
 
         // Simulate commit — the form addr is empty for non-DMX.
-        let PanelMode::AddFixture(ref form) = state.mode else {
-            panic!("expected AddFixture mode");
-        };
+        let form = state
+            .add_fixture_form
+            .as_ref()
+            .expect("expected add_fixture_form");
         assert!(
             form.addr.is_empty(),
             "non-DMX fixture should have empty addr"
