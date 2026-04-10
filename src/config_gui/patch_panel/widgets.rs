@@ -43,6 +43,7 @@ pub fn validate_option(opt: &PatchOption, value: &str) -> Result<(), String> {
 }
 
 pub fn render_option_widget(ui: &mut egui::Ui, key: &str, opt: &PatchOption, value: &mut String) {
+    let key_with_colon = format!("{key}:");
     match opt {
         PatchOption::Bool => {
             let mut checked = value == "true";
@@ -51,34 +52,40 @@ pub fn render_option_widget(ui: &mut egui::Ui, key: &str, opt: &PatchOption, val
             }
         }
         PatchOption::Select(choices) => {
-            egui::ComboBox::from_label(key)
-                .selected_text(value.as_str())
-                .show_ui(ui, |ui| {
-                    for choice in choices {
-                        ui.selectable_value(value, choice.clone(), choice);
-                    }
-                });
+            ui.horizontal(|ui| {
+                ui.label(&key_with_colon);
+                egui::ComboBox::from_id_salt(key)
+                    .selected_text(value.as_str())
+                    .show_ui(ui, |ui| {
+                        for choice in choices {
+                            ui.selectable_value(value, choice.clone(), choice);
+                        }
+                    });
+            });
         }
         PatchOption::Int | PatchOption::Url | PatchOption::SocketAddr => {
             ui.horizontal(|ui| {
-                ui.label(key);
+                ui.label(&key_with_colon);
                 ui.text_edit_singleline(value);
             });
         }
         PatchOption::Optional(inner) => match inner.as_ref() {
             PatchOption::Select(choices) => {
-                egui::ComboBox::from_label(key)
-                    .selected_text(if value.is_empty() {
-                        "(none)"
-                    } else {
-                        value.as_str()
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(value, String::new(), "(none)");
-                        for choice in choices {
-                            ui.selectable_value(value, choice.clone(), choice);
-                        }
-                    });
+                ui.horizontal(|ui| {
+                    ui.label(&key_with_colon);
+                    egui::ComboBox::from_id_salt(key)
+                        .selected_text(if value.is_empty() {
+                            "(none)"
+                        } else {
+                            value.as_str()
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(value, String::new(), "(none)");
+                            for choice in choices {
+                                ui.selectable_value(value, choice.clone(), choice);
+                            }
+                        });
+                });
             }
             other => render_option_widget(ui, key, other, value),
         },
