@@ -87,7 +87,7 @@ impl eframe::App for WelcomeApp {
 impl WelcomeApp {
     fn handle_load(&mut self, ctx: &egui::Context) {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("Cobra Show", &["cobra"])
+            .add_filter(show_file::FILTER_NAME, &[show_file::EXTENSION])
             .pick_file()
         else {
             return;
@@ -117,8 +117,8 @@ impl WelcomeApp {
 
     fn handle_new(&mut self, ctx: &egui::Context) {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("Cobra Show", &["cobra"])
-            .set_file_name("show.cobra")
+            .add_filter(show_file::FILTER_NAME, &[show_file::EXTENSION])
+            .set_file_name(show_file::DEFAULT_FILE_NAME)
             .save_file()
         else {
             return;

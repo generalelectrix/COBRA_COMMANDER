@@ -6,6 +6,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::FixtureGroupConfig;
 
+/// File extension for show files (without the leading dot).
+pub const EXTENSION: &str = "cobra";
+
+/// Human-readable label used in file-dialog filters.
+pub const FILTER_NAME: &str = "Cobra Show";
+
+/// Default filename suggested when creating a new show.
+pub const DEFAULT_FILE_NAME: &str = "show.cobra";
+
+/// Extension used for the temporary file during atomic saves.
+const TMP_EXTENSION: &str = "cobra.tmp";
+
 /// On-disk format for a Cobra Commander show file (`.cobra`).
 ///
 /// Wraps the patch data so we can add sibling fields in the future.
@@ -27,7 +39,7 @@ pub fn load(path: &Path) -> Result<ShowFile> {
 /// Writes to a temporary file first, then renames to the target path.
 /// This ensures the target file is never left in a partially-written state.
 pub fn save(path: &Path, file: &ShowFile) -> Result<()> {
-    let tmp_path = path.with_extension("cobra.tmp");
+    let tmp_path = path.with_extension(TMP_EXTENSION);
     let contents = serde_yaml::to_string(file).context("unable to serialize show file")?;
     fs::write(&tmp_path, contents)
         .with_context(|| format!("unable to write temporary file \"{}\"", tmp_path.display()))?;
