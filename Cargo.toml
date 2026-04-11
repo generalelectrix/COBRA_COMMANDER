@@ -20,6 +20,7 @@ midi_harness = { git = "https://github.com/generalelectrix/tunnels", branch = "m
 tunnels = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 zero_configure = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
+stage_theme = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 color_organ = { git = "https://github.com/generalelectrix/color_organ", branch = "main" }
 
 arc-swap = "1"
