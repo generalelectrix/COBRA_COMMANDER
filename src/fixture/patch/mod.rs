@@ -729,7 +729,6 @@ mod test {
         "EmptyChannel",
         "Faderboard",
         "Leko",
-        "Lumasphere",
         "RugDoctor",
         "SwarmolonDerby",
         "SwarmolonLasers",
