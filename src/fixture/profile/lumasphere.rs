@@ -35,12 +35,14 @@ pub struct Lumasphere {
     lamp_1_intensity: UnipolarChannel,
     #[animate]
     lamp_2_intensity: UnipolarChannel,
-    ball_rotation: Bipolar<()>,
+    #[channel_control]
+    ball_rotation: ChannelKnobBipolar<Bipolar<()>>,
     #[skip_control]
     #[skip_emit]
     ball_current_speed: RampingParameter<BipolarFloat>,
     ball_start: Bool<()>,
-    color_rotation: Unipolar<()>,
+    #[channel_control]
+    color_rotation: ChannelKnobUnipolar<Unipolar<()>>,
     color_start: Bool<()>,
     strobe_1: Strobe,
     strobe_2: Strobe,
@@ -52,12 +54,14 @@ impl Default for Lumasphere {
             lamp_1_intensity: Unipolar::full_channel("Lamp1Intensity", 7),
             lamp_2_intensity: Unipolar::full_channel("Lamp2Intensity", 8),
 
-            ball_rotation: Bipolar::new("BallRotation", ()).with_detent(),
+            ball_rotation: Bipolar::new("BallRotation", ())
+                .with_detent()
+                .with_channel_knob(0),
             // Ramp ball rotation no faster than unit range in one second.
             ball_current_speed: RampingParameter::new(BipolarFloat::ZERO, BipolarFloat::ONE),
             ball_start: Bool::new_off("BallStart", ()),
 
-            color_rotation: Unipolar::new("ColorRotation", ()),
+            color_rotation: Unipolar::new("ColorRotation", ()).with_channel_knob(1),
             color_start: Bool::new_off("ColorStart", ()),
 
             strobe_1: Strobe::new("Strobe1"),
@@ -104,10 +108,10 @@ impl AnimatedFixture for Lumasphere {
         dmx_buf[2] = unipolar_to_range(
             0,
             255,
-            if self.color_start.val() && self.color_rotation.val() < 0.2 {
+            if self.color_start.val() && self.color_rotation.control.val() < 0.2 {
                 UnipolarFloat::new(0.2)
             } else {
-                self.color_rotation.val()
+                self.color_rotation.control.val()
             },
         );
         self.strobe_1.render(&mut dmx_buf[3..5]);
@@ -117,7 +121,7 @@ impl AnimatedFixture for Lumasphere {
 
 impl Update for Lumasphere {
     fn update(&mut self, _: FixtureGroupUpdate, delta_t: Duration) {
-        self.ball_current_speed.target = self.ball_rotation.val();
+        self.ball_current_speed.target = self.ball_rotation.control.val();
         self.ball_current_speed.update(delta_t);
     }
 }
