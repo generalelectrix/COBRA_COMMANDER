@@ -49,8 +49,8 @@ pub struct Lumasphere {
 impl Default for Lumasphere {
     fn default() -> Self {
         Self {
-            lamp_1_intensity: Unipolar::full_channel("Lamp1", 7),
-            lamp_2_intensity: Unipolar::full_channel("Lamp1", 8),
+            lamp_1_intensity: Unipolar::full_channel("Lamp1Intensity", 7),
+            lamp_2_intensity: Unipolar::full_channel("Lamp2Intensity", 8),
 
             ball_rotation: Bipolar::new("BallRotation", ()).with_detent(),
             // Ramp ball rotation no faster than unit range in one second.
