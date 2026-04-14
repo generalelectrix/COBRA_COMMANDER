@@ -315,7 +315,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
     // Phase 4: Run the console GUI.
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([600.0, 500.0])
+            .with_inner_size([780.0, 650.0])
             .with_icon(std::sync::Arc::new(egui::IconData::default())),
         ..Default::default()
     };
@@ -323,7 +323,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         "Cobra Commander",
         options,
         Box::new(move |cc| {
-            apply_dark_theme(&cc.egui_ctx);
+            stage_theme::apply(&cc.egui_ctx);
             Ok(Box::new(ConsoleApp {
                 clock_panel: ClockPanelState::new(&ClockStatus::Internal {
                     audio_device: "Offline".into(),
