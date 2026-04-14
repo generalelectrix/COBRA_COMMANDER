@@ -285,6 +285,7 @@ impl<C> GroupControlMap<C> {
         })
     }
 
+    #[expect(unused)]
     pub fn add_bool<F>(&mut self, control: &str, process: F)
     where
         F: Fn(bool) -> C + 'static,
