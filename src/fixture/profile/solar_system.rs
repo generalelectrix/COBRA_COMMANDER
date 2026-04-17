@@ -56,7 +56,7 @@ impl AnimatedFixture for SolarSystem {
         );
         self.rear_gobo
             .render(group_controls, std::iter::empty(), dmx_buf);
-        self.rear_gobo.render(
+        self.rear_rotation.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::RearRotation),
             dmx_buf,
