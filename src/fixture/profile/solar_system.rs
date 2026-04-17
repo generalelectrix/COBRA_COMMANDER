@@ -29,8 +29,8 @@ impl Default for SolarSystem {
                 .with_detent()
                 .with_mirroring(true)
                 .with_channel_knob(0),
-            rear_gobo: IndexedSelect::multiple("RearGobo", 0, false, GOBO_COUNT, 32, 16),
-            rear_rotation: Bipolar::new("RearRotation", RenderRotation { dmx_buf_offset: 1 })
+            rear_gobo: IndexedSelect::multiple("RearGobo", 3, false, GOBO_COUNT, 32, 16),
+            rear_rotation: Bipolar::new("RearRotation", RenderRotation { dmx_buf_offset: 4 })
                 .with_detent()
                 .with_mirroring(true)
                 .with_channel_knob(1),
