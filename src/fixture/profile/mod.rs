@@ -1,6 +1,7 @@
 pub mod aquarius;
 pub mod astera;
 pub mod astroscan;
+pub mod chizlet;
 pub mod color;
 pub mod colordynamic;
 pub mod comet;
