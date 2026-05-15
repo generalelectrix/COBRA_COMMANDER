@@ -725,7 +725,6 @@ mod test {
     /// types, or need custom templates that haven't been built yet.
     const FIXTURES_WITHOUT_TEMPLATES: &[&str] = &[
         "Comet",
-        "CosmicBurst",
         "EmptyChannel",
         "Faderboard",
         "Leko",
