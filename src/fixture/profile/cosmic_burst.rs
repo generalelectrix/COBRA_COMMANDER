@@ -4,7 +4,6 @@ use crate::fixture::prelude::*;
 #[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 6]
 #[strobe(Short)]
-#[no_touchosc_template]
 pub struct CosmicBurst {
     #[channel_control]
     #[animate]
