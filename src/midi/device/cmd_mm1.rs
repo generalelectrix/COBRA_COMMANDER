@@ -241,7 +241,7 @@ impl MidiHandler for BehringerCmdMM1 {
                         val,
                     )))),
                     2 => ShowControlMessage::Audio(Set(FilterCutoff(filter_from_midi(val)))),
-                    3 => ShowControlMessage::Audio(Set(Gain(gain_from_midi(val)))),
+                    3 => ShowControlMessage::Audio(Set(InputGain(gain_from_midi(val)))),
                     _ => {
                         return None;
                     }

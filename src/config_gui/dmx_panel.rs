@@ -4,7 +4,8 @@ use eframe::egui;
 
 use crate::control::MetaCommand;
 use crate::gui_state::DmxPortStatus;
-use crate::ui_util::{GuiContext, STATUS_COLORS};
+use crate::ui_util::GuiContext;
+use gui_common::STATUS_COLORS;
 
 pub struct DmxPortPanelState {
     available_ports: Vec<Box<dyn rust_dmx::DmxPort>>,
@@ -175,8 +176,8 @@ impl DmxPortPanel<'_> {
 mod test {
     use super::*;
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::MessageModal;
     use egui_kittest::Harness;
+    use gui_common::MessageModal;
 
     #[test]
     fn render_no_universes() {
