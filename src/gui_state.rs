@@ -2,7 +2,8 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use arc_swap::ArcSwap;
 use midi_harness::SlotStatus;
-use tunnels::{animation::Animation, clock_server::SharedClockData};
+use tunnels::{animation::Animation, audio::AudioSnapshot, clock_server::SharedClockData};
+use tunnels_lib::{notified::Notified, repaint::RepaintSignal};
 
 use crate::config::FixtureGroupConfig;
 use crate::osc::OscClientListener;
@@ -49,6 +50,7 @@ bitflags::bitflags! {
         const MIDI_SLOTS  = 0b0000_0001;
         const CLOCK_STATE = 0b0000_0010;
         const DMX_PORTS   = 0b0000_0100;
+        const AUDIO       = 0b0000_1000;
     }
 }
 
@@ -73,6 +75,8 @@ pub struct GuiState {
     pub dmx_port_status: ArcSwap<DmxPortStatus>,
     /// Whether the master strobe fader channel is mapped.
     pub master_strobe_fader_channel_mapped: AtomicBool,
+    /// Snapshot of the current audio input state for the audio panel.
+    pub audio_state: Notified<AudioSnapshot>,
 }
 
 impl GuiState {
@@ -81,6 +85,7 @@ impl GuiState {
         clock_status: ClockStatus,
         osc_listen_addr: String,
         osc_clients: OscClientListener,
+        repaint: RepaintSignal,
     ) -> Self {
         Self {
             midi_slots: ArcSwap::from_pointee(midi_slots),
@@ -92,6 +97,7 @@ impl GuiState {
             patch_snapshot: ArcSwap::from_pointee(PatchSnapshot::default()),
             dmx_port_status: ArcSwap::from_pointee(DmxPortStatus::default()),
             master_strobe_fader_channel_mapped: AtomicBool::new(false),
+            audio_state: Notified::new(AudioSnapshot::default(), repaint),
         }
     }
 }

@@ -1,5 +1,5 @@
 use std::{
-    sync::Arc,
+    sync::{Arc, mpsc::Sender},
     time::{Duration, Instant},
 };
 
@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub use crate::channel::ChannelId;
-use tunnels::audio::AudioInput;
+use tunnels::audio::EnvelopeStreams;
 
 use anyhow::{Context, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
@@ -40,6 +40,7 @@ pub struct Show {
     preview: Previewer,
     master_strobe_channel: Option<usize>,
     gui_state: SharedGuiState,
+    envelope_streams_tx: Sender<EnvelopeStreams>,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -50,6 +51,7 @@ const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
 pub const UPDATE_INTERVAL: Duration = Duration::from_micros(25300);
 
 impl Show {
+    #[expect(clippy::too_many_arguments)]
     pub fn new(
         patch: Patch,
         initial_configs: Vec<crate::config::FixtureGroupConfig>,
@@ -58,6 +60,7 @@ impl Show {
         clocks: Clocks,
         preview: Previewer,
         gui_state: SharedGuiState,
+        envelope_streams_tx: Sender<EnvelopeStreams>,
     ) -> Result<Self> {
         let channels = Channels::from_iter(patch.channels().cloned());
         let initial_channel = channels.current_channel();
@@ -74,6 +77,7 @@ impl Show {
             preview,
             master_strobe_channel: None,
             gui_state,
+            envelope_streams_tx,
         };
         show.reconcile_submaster_wings()?;
         show.reconcile_clock_wing()?;
@@ -145,10 +149,7 @@ impl Show {
                 }
                 Ok(GuiDirty::MIDI_SLOTS)
             }
-            ControlMessage::Midi(msg) => {
-                self.handle_midi_message(&msg)?;
-                Ok(GuiDirty::CLEAN)
-            }
+            ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
             ControlMessage::Meta(cmd, reply) => {
                 let result = self.handle_meta_command(cmd);
@@ -220,13 +221,10 @@ impl Show {
                 Ok(GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE)
             }
             MetaCommand::UseInternalClocks(device_name) => {
-                let audio_input = device_name
-                    .map(|name| AudioInput::new(Some(name)))
-                    .transpose()?;
-                self.clocks = Clocks::internal(audio_input);
+                self.clocks = Clocks::internal(device_name, self.envelope_streams_tx.clone())?;
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
-                Ok(GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE)
+                Ok(GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE | GuiDirty::AUDIO)
             }
             MetaCommand::RegisterOscClient(client_id) => {
                 println!("Registering new OSC client at {client_id}.");
@@ -249,6 +247,9 @@ impl Show {
                     self.set_master_strobe_channel(None);
                 }
                 Ok(GuiDirty::CLEAN)
+            }
+            MetaCommand::AudioControl(msg) => {
+                Ok(self.clocks.control_audio(msg, &mut self.controller))
             }
         }
     }
@@ -321,19 +322,26 @@ impl Show {
     }
 
     /// Handle a single MIDI control message.
-    fn handle_midi_message(&mut self, msg: &MidiControlMessage) -> Result<()> {
+    fn handle_midi_message(&mut self, msg: &MidiControlMessage) -> Result<GuiDirty> {
         let sender = self.controller.sender_with_metadata(None);
         let Some(show_ctrl_msg) = msg.device.interpret(&msg.event) else {
-            return Ok(());
+            return Ok(GuiDirty::CLEAN);
         };
         match show_ctrl_msg {
             ShowControlMessage::Channel(msg) => {
                 self.handle_channel_message(&msg)?;
+                Ok(GuiDirty::CLEAN)
             }
-            ShowControlMessage::Clock(msg) => self.clocks.control_clock(msg, sender.controller),
-            ShowControlMessage::Audio(msg) => self.clocks.control_audio(msg, &mut self.controller),
+            ShowControlMessage::Clock(msg) => {
+                self.clocks.control_clock(msg, sender.controller);
+                Ok(GuiDirty::CLEAN)
+            }
+            ShowControlMessage::Audio(msg) => {
+                Ok(self.clocks.control_audio(msg, &mut self.controller))
+            }
             ShowControlMessage::Master(msg) => {
                 self.master_controls.control(&msg, &sender);
+                Ok(GuiDirty::CLEAN)
             }
             ShowControlMessage::Animation(msg) => {
                 let Some(channel) = self.channels.current_channel() else {
@@ -351,6 +359,7 @@ impl Show {
                         emitter: &sender,
                     },
                 )?;
+                Ok(GuiDirty::CLEAN)
             }
             ShowControlMessage::ColorOrgan(msg) => {
                 // FIXME: this is really janky and has no way to route messages.
@@ -360,9 +369,9 @@ impl Show {
                     };
                     color_organ.control(msg.clone(), &IgnoreEmitter);
                 }
+                Ok(GuiDirty::CLEAN)
             }
-        };
-        Ok(())
+        }
     }
 
     /// Handle a single OSC message.
@@ -408,10 +417,7 @@ impl Show {
                 )?;
                 Ok(GuiDirty::CLEAN)
             }
-            crate::osc::audio::GROUP => {
-                self.clocks.control_audio_osc(msg, &mut self.controller)?;
-                Ok(GuiDirty::CLEAN)
-            }
+            crate::osc::audio::GROUP => self.clocks.control_audio_osc(msg, &mut self.controller),
             crate::osc::clock::GROUP => {
                 self.clocks.control_clock_osc(msg, &mut self.controller)?;
                 Ok(GuiDirty::CLEAN)
@@ -455,6 +461,11 @@ impl Show {
                         })
                         .collect(),
                 }));
+        }
+        if dirty.contains(GuiDirty::AUDIO)
+            && let Some(snap) = self.clocks.audio_snapshot()
+        {
+            self.gui_state.audio_state.store(snap);
         }
     }
 
@@ -671,17 +682,32 @@ pub mod test_support {
 #[cfg(test)]
 impl Show {
     fn test_new(patch: Patch) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
+        Self::test_new_inner(patch, |_tx| Clocks::test_new())
+    }
+
+    fn test_new_internal(patch: Patch) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
+        Self::test_new_inner(patch, |tx| {
+            Clocks::internal(None, tx).expect("internal clocks should construct in test")
+        })
+    }
+
+    fn test_new_inner(
+        patch: Patch,
+        build_clocks: impl FnOnce(std::sync::mpsc::Sender<EnvelopeStreams>) -> Clocks,
+    ) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
         let (controller, send) = Controller::test_new();
         let universe_count = patch.universe_count();
         let channels = Channels::from_iter(patch.channels().cloned());
         let initial_channel = channels.current_channel();
-        let clocks = Clocks::test_new();
+        let (envelope_streams_tx, _envelope_rx) = std::sync::mpsc::channel();
+        let clocks = build_clocks(envelope_streams_tx.clone());
         let initial_clock_status = clocks.status();
         let gui_state: SharedGuiState = Arc::new(crate::gui_state::GuiState::new(
             vec![],
             initial_clock_status,
             String::new(),
             controller.osc_client_listener(),
+            tunnels_lib::repaint::noop_repaint(),
         ));
         let mut show = Self {
             controller,
@@ -696,6 +722,7 @@ impl Show {
             preview: Previewer::Off,
             master_strobe_channel: None,
             gui_state,
+            envelope_streams_tx,
         };
         show.reconcile_submaster_wings().unwrap();
         show.reconcile_clock_wing().unwrap();
@@ -726,6 +753,41 @@ mod tests {
         let patch = Patch::patch_all(&configs).unwrap();
         let (show, _send) = Show::test_new(patch);
         show
+    }
+
+    fn show_internal_from_yaml(yaml: &str) -> Show {
+        let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
+        let patch = Patch::patch_all(&configs).unwrap();
+        let (show, _send) = Show::test_new_internal(patch);
+        show
+    }
+
+    #[test]
+    fn meta_command_audio_control_marks_audio_dirty() {
+        let mut show = show_internal_from_yaml(ONE_UNIVERSE_PATCH);
+
+        let dirty = show
+            .handle_meta_command(MetaCommand::AudioControl(
+                tunnels::audio::ControlMessage::ResetParameters,
+            ))
+            .expect("audio control should not error");
+
+        assert_eq!(dirty, GuiDirty::AUDIO);
+    }
+
+    #[test]
+    fn meta_command_use_internal_clocks_marks_full_dirty_mask() {
+        // Start in service mode, switch to internal — exercises the rebuild path.
+        let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
+
+        let dirty = show
+            .handle_meta_command(MetaCommand::UseInternalClocks(None))
+            .expect("use internal clocks should not error");
+
+        assert_eq!(
+            dirty,
+            GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE | GuiDirty::AUDIO,
+        );
     }
 
     #[test]

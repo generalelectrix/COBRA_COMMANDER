@@ -3,7 +3,8 @@ use midi_harness::{DeviceKind, MidiPortSpec, PortStatus, SlotStatus};
 use tunnels::midi::list_ports;
 
 use crate::control::MetaCommand;
-use crate::ui_util::{GuiContext, STATUS_COLORS};
+use crate::ui_util::GuiContext;
+use gui_common::STATUS_COLORS;
 
 pub struct MidiPanelState {
     input_ports: Vec<MidiPortSpec>,
@@ -212,8 +213,8 @@ impl MidiPanel<'_> {
 mod tests {
     use super::*;
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::MessageModal;
     use egui_kittest::Harness;
+    use gui_common::MessageModal;
     use midi_harness::DeviceId;
 
     fn test_slots() -> Vec<SlotStatus> {

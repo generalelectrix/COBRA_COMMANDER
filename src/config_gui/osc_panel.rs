@@ -161,8 +161,8 @@ impl OscPanel<'_> {
 mod tests {
     use super::*;
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::MessageModal;
     use egui_kittest::Harness;
+    use gui_common::MessageModal;
     use std::path::PathBuf;
 
     #[test]

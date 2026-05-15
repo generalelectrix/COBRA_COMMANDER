@@ -16,10 +16,8 @@ use strum::VariantArray;
 use strum_macros::VariantArray;
 
 use number::UnipolarFloat;
-use tunnels::{
-    clock::{Clock, TapSync},
-    transient_indicator::TransientIndicator,
-};
+use tunnels::clock::{Clock, TapSync};
+use tunnels_lib::transient_indicator::TransientIndicator;
 
 use crate::{
     midi::EmitMidiMasterMessage,

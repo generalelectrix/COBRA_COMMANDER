@@ -321,6 +321,8 @@ pub enum MetaCommand {
     Repatch(Vec<crate::config::FixtureGroupConfig>),
     /// Enable or disable the master strobe fader channel.
     SetMasterStrobeChannel(bool),
+    /// Forward an audio control message to the active audio input.
+    AudioControl(tunnels::audio::ControlMessage),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -349,6 +351,7 @@ impl fmt::Debug for MetaCommand {
             Self::SetMasterStrobeChannel(enable) => {
                 write!(f, "SetMasterStrobeChannel({enable})")
             }
+            Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
         }
     }
 }
