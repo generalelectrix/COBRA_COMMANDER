@@ -91,6 +91,10 @@ impl GuiContext<'_> {
         self.modal.show("Error", error.to_string());
     }
 
+    pub fn report_info(&mut self, title: impl Into<String>, message: impl Into<String>) {
+        self.modal.show(title, message);
+    }
+
     pub fn send_command(&mut self, cmd: MetaCommand) -> Result<(), anyhow::Error> {
         self.client.send_command(cmd).inspect_err(|e| {
             self.modal.show("Error", e.to_string());
@@ -154,6 +158,11 @@ pub struct MessageModal {
 impl MessageModal {
     pub fn show(&mut self, title: impl Into<String>, message: impl Into<String>) {
         self.pending = Some((title.into(), message.into()));
+    }
+
+    #[cfg(test)]
+    pub fn pending(&self) -> Option<&(String, String)> {
+        self.pending.as_ref()
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {

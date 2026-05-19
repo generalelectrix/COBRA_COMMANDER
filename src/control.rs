@@ -301,6 +301,10 @@ pub enum MetaCommand {
         universe: usize,
         port: Box<dyn rust_dmx::DmxPort>,
     },
+    SetDmxPortFramerate {
+        universe: usize,
+        framerate: u8,
+    },
     ClearMidiDevice {
         slot_name: String,
     },
@@ -329,6 +333,10 @@ impl fmt::Debug for MetaCommand {
                 .field("universe", universe)
                 .field("port", &format_args!("{port}"))
                 .finish(),
+            Self::SetDmxPortFramerate {
+                universe,
+                framerate,
+            } => write!(f, "SetDmxPortFramerate({universe}, {framerate} fps)"),
             Self::ClearMidiDevice { slot_name } => write!(f, "ClearMidiDevice({slot_name})"),
             Self::ConnectMidiPort {
                 slot_name, kind, ..
@@ -384,6 +392,26 @@ pub mod mock {
             }
         });
         CommandClient::new(send)
+    }
+
+    /// A CommandClient that auto-responds Ok(()) and records the Debug
+    /// representation of each MetaCommand it received, in send order.
+    pub fn recording_client() -> (CommandClient, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        let log: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log_clone = log.clone();
+        let (send, recv) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            while let Ok(ControlMessage::Meta(cmd, reply)) = recv.recv() {
+                if let Ok(mut log) = log_clone.lock() {
+                    log.push(format!("{cmd:?}"));
+                }
+                if let Some(reply) = reply {
+                    let _ = reply.send(Ok(()));
+                }
+            }
+        });
+        (CommandClient::new(send), log)
     }
 
     /// An emitter that does nothing.
