@@ -24,11 +24,21 @@ pub struct PatchSnapshot {
 /// Port name from Display impl, used for both display and identity.
 pub type PortName = String;
 
+/// Per-universe DMX port info exposed to the GUI.
+#[derive(Clone, Debug)]
+pub struct DmxPortInfo {
+    /// Display string from the port (used as identity and the row label).
+    pub name: PortName,
+    /// Current output framerate in FPS, mirroring `DmxPort::get_framerate()`.
+    /// `None` when the port does not support framerate control.
+    pub framerate: Option<u8>,
+}
+
 /// Snapshot of DMX port assignments for the GUI.
 #[derive(Clone, Debug, Default)]
 pub struct DmxPortStatus {
-    /// One entry per universe, from the port's Display impl.
-    pub ports: Vec<PortName>,
+    /// One entry per universe.
+    pub ports: Vec<DmxPortInfo>,
 }
 
 bitflags::bitflags! {

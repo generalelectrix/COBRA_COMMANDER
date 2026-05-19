@@ -13,7 +13,7 @@ use crate::{
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
-    gui_state::{AnimationSnapshot, DmxPortStatus, PatchSnapshot},
+    gui_state::{AnimationSnapshot, DmxPortInfo, DmxPortStatus, PatchSnapshot},
     gui_state::{GuiDirty, SharedGuiState},
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
@@ -183,6 +183,19 @@ impl Show {
             }
             MetaCommand::AssignDmxPort { universe, port } => {
                 assign_dmx_port(&mut self.dmx, universe, port)?;
+                Ok(GuiDirty::DMX_PORTS)
+            }
+            MetaCommand::SetDmxPortFramerate {
+                universe,
+                framerate,
+            } => {
+                let univ = self
+                    .dmx
+                    .get_mut(universe)
+                    .with_context(|| format!("universe {universe} out of range"))?;
+                univ.port
+                    .set_framerate(framerate)
+                    .with_context(|| format!("set framerate on port {}", univ.port))?;
                 Ok(GuiDirty::DMX_PORTS)
             }
             MetaCommand::ClearMidiDevice { slot_name } => {
@@ -433,7 +446,14 @@ impl Show {
             self.gui_state
                 .dmx_port_status
                 .store(Arc::new(DmxPortStatus {
-                    ports: self.dmx.iter().map(|u| u.port.to_string()).collect(),
+                    ports: self
+                        .dmx
+                        .iter()
+                        .map(|u| DmxPortInfo {
+                            name: u.port.to_string(),
+                            framerate: u.port.get_framerate(),
+                        })
+                        .collect(),
                 }));
         }
     }
@@ -752,6 +772,62 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("out of range"));
         assert!(err_msg.contains("2 universe(s)"));
+    }
+
+    #[test]
+    fn set_dmx_port_framerate() {
+        let mut show = show_from_yaml(TWO_UNIVERSE_PATCH);
+
+        // Universe 0 gets a framerate-capable port; universe 1 stays offline.
+        show.handle_meta_command(MetaCommand::AssignDmxPort {
+            universe: 0,
+            port: Box::new(MockDmxPort::with_framerate(40)),
+        })
+        .unwrap();
+
+        // Success: the supporting port accepts the new framerate and the
+        // change is visible in the next snapshot.
+        let dirty = show
+            .handle_meta_command(MetaCommand::SetDmxPortFramerate {
+                universe: 0,
+                framerate: 30,
+            })
+            .unwrap();
+        assert_eq!(dirty, GuiDirty::DMX_PORTS);
+        assert_eq!(show.dmx[0].port.get_framerate(), Some(30));
+
+        show.snapshot_gui_state(GuiDirty::DMX_PORTS);
+        let snapshot = show.gui_state.dmx_port_status.load();
+        assert_eq!(snapshot.ports[0].framerate, Some(30));
+        assert_eq!(snapshot.ports[1].framerate, None);
+
+        // Unsupported: universe 1's offline port rejects set_framerate; the
+        // error from `rust_dmx::SetFpsError::Unsupported` propagates with the
+        // port name in the wrap.
+        let err = show
+            .handle_meta_command(MetaCommand::SetDmxPortFramerate {
+                universe: 1,
+                framerate: 30,
+            })
+            .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("set framerate on port offline"), "got: {msg}");
+        assert!(
+            msg.contains("does not support setting framerate"),
+            "got: {msg}"
+        );
+
+        // Out of range: universe index past the end of the dmx vec.
+        let err = show
+            .handle_meta_command(MetaCommand::SetDmxPortFramerate {
+                universe: 5,
+                framerate: 30,
+            })
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("universe 5 out of range"),
+            "got: {err}"
+        );
     }
 
     #[test]

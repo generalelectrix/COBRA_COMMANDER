@@ -99,7 +99,7 @@ mod test {
 
 #[cfg(test)]
 pub(crate) mod mock {
-    use rust_dmx::{DmxPort, OpenError, WriteError};
+    use rust_dmx::{DmxPort, OpenError, SetFpsError, WriteError};
     use serde::{Deserialize, Serialize};
     use std::fmt;
 
@@ -107,6 +107,11 @@ pub(crate) mod mock {
     pub struct MockDmxPort {
         pub open_should_fail: bool,
         pub opened: bool,
+        /// If `Some`, the mock supports framerate control and reports this
+        /// value from `get_framerate()`; `set_framerate` updates it. If `None`,
+        /// the port behaves like a non-framerate-capable port (the trait
+        /// defaults: `get_framerate` returns None, `set_framerate` errors).
+        pub framerate: Option<u8>,
     }
 
     impl MockDmxPort {
@@ -114,6 +119,7 @@ pub(crate) mod mock {
             Self {
                 open_should_fail: false,
                 opened: false,
+                framerate: None,
             }
         }
 
@@ -121,6 +127,15 @@ pub(crate) mod mock {
             Self {
                 open_should_fail: true,
                 opened: false,
+                framerate: None,
+            }
+        }
+
+        pub fn with_framerate(fps: u8) -> Self {
+            Self {
+                open_should_fail: false,
+                opened: false,
+                framerate: Some(fps),
             }
         }
     }
@@ -138,6 +153,18 @@ pub(crate) mod mock {
 
         fn close(&mut self) {
             self.opened = false;
+        }
+
+        fn get_framerate(&self) -> Option<u8> {
+            self.framerate
+        }
+
+        fn set_framerate(&mut self, fps: u8) -> Result<(), SetFpsError> {
+            if self.framerate.is_none() {
+                return Err(SetFpsError::Unsupported);
+            }
+            self.framerate = Some(fps);
+            Ok(())
         }
 
         fn write(&mut self, _frame: &[u8]) -> Result<(), WriteError> {
