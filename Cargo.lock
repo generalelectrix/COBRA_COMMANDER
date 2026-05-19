@@ -4723,9 +4723,9 @@ dependencies = [
 
 [[package]]
 name = "rust_dmx"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a40e9ec738da0d28215d37f3e67d8b991c541b8f5fdc935e8bed95df86d40845"
+checksum = "8967d76c6ea9be3554a7fe7892789314bc25f090050840d0c93746d5ff273964"
 dependencies = [
  "anyhow",
  "artnet_protocol",
