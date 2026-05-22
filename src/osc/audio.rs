@@ -66,7 +66,14 @@ where
         StateChange::EnvelopeValue(v) => {
             emitter.emit_float(ENVELOPE_VALUE, v.val());
         }
-        _ => {}
+        // GUI-only audio parameters; no OSC feedback surface.
+        StateChange::OutputSmoothing(_)
+        | StateChange::AutoTrimEnabled(_)
+        | StateChange::ActiveBand(_)
+        | StateChange::NormFloorHalflife(_)
+        | StateChange::NormCeilingHalflife(_)
+        | StateChange::NormFloorMode(_)
+        | StateChange::NormCeilingMode(_) => {}
     }
 }
 

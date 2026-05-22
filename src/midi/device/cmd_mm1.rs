@@ -294,7 +294,18 @@ impl MidiHandler for BehringerCmdMM1 {
                 );
                 Ok(())
             }
-            _ => Ok(()),
+            // No CMD-MM1 hardware feedback for these parameters.
+            AudioStateChange::FilterCutoff(_)
+            | AudioStateChange::EnvelopeAttack(_)
+            | AudioStateChange::EnvelopeRelease(_)
+            | AudioStateChange::OutputSmoothing(_)
+            | AudioStateChange::AutoTrimEnabled(_)
+            | AudioStateChange::InputGain(_)
+            | AudioStateChange::ActiveBand(_)
+            | AudioStateChange::NormFloorHalflife(_)
+            | AudioStateChange::NormCeilingHalflife(_)
+            | AudioStateChange::NormFloorMode(_)
+            | AudioStateChange::NormCeilingMode(_) => Ok(()),
         } {
             error!("MIDI error updating audio control for {msg:?}: {err}.");
         }

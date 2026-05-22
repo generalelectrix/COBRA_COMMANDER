@@ -395,10 +395,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
                 audio_device: tunnels::audio::OFFLINE_DEVICE_NAME.into(),
             };
             let devices = tunnels::audio::AudioInput::devices().unwrap_or_default();
-            let mut audio_panel = AudioPanelState::new(devices);
-            let audio_snapshot = gui_state.audio_state.load();
-            audio_panel.sync_from_device_name(&audio_snapshot.device_name);
-            drop(audio_snapshot);
+            let audio_panel = AudioPanelState::new(devices);
 
             Ok(Box::new(ConsoleApp {
                 source_panel: ClockPanelState::new(&initial_clock_status),
