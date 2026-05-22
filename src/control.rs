@@ -17,8 +17,8 @@ use crate::{
         MidiControlMessage, MidiController,
     },
     osc::{
-        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscClientListener, OscControlMessage,
-        OscControlResponse, OscController, ScopedControlEmitter, TalkbackMode,
+        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscControlMessage, OscControlResponse,
+        OscController, ScopedControlEmitter, TalkbackMode,
     },
 };
 
@@ -92,9 +92,9 @@ impl Controller {
         self.osc.deregister(client_id);
     }
 
-    /// Get a listener handle for the shared OSC client list.
-    pub fn osc_client_listener(&self) -> OscClientListener {
-        self.osc.client_listener()
+    /// Snapshot the current OSC client list.
+    pub fn osc_client_ids(&self) -> Vec<OscClientId> {
+        self.osc.client_ids()
     }
 
     /// Clear the device assignment from a MIDI slot.
@@ -321,6 +321,8 @@ pub enum MetaCommand {
     Repatch(Vec<crate::config::FixtureGroupConfig>),
     /// Enable or disable the master strobe fader channel.
     SetMasterStrobeChannel(bool),
+    /// Forward an audio control message to the active audio input.
+    AudioControl(tunnels::audio::ControlMessage),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -349,6 +351,7 @@ impl fmt::Debug for MetaCommand {
             Self::SetMasterStrobeChannel(enable) => {
                 write!(f, "SetMasterStrobeChannel({enable})")
             }
+            Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
         }
     }
 }

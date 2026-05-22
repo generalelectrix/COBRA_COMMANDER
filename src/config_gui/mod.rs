@@ -16,6 +16,7 @@
 //!   and syncs from the authoritative Show state via `sync_from_status()`
 
 mod animation_panel;
+mod audio_panel;
 mod clock_panel;
 mod dmx_panel;
 mod midi_panel;
@@ -25,7 +26,7 @@ mod welcome;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, channel};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -33,6 +34,8 @@ use eframe::egui;
 use local_ip_address::local_ip;
 use log::error;
 use midi_harness::install_midi_device_change_handler;
+use tunnels::audio::EnvelopeStreams;
+use tunnels_lib::repaint::RepaintSignal;
 
 use crate::clocks::Clocks;
 use crate::control::{CommandClient, Controller};
@@ -41,10 +44,13 @@ use crate::gui_state::{ClockStatus, GuiState, SharedGuiState};
 use crate::midi::ControlHandler;
 use crate::preview::Previewer;
 use crate::show::Show;
-use crate::ui_util::{CloseHandler, GuiContext, MessageModal};
+use crate::ui_util::GuiContext;
 use animation_panel::VisualizerPanelState;
+use audio_panel::AudioPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
+use gui_common::envelope_viewer::EnvelopeViewerState;
+use gui_common::{CloseHandler, MessageModal};
 use midi_panel::{MidiPanel, MidiPanelState};
 use patch_panel::{PatchPanel, PatchPanelState};
 use welcome::WelcomeResult;
@@ -65,14 +71,17 @@ enum Tab {
     Dmx,
     Midi,
     Osc,
-    Clocks,
+    ClocksAudio,
     Animation,
 }
 
 struct ConsoleApp {
     client: CommandClient,
     show_file_path: PathBuf,
-    clock_panel: ClockPanelState,
+    source_panel: ClockPanelState,
+    audio_panel: AudioPanelState,
+    envelope_viewer: EnvelopeViewerState,
+    envelope_streams_rx: Receiver<EnvelopeStreams>,
     midi_panel: MidiPanelState,
     /// Behind Arc<Mutex<>> because this state is shared between the embedded
     /// Animation tab and the detached viewport (which runs on a separate
@@ -103,7 +112,7 @@ impl eframe::App for ConsoleApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Dmx, "DMX");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
-                ui.selectable_value(&mut self.active_tab, Tab::Clocks, "Clocks");
+                ui.selectable_value(&mut self.active_tab, Tab::ClocksAudio, "Clocks/Audio");
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
             });
         });
@@ -139,17 +148,47 @@ impl eframe::App for ConsoleApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| match self.active_tab {
-            Tab::Clocks => {
+            Tab::ClocksAudio => {
                 let clock_status = self.gui_state.clock_status.load();
                 ClockPanel {
                     ctx: GuiContext {
                         modal: &mut self.modal,
                         client: &self.client,
                     },
-                    state: &mut self.clock_panel,
+                    state: &mut self.source_panel,
                     clock_status: &clock_status,
                 }
                 .ui(ui);
+
+                match &**clock_status {
+                    ClockStatus::Internal { .. } => {
+                        ui.add_space(8.0);
+                        ui.separator();
+                        let audio_state = self.gui_state.audio_state.load();
+                        audio_panel::render_audio_panel(
+                            ui,
+                            GuiContext {
+                                modal: &mut self.modal,
+                                client: &self.client,
+                            },
+                            &mut self.audio_panel,
+                            &audio_state,
+                        );
+                        if audio_state.device_name != tunnels::audio::OFFLINE_DEVICE_NAME {
+                            while let Ok(streams) = self.envelope_streams_rx.try_recv() {
+                                self.envelope_viewer.set_envelope_streams(streams);
+                            }
+                            ui.add_space(8.0);
+                            ui.separator();
+                            self.envelope_viewer.ui(ui);
+                        } else {
+                            self.envelope_viewer.set_open(false);
+                        }
+                    }
+                    ClockStatus::Remote { .. } => {
+                        self.envelope_viewer.set_open(false);
+                    }
+                }
             }
             Tab::Midi => {
                 let midi_slots = self.gui_state.midi_slots.load();
@@ -251,7 +290,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         WelcomeResult::Quit => return Ok(()),
     };
 
-    // Phase 2: Create all infrastructure.
+    // Phase 2: Create infrastructure that doesn't depend on egui_ctx.
     let osc_listen_addr = match local_ip() {
         Ok(ip) => format!("{ip}:{osc_receive_port}"),
         Err(_) => format!("0.0.0.0:{osc_receive_port}"),
@@ -270,49 +309,13 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         send_control_msg,
         recv_control_msg,
     )?;
-    let osc_client_listener = controller.osc_client_listener();
 
-    let gui_state: SharedGuiState = Arc::new(GuiState::new(
-        vec![],
-        ClockStatus::Internal {
-            audio_device: "Offline".into(),
-        },
-        osc_listen_addr,
-        osc_client_listener,
-    ));
+    // Move-once values for the eframe creator closure.
+    let mut startup = Some((controller, osc_listen_addr, initial_configs));
 
-    // Phase 3: Spawn the show thread.
-    // Patch is created on the show thread because it contains non-Send types.
-    let show_gui_state = gui_state.clone();
-    std::thread::spawn(move || {
-        let patch = match Patch::patch_all(&initial_configs) {
-            Ok(p) => p,
-            Err(e) => {
-                error!("Show patch error: {e:#}");
-                return;
-            }
-        };
-        let universe_count = patch.universe_count();
-        let dmx = (0..universe_count)
-            .map(|_| crate::dmx::DmxUniverse::offline())
-            .collect();
-        let clocks = Clocks::internal(None);
-        let show = Show::new(
-            patch,
-            initial_configs,
-            controller,
-            dmx,
-            clocks,
-            Previewer::default(),
-            show_gui_state,
-        );
-        match show {
-            Ok(mut show) => show.run(),
-            Err(e) => error!("Show initialization error: {e:#}"),
-        }
-    });
-
-    // Phase 4: Run the console GUI.
+    // Phase 3: Run the console GUI. GuiState construction (which needs a
+    // RepaintSignal built from cc.egui_ctx) and the show-thread spawn live
+    // inside the creator closure.
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([780.0, 650.0])
@@ -324,10 +327,74 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         options,
         Box::new(move |cc| {
             stage_theme::apply(&cc.egui_ctx);
+
+            let (controller, osc_listen_addr, initial_configs) =
+                startup.take().expect("creator closure called once");
+
+            let repaint: RepaintSignal = {
+                let ctx = cc.egui_ctx.clone();
+                Arc::new(move || ctx.request_repaint())
+            };
+
+            let gui_state: SharedGuiState = Arc::new(GuiState::new(
+                vec![],
+                ClockStatus::Internal {
+                    audio_device: tunnels::audio::OFFLINE_DEVICE_NAME.into(),
+                },
+                osc_listen_addr,
+                repaint,
+            ));
+
+            let (envelope_tx, envelope_rx) = channel::<EnvelopeStreams>();
+
+            let show_gui_state = gui_state.clone();
+            let show_envelope_tx = envelope_tx.clone();
+            std::thread::spawn(move || {
+                let patch = match Patch::patch_all(&initial_configs) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        error!("Show patch error: {e:#}");
+                        return;
+                    }
+                };
+                let universe_count = patch.universe_count();
+                let dmx = (0..universe_count)
+                    .map(|_| crate::dmx::DmxUniverse::offline())
+                    .collect();
+                let clocks = match Clocks::internal(None, show_envelope_tx.clone()) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        error!("Clocks initialization error: {e:#}");
+                        return;
+                    }
+                };
+                let show = Show::new(
+                    patch,
+                    initial_configs,
+                    controller,
+                    dmx,
+                    clocks,
+                    Previewer::default(),
+                    show_gui_state,
+                    show_envelope_tx,
+                );
+                match show {
+                    Ok(mut show) => show.run(),
+                    Err(e) => error!("Show initialization error: {e:#}"),
+                }
+            });
+
+            let initial_clock_status = ClockStatus::Internal {
+                audio_device: tunnels::audio::OFFLINE_DEVICE_NAME.into(),
+            };
+            let devices = tunnels::audio::AudioInput::devices().unwrap_or_default();
+            let audio_panel = AudioPanelState::new(devices);
+
             Ok(Box::new(ConsoleApp {
-                clock_panel: ClockPanelState::new(&ClockStatus::Internal {
-                    audio_device: "Offline".into(),
-                }),
+                source_panel: ClockPanelState::new(&initial_clock_status),
+                audio_panel,
+                envelope_viewer: EnvelopeViewerState::new(),
+                envelope_streams_rx: envelope_rx,
                 midi_panel: MidiPanelState::new(),
                 visualizer_panel: Arc::new(Mutex::new(VisualizerPanelState::default())),
                 visualizer_detached: Arc::new(AtomicBool::new(false)),

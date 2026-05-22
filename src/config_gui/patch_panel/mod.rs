@@ -9,9 +9,9 @@ use crate::control::MetaCommand;
 use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
 use crate::gui_state::PatchSnapshot;
-use crate::ui_util::{
-    GuiContext, STATUS_COLORS, cancel_button, char_width_for, confirm_button,
-    confirm_button_enabled, dnd_reorder, row_height_for,
+use crate::ui_util::{GuiContext, char_width_for, row_height_for};
+use gui_common::{
+    STATUS_COLORS, cancel_button, confirm_button, confirm_button_enabled, dnd_reorder,
 };
 
 use address_map::{AddressMap, UniverseAddress};
@@ -1481,9 +1481,9 @@ mod test {
     // -----------------------------------------------------------------------
 
     use crate::control::mock::auto_respond_client;
-    use crate::ui_util::MessageModal;
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
+    use gui_common::MessageModal;
 
     fn snapshot_panel(
         snapshot: &PatchSnapshot,

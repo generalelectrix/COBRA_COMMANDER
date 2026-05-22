@@ -7,7 +7,7 @@ use eframe::egui;
 use crate::config::FixtureGroupConfig;
 use crate::fixture::Patch;
 use crate::show_file::{self, ShowFile};
-use crate::ui_util::MessageModal;
+use gui_common::MessageModal;
 
 /// The result of the welcome screen interaction.
 #[derive(Debug)]

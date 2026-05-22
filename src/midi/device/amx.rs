@@ -17,6 +17,7 @@ use tunnels::{
     midi_controls::{MidiDevice, bipolar_from_midi, unipolar_from_midi},
 };
 
+use tunnels::audio::StateChange as AudioStateChange;
 use tunnels::clock::{ControlMessage as ClockControlMessage, StateChange as ClockStateChange};
 use tunnels::clock_bank::{
     ControlMessage as ClockBankControlMessage, StateChange as ClockBankStateChange,
@@ -267,9 +268,25 @@ impl MidiHandler for AkaiAmx {
         }
     }
 
-    fn emit_audio_control(&self, msg: &tunnels::audio::StateChange, output: &mut dyn Output) {
-        if let tunnels::audio::StateChange::EnvelopeValue(v) = msg {
-            self.set_vu_meter(VuMeter::MasterRight, *v, output);
+    fn emit_audio_control(&self, msg: &AudioStateChange, output: &mut dyn Output) {
+        match msg {
+            AudioStateChange::EnvelopeValue(v) => {
+                self.set_vu_meter(VuMeter::MasterRight, *v, output);
+            }
+            // No AMX hardware feedback for these parameters.
+            AudioStateChange::Monitor(_)
+            | AudioStateChange::FilterCutoff(_)
+            | AudioStateChange::EnvelopeAttack(_)
+            | AudioStateChange::EnvelopeRelease(_)
+            | AudioStateChange::OutputSmoothing(_)
+            | AudioStateChange::AutoTrimEnabled(_)
+            | AudioStateChange::InputGain(_)
+            | AudioStateChange::IsClipping(_)
+            | AudioStateChange::ActiveBand(_)
+            | AudioStateChange::NormFloorHalflife(_)
+            | AudioStateChange::NormCeilingHalflife(_)
+            | AudioStateChange::NormFloorMode(_)
+            | AudioStateChange::NormCeilingMode(_) => {}
         }
     }
 }

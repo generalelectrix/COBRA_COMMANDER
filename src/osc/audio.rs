@@ -38,7 +38,7 @@ pub fn map_controls(map: &mut GroupControlMap<ControlMessage>) {
     map.add_unipolar(ENVELOPE_RELEASE, |v| {
         Set(EnvelopeRelease(envelope_edge_from_unipolar(v)))
     });
-    map.add_unipolar(GAIN, |v| Set(Gain(gain_from_unipolar(v))));
+    map.add_unipolar(GAIN, |v| Set(InputGain(gain_from_unipolar(v))));
     RESET.map_trigger(map, || ResetParameters);
 }
 
@@ -57,7 +57,7 @@ where
         StateChange::EnvelopeRelease(v) => {
             emitter.emit_float(ENVELOPE_RELEASE, envelope_edge_to_unipolar(*v).val());
         }
-        StateChange::Gain(v) => {
+        StateChange::InputGain(v) => {
             emitter.emit_float(GAIN, gain_to_unipolar(*v).val());
         }
         StateChange::IsClipping(v) => {
@@ -66,6 +66,14 @@ where
         StateChange::EnvelopeValue(v) => {
             emitter.emit_float(ENVELOPE_VALUE, v.val());
         }
+        // GUI-only audio parameters; no OSC feedback surface.
+        StateChange::OutputSmoothing(_)
+        | StateChange::AutoTrimEnabled(_)
+        | StateChange::ActiveBand(_)
+        | StateChange::NormFloorHalflife(_)
+        | StateChange::NormCeilingHalflife(_)
+        | StateChange::NormFloorMode(_)
+        | StateChange::NormCeilingMode(_) => {}
     }
 }
 

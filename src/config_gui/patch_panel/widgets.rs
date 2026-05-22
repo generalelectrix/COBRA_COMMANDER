@@ -2,7 +2,7 @@ use eframe::egui;
 
 use crate::config::Options;
 use crate::fixture::patch::PatchOption;
-use crate::ui_util::STATUS_COLORS;
+use gui_common::STATUS_COLORS;
 
 use super::address_map::{AddressMap, GroupName};
 use super::working_copy::PatchWorkingCopy;

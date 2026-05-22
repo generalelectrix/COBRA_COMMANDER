@@ -1,8 +1,9 @@
+use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use anyhow::Result;
 use tunnels::{
-    audio::AudioInput,
+    audio::{AudioInput, AudioSnapshot, EnvelopeStreams},
     clock_bank::{ClockBank, ControlMessage},
     clock_server::{SharedClockData, StaticClockBank},
 };
@@ -10,7 +11,7 @@ use tunnels::{
 use crate::{
     clock_service::ClockService,
     control::Controller,
-    gui_state::ClockStatus,
+    gui_state::{ClockStatus, GuiDirty},
     osc::{GroupControlMap, OscControlMessage},
 };
 
@@ -55,18 +56,31 @@ impl Clocks {
         }
     }
 
-    /// Initialize internally-controlled clocks. Use the provided audio input.
-    pub fn internal(audio_device: Option<AudioInput>) -> Self {
+    /// Initialize internally-controlled clocks. Opens the named audio device, or
+    /// uses an offline device when `audio_device_name` is `None`.
+    pub fn internal(
+        audio_device_name: Option<String>,
+        envelope_streams_tx: Sender<EnvelopeStreams>,
+    ) -> Result<Self> {
         let clocks = ClockBank::default();
         let mut clock_controls = GroupControlMap::default();
         crate::osc::clock::map_controls(&mut clock_controls);
         let mut audio_controls = GroupControlMap::default();
         crate::osc::audio::map_controls(&mut audio_controls);
-        Clocks::Internal {
+        let audio_input = AudioInput::new(audio_device_name, envelope_streams_tx)?;
+        Ok(Clocks::Internal {
             clocks,
             clock_controls,
-            audio_input: audio_device.unwrap_or_else(|| AudioInput::new(None).unwrap()),
+            audio_input,
             audio_controls,
+        })
+    }
+
+    /// Snapshot of audio input state, when running in Internal mode.
+    pub fn audio_snapshot(&self) -> Option<AudioSnapshot> {
+        match self {
+            Self::Internal { audio_input, .. } => Some(audio_input.snapshot()),
+            Self::Service(_) => None,
         }
     }
 
@@ -118,28 +132,33 @@ impl Clocks {
         &mut self,
         msg: &OscControlMessage,
         emitter: &mut Controller,
-    ) -> Result<()> {
+    ) -> Result<GuiDirty> {
         let Self::Internal {
             audio_input,
             audio_controls,
             ..
         } = self
         else {
-            return Ok(());
+            return Ok(GuiDirty::CLEAN);
         };
         let Some((msg, _talkback)) = audio_controls.handle(msg)? else {
-            return Ok(());
+            return Ok(GuiDirty::CLEAN);
         };
         audio_input.control(msg, emitter);
-        Ok(())
+        Ok(GuiDirty::AUDIO)
     }
 
     /// Handle an audio control message.
-    pub fn control_audio(&mut self, msg: tunnels::audio::ControlMessage, emitter: &mut Controller) {
+    pub fn control_audio(
+        &mut self,
+        msg: tunnels::audio::ControlMessage,
+        emitter: &mut Controller,
+    ) -> GuiDirty {
         let Self::Internal { audio_input, .. } = self else {
-            return;
+            return GuiDirty::CLEAN;
         };
         audio_input.control(msg, emitter);
+        GuiDirty::AUDIO
     }
 
     /// Emit all current audio and clock state.
@@ -169,5 +188,77 @@ impl Clocks {
         audio_input.update_state(delta_t, controller);
         let audio_envelope = audio_input.envelope();
         clocks.update_state(delta_t, audio_envelope, controller);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::osc::OscClientId;
+    use rosc::{OscMessage, OscType};
+
+    fn internal_clocks() -> Clocks {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        Clocks::internal(None, tx).expect("internal clocks should construct in test")
+    }
+
+    fn audio_osc_msg(control: &str, value: f32) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: format!("/Audio/{control}"),
+                args: vec![OscType::Float(value)],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn control_audio_marks_audio_dirty_only_in_internal_mode() {
+        let (mut controller, _send) = Controller::test_new();
+
+        let mut service = Clocks::test_new();
+        assert_eq!(
+            service.control_audio(
+                tunnels::audio::ControlMessage::ResetParameters,
+                &mut controller,
+            ),
+            GuiDirty::CLEAN,
+        );
+
+        let mut internal = internal_clocks();
+        assert_eq!(
+            internal.control_audio(
+                tunnels::audio::ControlMessage::ResetParameters,
+                &mut controller,
+            ),
+            GuiDirty::AUDIO,
+        );
+    }
+
+    #[test]
+    fn control_audio_osc_marks_audio_dirty_only_in_internal_mode() {
+        let (mut controller, _send) = Controller::test_new();
+        let msg = audio_osc_msg("FilterCutoff", 0.5);
+
+        assert_eq!(
+            Clocks::test_new()
+                .control_audio_osc(&msg, &mut controller)
+                .expect("recognized msg should not error"),
+            GuiDirty::CLEAN,
+        );
+
+        assert_eq!(
+            internal_clocks()
+                .control_audio_osc(&msg, &mut controller)
+                .expect("recognized msg should not error"),
+            GuiDirty::AUDIO,
+        );
+    }
+
+    #[test]
+    fn audio_snapshot_present_only_in_internal_mode() {
+        assert!(Clocks::test_new().audio_snapshot().is_none());
+        assert!(internal_clocks().audio_snapshot().is_some());
     }
 }
