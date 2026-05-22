@@ -230,12 +230,12 @@ impl Show {
                 println!("Registering new OSC client at {client_id}.");
                 self.controller.register_osc_client(client_id);
                 self.refresh_ui();
-                Ok(GuiDirty::CLEAN)
+                Ok(GuiDirty::OSC_CLIENTS)
             }
             MetaCommand::DropOscClient(client_id) => {
                 println!("Deregistering OSC client at {client_id}.");
                 self.controller.deregister_osc_client(client_id);
-                Ok(GuiDirty::CLEAN)
+                Ok(GuiDirty::OSC_CLIENTS)
             }
             MetaCommand::SetMasterStrobeChannel(enable) => {
                 if enable {
@@ -441,7 +441,12 @@ impl Show {
         if dirty.contains(GuiDirty::MIDI_SLOTS) {
             self.gui_state
                 .midi_slots
-                .store(Arc::new(self.controller.midi_slot_statuses()));
+                .store(self.controller.midi_slot_statuses());
+        }
+        if dirty.contains(GuiDirty::OSC_CLIENTS) {
+            self.gui_state
+                .osc_clients
+                .store(self.controller.osc_client_ids());
         }
         if dirty.contains(GuiDirty::CLOCK_STATE) {
             self.gui_state
@@ -706,7 +711,6 @@ impl Show {
             vec![],
             initial_clock_status,
             String::new(),
-            controller.osc_client_listener(),
             tunnels_lib::repaint::noop_repaint(),
         ));
         let mut show = Self {
@@ -788,6 +792,26 @@ mod tests {
             dirty,
             GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE | GuiDirty::AUDIO,
         );
+    }
+
+    #[test]
+    fn osc_client_register_drop_marks_dirty_and_snapshots() {
+        let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
+        let client = crate::osc::OscClientId::example();
+
+        let dirty = show
+            .handle_meta_command(MetaCommand::RegisterOscClient(client))
+            .expect("register should not error");
+        assert_eq!(dirty, GuiDirty::OSC_CLIENTS);
+        show.snapshot_gui_state(dirty);
+        assert!(show.gui_state.osc_clients.load().contains(&client));
+
+        let dirty = show
+            .handle_meta_command(MetaCommand::DropOscClient(client))
+            .expect("drop should not error");
+        assert_eq!(dirty, GuiDirty::OSC_CLIENTS);
+        show.snapshot_gui_state(dirty);
+        assert!(!show.gui_state.osc_clients.load().contains(&client));
     }
 
     #[test]

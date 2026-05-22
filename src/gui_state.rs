@@ -6,7 +6,7 @@ use tunnels::{animation::Animation, audio::AudioSnapshot, clock_server::SharedCl
 use tunnels_lib::{notified::Notified, repaint::RepaintSignal};
 
 use crate::config::FixtureGroupConfig;
-use crate::osc::OscClientListener;
+use crate::osc::OscClientId;
 
 /// Snapshot of animation state for the visualizer panel.
 #[derive(Default)]
@@ -51,6 +51,7 @@ bitflags::bitflags! {
         const CLOCK_STATE = 0b0000_0010;
         const DMX_PORTS   = 0b0000_0100;
         const AUDIO       = 0b0000_1000;
+        const OSC_CLIENTS = 0b0001_0000;
     }
 }
 
@@ -63,10 +64,10 @@ pub enum ClockStatus {
 /// Lock-free shared state from Show → GUI.
 /// Each field is independently and atomically swappable.
 pub struct GuiState {
-    pub midi_slots: ArcSwap<Vec<SlotStatus>>,
+    pub midi_slots: Notified<Vec<SlotStatus>>,
     pub clock_status: ArcSwap<ClockStatus>,
     pub osc_listen_addr: String,
-    pub osc_clients: OscClientListener,
+    pub osc_clients: Notified<Vec<OscClientId>>,
     /// Whether the visualizer tab is active — controls whether the Show
     /// snapshots animation state.
     pub visualizer_active: AtomicBool,
@@ -84,14 +85,13 @@ impl GuiState {
         midi_slots: Vec<SlotStatus>,
         clock_status: ClockStatus,
         osc_listen_addr: String,
-        osc_clients: OscClientListener,
         repaint: RepaintSignal,
     ) -> Self {
         Self {
-            midi_slots: ArcSwap::from_pointee(midi_slots),
+            midi_slots: Notified::new(midi_slots, repaint.clone()),
             clock_status: ArcSwap::from_pointee(clock_status),
             osc_listen_addr,
-            osc_clients,
+            osc_clients: Notified::new(Vec::new(), repaint.clone()),
             visualizer_active: AtomicBool::new(false),
             animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),
             patch_snapshot: ArcSwap::from_pointee(PatchSnapshot::default()),

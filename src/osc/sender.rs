@@ -43,6 +43,11 @@ impl OscClientManager {
         OscClientListener(Arc::clone(&self.0))
     }
 
+    /// Snapshot the current client list.
+    pub fn client_ids(&self) -> Vec<OscClientId> {
+        (**self.0.load()).clone()
+    }
+
     /// Remove a client.
     pub fn deregister(&self, client_id: OscClientId) {
         let current = self.0.load();

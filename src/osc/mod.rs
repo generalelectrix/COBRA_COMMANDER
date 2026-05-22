@@ -37,7 +37,6 @@ mod sender;
 mod unipolar_array;
 
 pub use control_message::OscControlMessage;
-pub use sender::OscClientListener;
 
 /// Emit an implicitly-scoped OSC message.
 pub trait EmitScopedOscMessage {
@@ -108,9 +107,9 @@ impl OscController {
         self.client_manager.deregister(client_id);
     }
 
-    /// Get a listener handle for the shared client list.
-    pub fn client_listener(&self) -> OscClientListener {
-        self.client_manager.listener()
+    /// Snapshot the current OSC client list.
+    pub fn client_ids(&self) -> Vec<OscClientId> {
+        self.client_manager.client_ids()
     }
 }
 

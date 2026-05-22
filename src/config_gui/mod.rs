@@ -309,15 +309,9 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         send_control_msg,
         recv_control_msg,
     )?;
-    let osc_client_listener = controller.osc_client_listener();
 
     // Move-once values for the eframe creator closure.
-    let mut startup = Some((
-        controller,
-        osc_client_listener,
-        osc_listen_addr,
-        initial_configs,
-    ));
+    let mut startup = Some((controller, osc_listen_addr, initial_configs));
 
     // Phase 3: Run the console GUI. GuiState construction (which needs a
     // RepaintSignal built from cc.egui_ctx) and the show-thread spawn live
@@ -334,7 +328,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         Box::new(move |cc| {
             stage_theme::apply(&cc.egui_ctx);
 
-            let (controller, osc_client_listener, osc_listen_addr, initial_configs) =
+            let (controller, osc_listen_addr, initial_configs) =
                 startup.take().expect("creator closure called once");
 
             let repaint: RepaintSignal = {
@@ -348,7 +342,6 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
                     audio_device: tunnels::audio::OFFLINE_DEVICE_NAME.into(),
                 },
                 osc_listen_addr,
-                osc_client_listener,
                 repaint,
             ));
 
