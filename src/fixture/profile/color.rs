@@ -240,10 +240,12 @@ pub enum Model {
     DimmerRgbw,
     /// Dimmer in first channel + RGBW plus two unused channels (common 7-channel profile).
     SevenChannelRgbw,
-    /// HSV in 3 DMX channels.
-    Hsv,
+    /// RGBWA in 5 DMX channels.
+    Rgbwa,
     /// RGBWAU in 6 DMX channels.
     Rgbwau,
+    /// HSV in 3 DMX channels.
+    Hsv,
 }
 
 impl EnumRenderModel for Model {}
@@ -256,8 +258,9 @@ impl Model {
             Self::Rgbw => 4,
             Self::DimmerRgbw => 5,
             Self::SevenChannelRgbw => 7,
-            Self::Hsv => 3,
+            Self::Rgbwa => 5,
             Self::Rgbwau => 6,
+            Self::Hsv => 3,
         }
     }
 
@@ -289,16 +292,24 @@ impl Model {
                 buf[5] = 0;
                 buf[6] = 0;
             }
+            Self::Rgbwa => {
+                Self::Rgbw.render(&mut buf[0..4], renderer);
+                buf[4] = 0;
+                // TODO: decide what to do with Amber
+                // Amber probably isn't well standardized, even worse than white.
+            }
+            Self::Rgbwau => {
+                Self::Rgbw.render(&mut buf[0..4], renderer);
+                // TODO: decide what to do with Amber
+                // Amber probably isn't well standardized, even worse than white.
+                buf[4] = 0;
+                buf[5] = 0;
+            }
             Self::Hsv => {
                 let [h, s, v] = renderer.hsv();
                 buf[0] = h;
                 buf[1] = s;
                 buf[2] = v;
-            }
-            Self::Rgbwau => {
-                Self::Rgb.render(&mut buf[0..3], renderer);
-                // TODO: decide what to do with those other diodes...
-                // Amber probably isn't well standardized, even worse than white.
             }
         }
     }
