@@ -1,7 +1,23 @@
 use std::io::Read;
 use std::path::Path;
 
+use anyhow::{Context, Result};
+
+use crate::touchosc::parse::parse_touchosc;
+use crate::touchosc::templates::load_group_template;
+
 use super::*;
+
+/// Generate a complete TouchOSC layout file for a show and write it to disk.
+fn generate_layout<'a>(
+    groups: impl Iterator<Item = GroupEntry<'a>>,
+    output_path: &Path,
+) -> Result<()> {
+    let layout = assemble_layout(groups)?;
+    layout
+        .write(output_path)
+        .with_context(|| format!("failed to write layout to {}", output_path.display()))
+}
 
 /// Path to the touchosc templates directory.
 fn touchosc_dir() -> &'static Path {
@@ -147,7 +163,7 @@ fn set_group_name_identity() {
     for entry in std::fs::read_dir(&templates_dir).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
-        if !path.extension().is_some_and(|ext| ext == "touchosc") {
+        if path.extension().is_none_or(|ext| ext != "touchosc") {
             continue;
         }
         let fixture_type = path.file_stem().unwrap().to_str().unwrap();
@@ -201,7 +217,7 @@ fn layout_server_serves_xml() {
     let zip = &BASE_TEMPLATE;
     let expected_xml = zip.extract_xml().unwrap();
 
-    let server = serve::LayoutServer::start("TestLayout".to_string(), &expected_xml).unwrap();
+    let _server = serve::LayoutServer::start("TestLayout".to_string(), &expected_xml).unwrap();
 
     // Give the server thread a moment to start accepting.
     std::thread::sleep(std::time::Duration::from_millis(50));
@@ -241,6 +257,4 @@ fn layout_server_serves_xml() {
         expected_xml.0.as_slice(),
         "body doesn't match expected XML"
     );
-
-    server.stop().unwrap();
 }

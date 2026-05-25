@@ -80,14 +80,8 @@ impl LayoutServer {
     }
 
     /// Stop the server, deregister mDNS, and wait for the thread to finish.
-    #[expect(unused)]
-    pub fn stop(mut self) -> Result<()> {
+    pub fn stop(&mut self) {
         info!("stopping TouchOSC layout server");
-        self.shutdown();
-        Ok(())
-    }
-
-    fn shutdown(&mut self) {
         self.http_server.unblock();
         let _ = self.mdns.unregister(&self.service_fullname);
         let _ = self.mdns.shutdown();
@@ -99,7 +93,7 @@ impl LayoutServer {
 
 impl Drop for LayoutServer {
     fn drop(&mut self) {
-        self.shutdown();
+        self.stop();
     }
 }
 

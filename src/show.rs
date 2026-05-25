@@ -648,43 +648,6 @@ impl From<Hsluv> for HsluvColor {
 }
 
 #[cfg(test)]
-pub mod test_support {
-    use super::*;
-    use crate::control::CommandClient;
-
-    /// Stand up a fully-contained test Show processing commands on a
-    /// background thread.  Returns a real `CommandClient` connected to it.
-    ///
-    /// The Show lives until the returned `CommandClient` (and any clones)
-    /// are dropped, at which point the background thread exits.
-    pub fn test_show_client() -> CommandClient {
-        let (send_tx, send_rx) = std::sync::mpsc::sync_channel(0);
-
-        std::thread::spawn(move || {
-            let yaml = "- fixture: Dimmer\n  patches:\n    - addr: 1\n";
-            let configs: Vec<crate::config::FixtureGroupConfig> =
-                serde_yaml::from_str(yaml).unwrap();
-            let patch = Patch::patch_all(&configs).unwrap();
-            let (mut show, send) = Show::test_new(patch);
-
-            // Send the client handle back to the calling thread.
-            send_tx.send(CommandClient::new(send)).unwrap();
-
-            // Process commands until the client is dropped.
-            loop {
-                match show.control(Duration::from_millis(100)) {
-                    Ok(_dirty) => {}
-                    Err(e) if e.to_string().contains("disconnected") => break,
-                    Err(_) => {} // command errors are expected, keep running
-                }
-            }
-        });
-
-        send_rx.recv().unwrap()
-    }
-}
-
-#[cfg(test)]
 impl Show {
     fn test_new(patch: Patch) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
         Self::test_new_inner(patch, |_tx| Clocks::test_new())
