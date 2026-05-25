@@ -4,7 +4,7 @@ mod working_copy;
 
 use eframe::egui;
 
-use crate::config::{DmxAddrConfig, FixtureGroupConfig, FixtureGroupKey, Options, PatchBlock};
+use crate::config::{DmxAddrConfig, FixtureGroupConfig, FixtureGroupKey, PatchBlock};
 use crate::control::MetaCommand;
 use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
@@ -755,17 +755,6 @@ impl PatchPanel<'_> {
             form.sync_options(self.patchers);
         }
 
-        if let Some(patcher) = self.patchers.get(form.fixture_type_idx)
-            && let Ok(cfg) = (patcher.create_patch)(Options::default(), Options::default())
-            && cfg.channel_count > 0
-        {
-            ui.label(format!(
-                "({} DMX channel{} per fixture)",
-                cfg.channel_count,
-                if cfg.channel_count > 1 { "s" } else { "" }
-            ));
-        }
-
         let hint = self
             .patchers
             .get(form.fixture_type_idx)
@@ -1020,6 +1009,7 @@ impl PatchPanel<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::config::Options;
     use crate::fixture::patch::PatchConfig;
     use crate::fixture::prelude::FixtureType;
 
