@@ -9,6 +9,7 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 
 /// Parse a .touchosc file from disk.
+#[cfg_attr(not(test), expect(unused))]
 pub fn parse_touchosc(path: &Path) -> Result<Layout> {
     let bytes =
         std::fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;

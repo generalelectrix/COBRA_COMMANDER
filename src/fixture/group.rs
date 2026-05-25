@@ -121,8 +121,8 @@ impl FixtureGroup {
         }
     }
 
+    #[cfg_attr(not(test), expect(unused))]
     /// Return descriptions of all OSC controls this fixture exposes.
-    #[expect(unused)]
     pub fn describe_controls(&self) -> Vec<OscControlDescription> {
         self.fixture.describe_controls()
     }

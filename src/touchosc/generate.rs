@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use anyhow::{Context, Result, anyhow};
 
 use super::model::*;
@@ -63,15 +61,4 @@ pub fn assemble_layout<'a>(groups: impl Iterator<Item = GroupEntry<'a>>) -> Resu
         orientation: Orientation::Vertical,
         tabpages,
     })
-}
-
-/// Generate a complete TouchOSC layout file for a show and write it to disk.
-pub fn generate_layout<'a>(
-    groups: impl Iterator<Item = GroupEntry<'a>>,
-    output_path: &Path,
-) -> Result<()> {
-    let layout = assemble_layout(groups)?;
-    layout
-        .write(output_path)
-        .with_context(|| format!("failed to write layout to {}", output_path.display()))
 }
