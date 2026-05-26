@@ -8,6 +8,7 @@ pub mod comet;
 pub mod cosmic_burst;
 pub mod dimmer;
 pub mod empty_channel;
+pub mod eyeball;
 pub mod faderboard;
 pub mod flash_bang;
 pub mod freedom_fries;
