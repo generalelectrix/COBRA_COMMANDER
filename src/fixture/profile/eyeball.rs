@@ -26,7 +26,7 @@ impl PatchFixture for Eyeball {
 
     type GroupOptions = super::color::GroupOptions;
 
-    type PatchOptions = ();
+    type PatchOptions = NoOptions;
 
     fn new(options: Self::GroupOptions) -> Self {
         Self {
@@ -51,6 +51,9 @@ impl PatchFixture for Eyeball {
         }
     }
 }
+
+register_patcher!(Eyeball);
+register_touchosc_template!(Eyeball);
 
 impl AnimatedFixture for Eyeball {
     type Target = AnimationTarget;
