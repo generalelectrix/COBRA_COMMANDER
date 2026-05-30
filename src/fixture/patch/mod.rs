@@ -1,14 +1,12 @@
 //! Types and traits related to patching fixtures.
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use itertools::Itertools;
-use ordermap::{OrderMap, OrderSet};
-use std::collections::HashMap;
-
-use anyhow::bail;
 use log::info;
+use std::collections::HashMap;
 
 use super::fixture::FixtureType;
 use super::group::FixtureGroup;
+use crate::channel::ChannelId;
 use crate::config::{FixtureGroupConfig, FixtureGroupKey, GroupId};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
@@ -22,24 +20,55 @@ pub use patcher::{
 
 pub use option::{AsPatchOption, NoOptions, OptionsMenu, PatchOption, enum_patch_option};
 
+/// Where a fixture group physically lives inside a `Patch`.
+///
+/// Returned by name/id lookups so callers can both access the group and know
+/// whether it's bound to a channel. Locations are valid for the lifetime of
+/// the `Patch` they came from; a repatch builds a fresh `Patch` and invalidates
+/// any locations from the previous one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroupLocation {
+    /// Channel-bound; index is the channel id (= position in `Patch::channels`).
+    Channel(ChannelId),
+    /// Not bound to a channel; index is the position in `Patch::non_channel`.
+    NonChannel(usize),
+}
+
+impl GroupLocation {
+    /// Return the channel id if this group is channel-bound, else `None`.
+    pub fn as_channel(&self) -> Option<ChannelId> {
+        match self {
+            Self::Channel(c) => Some(*c),
+            Self::NonChannel(_) => None,
+        }
+    }
+}
+
 /// Factory for fixture instances.
 ///
-/// Creates fixture instances based on configurations.
-/// Maintains a mapping of which DMX addresses are in use by which fixture, to
-/// prevent addressing collisions.
+/// Owns the fixture groups themselves and the indices used to look them up by
+/// display name, stable id, or channel position. Maintains a mapping of which
+/// DMX addresses are in use by which fixture, to prevent addressing collisions.
+///
+/// Storage layout: groups physically live in either `channels` (in channel
+/// order) or `non_channel` (not channel-bound). The `by_id` and `by_name`
+/// maps hold `GroupLocation`s that point into one of those two `Vec`s. This
+/// gives O(1) lookup by id, name, and channel position; iteration over all
+/// groups chains the two `Vec`s.
 pub struct Patch {
     /// Map of registered patchers.
     patchers: HashMap<String, Patcher>,
-
-    /// The fixture groups we've patched, keyed by stable identity.
-    /// Iteration order matches the order groups appear in the patch config.
-    fixtures: OrderMap<GroupId, FixtureGroup>,
+    /// Channel-bound groups in channel order. Position in this `Vec` IS the
+    /// `ChannelId`.
+    channels: Vec<FixtureGroup>,
+    /// Groups that are not bound to a channel (controlled only via OSC by name).
+    non_channel: Vec<FixtureGroup>,
+    /// O(1) lookup from stable id to physical location.
+    by_id: HashMap<GroupId, GroupLocation>,
+    /// O(1) lookup from display name to physical location.
+    by_name: HashMap<String, GroupLocation>,
     /// Which DMX addrs already have a fixture patched in them.
     used_addrs: UsedAddrs,
-    /// The channels that fixture groups are assigned to.
-    channels: OrderSet<GroupId>,
-    /// Initialize color organs for these fixture groups.
-    color_organs: OrderSet<GroupId>,
 }
 
 impl Patch {
@@ -63,10 +92,11 @@ impl Patch {
         }
         Self {
             patchers,
-            fixtures: Default::default(),
+            channels: Vec::new(),
+            non_channel: Vec::new(),
+            by_id: HashMap::new(),
+            by_name: HashMap::new(),
             used_addrs: Default::default(),
-            channels: Default::default(),
-            color_organs: Default::default(),
         }
     }
 
@@ -94,46 +124,44 @@ impl Patch {
                 )
             })?;
         }
-        patch.initialize_color_organs();
         Ok(patch)
     }
 
-    /// Re-intialize a patch from new configs.
+    /// Re-initialize a patch from new configs.
     ///
-    /// This allows retaining all existing state for any groups that haven't
-    /// materially changed.
+    /// Groups whose stable `GroupId` matches one from the previous patch (and
+    /// whose fixture type and options are compatible) keep their live runtime
+    /// state — animation values, strobe state, etc. — via
+    /// [`FixtureGroup::reconfigure_from`]. Groups that don't match start fresh.
     ///
-    /// If any patch error occurs, we must ensure that the original patch remains
-    /// unchanged.
+    /// If any patch error occurs, the original patch remains unchanged.
     ///
     /// TODO: this approach will become problematic if we add control for any
     /// fixtures that require exclusive control of an external resource such as
     /// binding a socket.
     pub fn repatch(&mut self, groups: &[FixtureGroupConfig]) -> Result<()> {
         let mut new_patch = Self::patch_all(groups)?;
-        // Retain state from existing fixture models if they match.
-        // Reconciliation keys on the stable `GroupId`, so renaming a group
-        // (same id, different display key) carries state across.
-        // Since we're mutating the existing patch from here on out, we need to
-        // make sure that none of these operations can fail.
-        for (id, new) in new_patch.fixtures.iter_mut() {
-            let Some(existing) = self.fixtures.remove(id) else {
-                continue;
-            };
-            new.reconfigure_from(existing);
+        // Drain old groups into an id-keyed map for O(1) reconciliation lookup.
+        let mut old_by_id: HashMap<GroupId, FixtureGroup> = std::mem::take(&mut self.channels)
+            .into_iter()
+            .chain(std::mem::take(&mut self.non_channel))
+            .map(|g| (g.id(), g))
+            .collect();
+        for group in new_patch.iter_mut() {
+            if let Some(old) = old_by_id.remove(&group.id()) {
+                group.reconfigure_from(old);
+            }
         }
         *self = new_patch;
         Ok(())
     }
 
-    /// Patch a fixture group config.
-    ///
-    ///
+    /// Patch a single fixture group config.
     fn patch(&mut self, cfg: &FixtureGroupConfig) -> Result<()> {
         let patcher = self.patcher(&cfg.fixture)?;
 
         if let Some(group_key) = &cfg.group {
-            // If there's a patcher that matches this group, fail.
+            // If there's a patcher that matches this group name, fail.
             ensure!(
                 self.patcher(group_key).is_err(),
                 "the group key '{group_key}' cannot be used because it is also a fixture name"
@@ -143,11 +171,11 @@ impl Patch {
         let group_key = FixtureGroupKey(cfg.key().to_string());
 
         ensure!(
-            !self.fixtures.values().any(|g| g.key_str() == group_key.0),
+            !self.by_name.contains_key(&group_key.0),
             "duplicate group key '{group_key}'"
         );
         ensure!(
-            !self.fixtures.contains_key(&cfg.id),
+            !self.by_id.contains_key(&cfg.id),
             "duplicate group id '{}' for group '{group_key}'",
             cfg.id
         );
@@ -222,31 +250,26 @@ impl Patch {
             }
         }
 
-        let id = group.id();
-        self.fixtures.insert(id, group);
-
-        if cfg.channel {
-            self.channels.insert(id);
-        }
+        // Color organ initialization used to be deferred until all groups were
+        // patched. It's actually safe to do it now because a single group's
+        // fixture count is fixed by the time we reach this point.
         if cfg.color_organ {
-            self.color_organs.insert(id);
+            group.use_color_organ();
         }
+
+        let id = group.id();
+        let location = if cfg.channel {
+            let channel_id = ChannelId::new(self.channels.len());
+            self.channels.push(group);
+            GroupLocation::Channel(channel_id)
+        } else {
+            let idx = self.non_channel.len();
+            self.non_channel.push(group);
+            GroupLocation::NonChannel(idx)
+        };
+        self.by_id.insert(id, location);
+        self.by_name.insert(group_key.0, location);
         Ok(())
-    }
-
-    /// Iterate over the stable group ids assigned to each channel, in channel order.
-    pub fn channels(&self) -> impl Iterator<Item = GroupId> + '_ {
-        self.channels.iter().copied()
-    }
-
-    /// Initialize color organs for all fixtures that should have them.
-    ///
-    /// This should be called after all fixtures are patched.
-    /// TODO: update the color organ codebase to handle a change in fixture count.
-    fn initialize_color_organs(&mut self) {
-        for id in &self.color_organs {
-            self.fixtures[id].use_color_organ();
-        }
     }
 
     /// Dynamically get the universe count.
@@ -254,8 +277,7 @@ impl Patch {
     /// This is just based on the indices provided by fixtures; we could have
     /// "holes" where we don't actually have any fixtures patched.
     pub fn universe_count(&self) -> usize {
-        self.fixtures
-            .values()
+        self.iter()
             .flat_map(|group| group.fixture_configs())
             .map(|cfg| cfg.universe)
             .max()
@@ -263,41 +285,103 @@ impl Patch {
             + 1
     }
 
-    /// Get a fixture group by its display name. Used by OSC entry points where
-    /// the address provides a name string.
-    pub fn get(&self, key: &str) -> Result<&FixtureGroup> {
-        self.fixtures
-            .values()
-            .find(|g| g.key_str() == key)
-            .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
+    // ---- Lookups ------------------------------------------------------------
+
+    /// Look up a group by its display name (the OSC-facing name).
+    /// Exercised by tests; production OSC dispatch goes through
+    /// [`lookup_mut_by_name`] which also returns the channel id.
+    #[allow(dead_code)]
+    pub fn group_by_name(&self, name: &str) -> Option<&FixtureGroup> {
+        match *self.by_name.get(name)? {
+            GroupLocation::Channel(c) => self.channels.get(c.inner()),
+            GroupLocation::NonChannel(i) => self.non_channel.get(i),
+        }
     }
 
-    /// Get a fixture group by display name, mutably.
-    pub fn get_mut(&mut self, key: &str) -> Result<&mut FixtureGroup> {
-        self.fixtures
-            .values_mut()
-            .find(|g| g.key_str() == key)
-            .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
+    /// Look up a group by its display name, also returning the channel id if
+    /// it's channel-bound. Hot path for OSC dispatch — single hash lookup
+    /// plus a direct Vec index.
+    pub fn lookup_mut_by_name(
+        &mut self,
+        name: &str,
+    ) -> Result<(&mut FixtureGroup, Option<ChannelId>)> {
+        let location = *self
+            .by_name
+            .get(name)
+            .ok_or_else(|| anyhow!("fixture {name} not found in patch"))?;
+        let channel_id = location.as_channel();
+        let group = self
+            .group_at_mut(location)
+            .ok_or_else(|| anyhow!("internal patch index inconsistency for {name}"))?;
+        Ok((group, channel_id))
     }
 
-    /// Get a fixture group by its stable id.
-    pub fn get_by_id(&self, id: GroupId) -> Option<&FixtureGroup> {
-        self.fixtures.get(&id)
+    /// Look up the group on a specific channel.
+    pub fn group_in_channel(&self, channel: ChannelId) -> Option<&FixtureGroup> {
+        self.channels.get(channel.inner())
     }
 
-    /// Get a fixture group by its stable id, mutably.
-    pub fn get_mut_by_id(&mut self, id: GroupId) -> Option<&mut FixtureGroup> {
-        self.fixtures.get_mut(&id)
+    /// Look up the group on a specific channel, mutably.
+    pub fn group_in_channel_mut(&mut self, channel: ChannelId) -> Option<&mut FixtureGroup> {
+        self.channels.get_mut(channel.inner())
     }
 
-    /// Iterate over all patched fixtures.
+    /// Look up the channel id for a group by stable id, or `None` if the group
+    /// isn't channel-bound (or doesn't exist).
+    pub fn channel_for_id(&self, id: GroupId) -> Option<ChannelId> {
+        self.by_id.get(&id)?.as_channel()
+    }
+
+    // ---- Channel queries ----------------------------------------------------
+
+    /// Number of channels in this patch.
+    pub fn channel_count(&self) -> usize {
+        self.channels.len()
+    }
+
+    /// Validate that a channel index refers to a channel that actually exists.
+    pub fn validate_channel(&self, channel: usize) -> Result<ChannelId> {
+        if channel < self.channels.len() {
+            Ok(ChannelId::new(channel))
+        } else {
+            bail!(
+                "channel selector {channel} out of range, only {} channels are configured",
+                self.channels.len()
+            );
+        }
+    }
+
+    /// Iterate over the valid channel ids, in channel order.
+    pub fn channel_ids(&self) -> impl Iterator<Item = ChannelId> + '_ {
+        (0..self.channels.len()).map(ChannelId::new)
+    }
+
+    /// Iterate over the channel labels, in channel order. Uses each group's
+    /// qualified name.
+    pub fn channel_labels(&self) -> impl Iterator<Item = String> + '_ {
+        self.channels.iter().map(|g| g.qualified_name().to_string())
+    }
+
+    // ---- All-groups iteration ----------------------------------------------
+
+    /// Iterate over all patched fixture groups (channel-bound first, then
+    /// non-channel).
     pub fn iter(&self) -> impl Iterator<Item = &FixtureGroup> {
-        self.fixtures.values()
+        self.channels.iter().chain(self.non_channel.iter())
     }
 
-    /// Iterate over all patched fixtures, mutably.
+    /// Iterate over all patched fixture groups, mutably.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FixtureGroup> {
-        self.fixtures.values_mut()
+        self.channels.iter_mut().chain(self.non_channel.iter_mut())
+    }
+
+    // ---- Private helpers ----------------------------------------------------
+
+    fn group_at_mut(&mut self, location: GroupLocation) -> Option<&mut FixtureGroup> {
+        match location {
+            GroupLocation::Channel(c) => self.channels.get_mut(c.inner()),
+            GroupLocation::NonChannel(i) => self.non_channel.get_mut(i),
+        }
     }
 }
 
@@ -419,10 +503,20 @@ mod test {
         )?;
         assert_eq!(2, cfg.len());
         let p = Patch::patch_all(&cfg)?;
-        let channel_id = *p.channels.iter().exactly_one().unwrap();
-        assert_eq!("Color", p.get_by_id(channel_id).unwrap().key_str());
-        assert_eq!(2, p.fixtures.len());
-        let color_configs = p.get("Color")?.fixture_configs();
+        let channel_ids: Vec<_> = p.channel_ids().collect();
+        assert_eq!(channel_ids.len(), 1);
+        let channel_id = channel_ids[0];
+        assert_eq!(
+            "Color",
+            p.group_in_channel(channel_id)
+                .map(|g| g.qualified_name().to_string())
+                .unwrap_or_default()
+        );
+        assert_eq!(2, p.iter().count());
+        let color_configs = p
+            .group_by_name("Color")
+            .ok_or_else(|| anyhow!("Color group missing"))?
+            .fixture_configs();
         assert_eq!(3, color_configs.len());
         assert_eq!(
             color_configs[0],
@@ -444,7 +538,10 @@ mod test {
                 render_mode: Some(ColorModel::DimmerRgb.render_mode()),
             }
         );
-        let dimmer_configs = p.get("TestGroup")?.fixture_configs();
+        let dimmer_configs = p
+            .group_by_name("TestGroup")
+            .ok_or_else(|| anyhow!("TestGroup missing"))?
+            .fixture_configs();
         assert_eq!(2, dimmer_configs.len());
         assert_eq!(
             dimmer_configs[0],

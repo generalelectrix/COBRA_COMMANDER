@@ -22,12 +22,6 @@ impl GroupId {
     }
 }
 
-impl Default for GroupId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Display for GroupId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(&self.0, f)
@@ -48,7 +42,7 @@ pub struct FixtureGroupConfig {
     /// Stable opaque identifier. Minted on first load (or first creation in the
     /// patch editor) and preserved across renames so the controller can carry
     /// per-group state forward through repatches.
-    #[serde(default)]
+    #[serde(default = "GroupId::new")]
     pub id: GroupId,
 
     /// The type of fixture to patch.

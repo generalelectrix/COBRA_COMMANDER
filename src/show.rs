@@ -24,7 +24,7 @@ use crate::{
 pub use crate::channel::ChannelId;
 use tunnels::audio::EnvelopeStreams;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use rust_dmx::{DmxPort, OfflineDmxPort};
@@ -62,7 +62,7 @@ impl Show {
         gui_state: SharedGuiState,
         envelope_streams_tx: Sender<EnvelopeStreams>,
     ) -> Result<Self> {
-        let channels = Channels::from_iter(patch.channels());
+        let channels = Channels::new(&patch);
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
@@ -265,7 +265,7 @@ impl Show {
                 emitter: &sender,
             },
         );
-        self.channels = Channels::from_iter(self.patch.channels());
+        self.channels.reconcile_to_patch(&self.patch);
         if self.master_strobe_channel.is_some() {
             // Re-resolve: channel may have moved to a new wing or become occupied.
             self.set_master_strobe_channel(self.resolve_strobe_channel());
@@ -290,8 +290,8 @@ impl Show {
     /// Returns `Some(channel_index)` if the last wing fader is available for
     /// strobe, `None` if it is occupied by a fixture group.
     fn resolve_strobe_channel(&self) -> Option<usize> {
-        let ch = strobe_control_channel(self.channels.channel_count());
-        if self.channels.validate_channel(ch).is_ok() {
+        let ch = strobe_control_channel(self.patch.channel_count());
+        if self.patch.validate_channel(ch).is_ok() {
             None // channel is occupied by a fixture group
         } else {
             Some(ch) // available
@@ -349,11 +349,14 @@ impl Show {
                         "cannot handle animation control message because no channel is selected\n{msg:?}"
                     );
                 };
+                let group = self
+                    .patch
+                    .group_in_channel_mut(channel)
+                    .ok_or_else(|| anyhow!("no group in selected channel {channel}"))?;
                 self.animation_ui_state.control(
                     msg,
                     channel,
-                    self.channels
-                        .group_by_channel_mut(&mut self.patch, channel)?,
+                    group,
                     &ScopedControlEmitter {
                         entity: crate::osc::animation::GROUP,
                         emitter: &sender,
@@ -405,11 +408,14 @@ impl Show {
                         "cannot handle animation control message because no channel is selected\n{msg:?}"
                     );
                 };
+                let group = self
+                    .patch
+                    .group_in_channel_mut(channel)
+                    .ok_or_else(|| anyhow!("no group in selected channel {channel}"))?;
                 self.animation_ui_state.control_osc(
                     msg,
                     channel,
-                    self.channels
-                        .group_by_channel_mut(&mut self.patch, channel)?,
+                    group,
                     &ScopedControlEmitter {
                         entity: crate::osc::animation::GROUP,
                         emitter: &sender,
@@ -424,10 +430,8 @@ impl Show {
             }
             // Assume any other control group is referring to a fixture group.
             fixture_group => {
-                let channel_id = self.channels.channel_for_name(fixture_group, &self.patch);
-                self.patch
-                    .get_mut(fixture_group)?
-                    .control(msg, ChannelStateEmitter::new(channel_id, &sender))?;
+                let (group, channel_id) = self.patch.lookup_mut_by_name(fixture_group)?;
+                group.control(msg, ChannelStateEmitter::new(channel_id, &sender))?;
                 Ok(GuiDirty::CLEAN)
             }
         }
@@ -514,7 +518,7 @@ impl Show {
     /// Reconcile MIDI submaster wing slots with the current channel count.
     fn reconcile_submaster_wings(&mut self) -> Result<()> {
         self.controller
-            .reconcile_submaster_wings(self.channels.channel_count())
+            .reconcile_submaster_wings(self.patch.channel_count())
     }
 
     /// Reconcile the clock wing slot with the current clock mode.
@@ -528,7 +532,7 @@ impl Show {
         let emitter = &self.controller.sender_with_metadata(None);
         for group in self.patch.iter() {
             group.emit_state(ChannelStateEmitter::new(
-                self.channels.channel_for_id(group.id()),
+                self.patch.channel_for_id(group.id()),
                 emitter,
             ));
         }
@@ -538,7 +542,7 @@ impl Show {
         self.channels.emit_state(false, &self.patch, emitter);
 
         if let Some(current_channel) = self.channels.current_channel() {
-            if let Ok(group) = self.channels.group_by_channel(&self.patch, current_channel) {
+            if let Some(group) = self.patch.group_in_channel(current_channel) {
                 self.animation_ui_state.emit_state(
                     current_channel,
                     group,
@@ -570,8 +574,9 @@ impl Show {
             return Ok(());
         };
         let group = self
-            .channels
-            .group_by_channel(&self.patch, current_channel)?;
+            .patch
+            .group_in_channel(current_channel)
+            .ok_or_else(|| anyhow!("no group in selected channel {current_channel}"))?;
         let animation_index = self
             .animation_ui_state
             .animation_index_for_channel(current_channel);
@@ -662,7 +667,7 @@ impl Show {
     ) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
         let (controller, send) = Controller::test_new();
         let universe_count = patch.universe_count();
-        let channels = Channels::from_iter(patch.channels());
+        let channels = Channels::new(&patch);
         let initial_channel = channels.current_channel();
         let (envelope_streams_tx, _envelope_rx) = std::sync::mpsc::channel();
         let clocks = build_clocks(envelope_streams_tx.clone());
@@ -971,7 +976,7 @@ mod tests {
     fn master_strobe_channel_routing() {
         // 1 dimmer = 1 channel, 1 wing, strobe on fader 7.
         let mut show = show_from_yaml(ONE_UNIVERSE_PATCH);
-        let strobe_ch = strobe_control_channel(show.channels.channel_count());
+        let strobe_ch = strobe_control_channel(show.patch.channel_count());
         assert_eq!(strobe_ch, 7);
 
         // Default strobe intensity is 1.0 (full).
@@ -1036,7 +1041,7 @@ mod tests {
         // 8 dimmers = all 8 faders on wing 1 occupied.
         let yaml = n_dimmer_yaml(8);
         let mut show = show_from_yaml(&yaml);
-        assert_eq!(show.channels.channel_count(), 8);
+        assert_eq!(show.patch.channel_count(), 8);
 
         let result = show.handle_meta_command(MetaCommand::SetMasterStrobeChannel(true));
         assert!(result.is_err());

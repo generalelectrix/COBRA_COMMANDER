@@ -86,12 +86,6 @@ impl FixtureGroup {
         self.id
     }
 
-    /// Display name for this group. Used in OSC addresses and patch YAML.
-    /// Convenient `&str` form for string comparisons and address building.
-    pub fn key_str(&self) -> &str {
-        &self.key.0
-    }
-
     /// Reconfigure this group using the state from another group, if compatible.
     ///
     /// Return true if we performed reconfiguration.
