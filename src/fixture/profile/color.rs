@@ -32,7 +32,7 @@ pub struct Color {
 #[serde(deny_unknown_fields)]
 pub struct GroupOptions {
     #[serde(default)]
-    control_color_space: ColorSpace,
+    pub control_color_space: ColorSpace,
 }
 
 impl PatchFixture for Color {
