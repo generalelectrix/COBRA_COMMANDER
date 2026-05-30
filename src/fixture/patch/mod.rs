@@ -26,6 +26,8 @@ pub use option::{AsPatchOption, NoOptions, OptionsMenu, PatchOption, enum_patch_
 /// whether it's bound to a channel. Locations are valid for the lifetime of
 /// the `Patch` they came from; a repatch builds a fresh `Patch` and invalidates
 /// any locations from the previous one.
+///
+/// In short - get these and use them immediately, don't store them anywhere.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupLocation {
     /// Channel-bound; index is the channel id (= position in `Patch::channels`).
