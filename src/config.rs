@@ -11,7 +11,7 @@ use uuid::Uuid;
 /// Minted when the group is first created in the patch editor and preserved
 /// across renames, repatches, and (eventually) restarts. The operator never
 /// sees this; it exists purely so the controller can answer "is this the same
-/// group it was before?" when the display name has changed.
+/// group it was before?" when the group name has changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct GroupId(Uuid);
@@ -51,7 +51,7 @@ pub struct FixtureGroupConfig {
     /// For fixtures that we may want to separately control multiple instances,
     /// provide a group name.
     #[serde(default)]
-    pub group: Option<FixtureGroupKey>,
+    pub group: Option<GroupName>,
 
     /// If true, assign to a channel. Defaults to true.
     #[serde(default = "_true")]
@@ -70,9 +70,9 @@ pub struct FixtureGroupConfig {
 }
 
 impl FixtureGroupConfig {
-    /// Get the key for this group, either the name of the fixture, or the
-    /// group name if one is provided.
-    pub fn key(&self) -> &str {
+    /// Get the name of this group: the explicit group name if provided,
+    /// otherwise the fixture type name.
+    pub fn name(&self) -> &str {
         self.group.as_deref().unwrap_or(&self.fixture)
     }
 }
@@ -202,23 +202,25 @@ fn string_value(v: &Value) -> String {
     }
 }
 
-/// Uniquely identify a specific fixture group.
+/// Human-readable name for a fixture group. Used in OSC addresses and patch
+/// YAML; serves as a unique lookup key into the patch alongside the stable
+/// [`GroupId`]. May be changed by the operator (renames are non-destructive).
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct FixtureGroupKey(pub String);
+pub struct GroupName(pub String);
 
-impl Display for FixtureGroupKey {
+impl Display for GroupName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(&self.0, f)
     }
 }
 
-impl Borrow<str> for FixtureGroupKey {
+impl Borrow<str> for GroupName {
     fn borrow(&self) -> &str {
         &self.0
     }
 }
 
-impl Deref for FixtureGroupKey {
+impl Deref for GroupName {
     type Target = str;
     fn deref(&self) -> &Self::Target {
         &self.0

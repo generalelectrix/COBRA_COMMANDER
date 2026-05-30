@@ -40,7 +40,7 @@ mod osc_control_test {
     use rosc::{OscMessage, OscType};
 
     use crate::channel::mock::no_op_emitter;
-    use crate::config::{FixtureGroupKey, GroupId, Options};
+    use crate::config::{GroupId, GroupName, Options};
     use crate::fixture::control::{OscControlDescription, OscControlType};
     use crate::fixture::patch::{PATCHERS, PatchOption};
     use crate::osc::{OscClientId, OscControlMessage};
@@ -50,10 +50,7 @@ mod osc_control_test {
     const EXCLUDED_FIXTURES: &[&str] = &["RugDoctor"];
 
     /// Generate fuzz (addr, arg) pairs for a control based on its type.
-    fn fuzz_values(
-        key: &FixtureGroupKey,
-        control: &OscControlDescription,
-    ) -> Vec<(String, OscType)> {
+    fn fuzz_values(key: &GroupName, control: &OscControlDescription) -> Vec<(String, OscType)> {
         let base = format!("/{}/{}", key.0, control.name);
         match &control.control_type {
             OscControlType::Unipolar | OscControlType::Phase => vec![
@@ -133,7 +130,7 @@ mod osc_control_test {
                 continue;
             }
 
-            let key = FixtureGroupKey(format!("test_{}", patcher.name));
+            let key = GroupName(format!("test_{}", patcher.name));
             let id = GroupId::new();
 
             let mut group = match (patcher.create_group)(id, key.clone(), Default::default()) {

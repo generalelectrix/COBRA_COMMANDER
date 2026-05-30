@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use super::fixture::FixtureType;
 use super::group::FixtureGroup;
 use crate::channel::ChannelId;
-use crate::config::{FixtureGroupConfig, FixtureGroupKey, GroupId};
+use crate::config::{FixtureGroupConfig, GroupId, GroupName};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
 
@@ -49,7 +49,7 @@ impl GroupLocation {
 /// Factory for fixture instances.
 ///
 /// Owns the fixture groups themselves and the indices used to look them up by
-/// display name, stable id, or channel position. Maintains a mapping of which
+/// group name, stable id, or channel position. Maintains a mapping of which
 /// DMX addresses are in use by which fixture, to prevent addressing collisions.
 ///
 /// Storage layout: groups physically live in either `channels` (in channel
@@ -67,7 +67,7 @@ pub struct Patch {
     non_channel: Vec<FixtureGroup>,
     /// O(1) lookup from stable id to physical location.
     by_id: HashMap<GroupId, GroupLocation>,
-    /// O(1) lookup from display name to physical location.
+    /// O(1) lookup from group name to physical location.
     by_name: HashMap<String, GroupLocation>,
     /// Which DMX addrs already have a fixture patched in them.
     used_addrs: UsedAddrs,
@@ -162,27 +162,27 @@ impl Patch {
     fn patch(&mut self, cfg: &FixtureGroupConfig) -> Result<()> {
         let patcher = self.patcher(&cfg.fixture)?;
 
-        if let Some(group_key) = &cfg.group {
+        if let Some(group_name) = &cfg.group {
             // If there's a patcher that matches this group name, fail.
             ensure!(
-                self.patcher(group_key).is_err(),
-                "the group key '{group_key}' cannot be used because it is also a fixture name"
+                self.patcher(group_name).is_err(),
+                "the group name '{group_name}' cannot be used because it is also a fixture name"
             );
         }
 
-        let group_key = FixtureGroupKey(cfg.key().to_string());
+        let group_name = GroupName(cfg.name().to_string());
 
         ensure!(
-            !self.by_name.contains_key(&group_key.0),
-            "duplicate group key '{group_key}'"
+            !self.by_name.contains_key(&group_name.0),
+            "duplicate group name '{group_name}'"
         );
         ensure!(
             !self.by_id.contains_key(&cfg.id),
-            "duplicate group id '{}' for group '{group_key}'",
+            "duplicate group id '{}' for group '{group_name}'",
             cfg.id
         );
 
-        let mut group = (patcher.create_group)(cfg.id, group_key.clone(), cfg.options.clone())?;
+        let mut group = (patcher.create_group)(cfg.id, group_name.clone(), cfg.options.clone())?;
 
         ensure!(!cfg.patches.is_empty(), "no patches specified");
 
@@ -270,7 +270,7 @@ impl Patch {
             GroupLocation::NonChannel(idx)
         };
         self.by_id.insert(id, location);
-        self.by_name.insert(group_key.0, location);
+        self.by_name.insert(group_name.0, location);
         Ok(())
     }
 
@@ -289,9 +289,9 @@ impl Patch {
 
     // ---- Lookups ------------------------------------------------------------
 
-    /// Look up a group by its display name (the OSC-facing name).
-    /// Exercised by tests; production OSC dispatch goes through
-    /// [`lookup_mut_by_name`] which also returns the channel id.
+    /// Look up a group by its name. Exercised by tests; production OSC
+    /// dispatch goes through [`lookup_mut_by_name`] which also returns the
+    /// channel id.
     #[allow(dead_code)]
     pub fn group_by_name(&self, name: &str) -> Option<&FixtureGroup> {
         match *self.by_name.get(name)? {
@@ -300,9 +300,9 @@ impl Patch {
         }
     }
 
-    /// Look up a group by its display name, also returning the channel id if
-    /// it's channel-bound. Hot path for OSC dispatch — single hash lookup
-    /// plus a direct Vec index.
+    /// Look up a group by its name, also returning the channel id if it's
+    /// channel-bound. Hot path for OSC dispatch — single hash lookup plus a
+    /// direct Vec index.
     pub fn lookup_mut_by_name(
         &mut self,
         name: &str,
@@ -655,7 +655,7 @@ mod test {
     }
 
     #[test]
-    fn test_dupe_group_key() {
+    fn test_dupe_group_name() {
         // Can't specify the same fixture twice with no group.
         assert_fail_patch(
             "
@@ -665,9 +665,9 @@ mod test {
 - fixture: Dimmer
   patches:
     - addr: 2",
-            "duplicate group key 'Dimmer'",
+            "duplicate group name 'Dimmer'",
         );
-        // Can't use the same group key twice.
+        // Can't use the same group name twice.
         assert_fail_patch(
             "
 - fixture: Dimmer
@@ -678,20 +678,20 @@ mod test {
   group: Foo
   patches:
     - addr: 2",
-            "duplicate group key 'Foo'",
+            "duplicate group name 'Foo'",
         );
     }
 
     #[test]
     fn test_no_aliasing_fixture() {
-        // Can't use a group key that collides with a fixture name.
+        // Can't use a group name that collides with a fixture name.
         assert_fail_patch(
             "
 - fixture: Dimmer
   group: Color
   patches:
     - addr: 1",
-            "the group key 'Color' cannot be used because it is also a fixture name",
+            "the group name 'Color' cannot be used because it is also a fixture name",
         );
     }
 
@@ -788,7 +788,7 @@ mod test {
         // Renaming a group keeps its stable id, so repatching preserves its
         // fixture model state — the operator-typed name changed but the
         // controller knows it's the same group.
-        cfg[0].group = Some(FixtureGroupKey("NewColor".to_string()));
+        cfg[0].group = Some(GroupName("NewColor".to_string()));
 
         patch.repatch(&cfg)?;
         let new_bufs = render(&patch);
@@ -922,7 +922,7 @@ mod test {
             }
 
             // Create a fixture group to get its control descriptions.
-            let key = FixtureGroupKey(format!("test_{}", name));
+            let key = GroupName(format!("test_{}", name));
             let id = GroupId::new();
             let group = match (patcher.create_group)(id, key.clone(), Default::default()) {
                 Ok(g) => g,

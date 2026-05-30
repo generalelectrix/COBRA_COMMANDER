@@ -4,7 +4,7 @@ mod working_copy;
 
 use eframe::egui;
 
-use crate::config::{DmxAddrConfig, FixtureGroupConfig, FixtureGroupKey, GroupId, PatchBlock};
+use crate::config::{DmxAddrConfig, FixtureGroupConfig, GroupId, GroupName, PatchBlock};
 use crate::control::MetaCommand;
 use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
@@ -264,7 +264,7 @@ impl PatchPanel<'_> {
                 .and_then(|wc| {
                     wc.groups
                         .get(group_idx)
-                        .map(|g| (g.config.key().to_string(), g.config.patches.len()))
+                        .map(|g| (g.config.name().to_string(), g.config.patches.len()))
                 })
                 .unwrap_or_default();
 
@@ -391,7 +391,7 @@ impl PatchPanel<'_> {
                                         None => "-".to_string(),
                                     };
                                     ui.label(&ch_text);
-                                    ui.label(group.config.key());
+                                    ui.label(group.config.name());
                                     ui.label(&group.config.fixture);
                                     ui.label(format!("{}", group.config.patches.len()));
 
@@ -499,7 +499,7 @@ impl PatchPanel<'_> {
                     cfg.group = if name.is_empty() {
                         None
                     } else {
-                        Some(FixtureGroupKey(name))
+                        Some(GroupName(name))
                     };
                 }
             });
@@ -814,7 +814,7 @@ impl PatchPanel<'_> {
         let group_name = if form.group_name.is_empty() {
             None
         } else {
-            Some(FixtureGroupKey(form.group_name.clone()))
+            Some(GroupName(form.group_name.clone()))
         };
 
         let config = FixtureGroupConfig {
@@ -1140,7 +1140,7 @@ mod test {
         FixtureGroupConfig {
             id: GroupId::new(),
             fixture: "Simple".to_string(),
-            group: name.map(|n| FixtureGroupKey(n.to_string())),
+            group: name.map(|n| GroupName(n.to_string())),
             channel: true,
             color_organ: false,
             patches: addrs.iter().map(|&a| simple_block(a)).collect(),
@@ -1165,7 +1165,7 @@ mod test {
         FixtureGroupConfig {
             id: GroupId::new(),
             fixture: "PatchOpts".to_string(),
-            group: name.map(|n| FixtureGroupKey(n.to_string())),
+            group: name.map(|n| GroupName(n.to_string())),
             channel: true,
             color_organ: false,
             patches: blocks,
@@ -1182,7 +1182,7 @@ mod test {
         FixtureGroupConfig {
             id: GroupId::new(),
             fixture: "GroupOpts".to_string(),
-            group: name.map(|n| FixtureGroupKey(n.to_string())),
+            group: name.map(|n| GroupName(n.to_string())),
             channel: true,
             color_organ: false,
             patches: vec![simple_block(100)],
@@ -1262,7 +1262,7 @@ mod test {
         wc.groups
             .push(PatchWorkingCopy::resolve_group(&config, &patchers));
         assert_eq!(wc.groups.len(), 1);
-        assert_eq!(wc.groups[0].config.key(), "NewGroup");
+        assert_eq!(wc.groups[0].config.name(), "NewGroup");
         assert_eq!(wc.groups[0].channel_counts, vec![1]);
     }
 
@@ -1273,7 +1273,7 @@ mod test {
         assert_eq!(wc.groups.len(), 2);
         wc.groups.remove(0);
         assert_eq!(wc.groups.len(), 1);
-        assert_eq!(wc.groups[0].config.key(), "BackSimple");
+        assert_eq!(wc.groups[0].config.name(), "BackSimple");
     }
 
     #[test]
@@ -1326,7 +1326,7 @@ mod test {
         let configs = wc.configs();
         assert_eq!(configs.len(), 2);
         assert_eq!(configs[0].fixture, "Simple");
-        assert_eq!(configs[1].key(), "BackSimple");
+        assert_eq!(configs[1].name(), "BackSimple");
     }
 
     #[test]
@@ -1352,11 +1352,11 @@ mod test {
     fn swap_groups_reorders() {
         let mut wc =
             PatchWorkingCopy::from_snapshot(&test_snapshot_with_groups(), &test_patchers());
-        assert_eq!(wc.groups[0].config.key(), "Simple");
-        assert_eq!(wc.groups[1].config.key(), "BackSimple");
+        assert_eq!(wc.groups[0].config.name(), "Simple");
+        assert_eq!(wc.groups[1].config.name(), "BackSimple");
         wc.groups.swap(0, 1);
-        assert_eq!(wc.groups[0].config.key(), "BackSimple");
-        assert_eq!(wc.groups[1].config.key(), "Simple");
+        assert_eq!(wc.groups[0].config.name(), "BackSimple");
+        assert_eq!(wc.groups[1].config.name(), "Simple");
     }
 
     fn ua(universe: usize, address: usize) -> UniverseAddress {
@@ -1394,7 +1394,7 @@ mod test {
                 FixtureGroupConfig {
                     id: GroupId::new(),
                     fixture: "Simple".to_string(),
-                    group: Some(FixtureGroupKey("B".to_string())),
+                    group: Some(GroupName("B".to_string())),
                     channel: true,
                     color_organ: false,
                     patches: vec![PatchBlock {
@@ -1709,7 +1709,7 @@ mod test {
         FixtureGroupConfig {
             id: GroupId::new(),
             fixture: "NonDmx".to_string(),
-            group: name.map(|n| FixtureGroupKey(n.to_string())),
+            group: name.map(|n| GroupName(n.to_string())),
             channel: true,
             color_organ: false,
             patches: vec![],

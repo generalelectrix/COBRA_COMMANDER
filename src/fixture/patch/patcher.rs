@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 use std::fmt::{Display, Write};
 
 use super::{OptionsMenu, PatchOption};
-use crate::config::{FixtureGroupKey, GroupId, Options};
+use crate::config::{GroupId, GroupName, Options};
 use crate::fixture::fixture::{
     AnimatedFixture, FixtureType, FixtureWithAnimations, NonAnimatedFixture, RenderMode,
 };
@@ -22,7 +22,7 @@ pub static PATCHERS: [Patcher];
 #[derive(Clone)]
 pub struct Patcher {
     pub name: FixtureType,
-    pub create_group: fn(GroupId, FixtureGroupKey, Options) -> Result<FixtureGroup>,
+    pub create_group: fn(GroupId, GroupName, Options) -> Result<FixtureGroup>,
     pub group_options: fn() -> Vec<(String, PatchOption)>,
     pub create_patch: fn(group_options: Options, patch_options: Options) -> Result<PatchConfig>,
     pub patch_options: fn() -> Vec<(String, PatchOption)>,
@@ -155,7 +155,7 @@ pub trait PatchFixture: Sized + 'static {
 /// Create a fixture group for a non-animated fixture.
 pub trait CreateNonAnimatedGroup: PatchFixture + NonAnimatedFixture + Sized + 'static {
     /// Create an empty fixture group for this type of fixture.
-    fn create_group(id: GroupId, key: FixtureGroupKey, options: Options) -> Result<FixtureGroup>
+    fn create_group(id: GroupId, key: GroupName, options: Options) -> Result<FixtureGroup>
     where
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
@@ -176,7 +176,7 @@ impl<T> CreateNonAnimatedGroup for T where T: PatchFixture + NonAnimatedFixture 
 /// Create a fixture group for an animated fixture.
 pub trait CreateAnimatedGroup: PatchFixture + AnimatedFixture + Sized + 'static {
     /// Create an empty fixture group for this type of fixture.
-    fn create_group(id: GroupId, key: FixtureGroupKey, options: Options) -> Result<FixtureGroup>
+    fn create_group(id: GroupId, key: GroupName, options: Options) -> Result<FixtureGroup>
     where
         <Self as PatchFixture>::GroupOptions: DeserializeOwned,
     {
