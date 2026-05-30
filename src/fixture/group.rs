@@ -17,6 +17,7 @@ use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
 use crate::color::Hsluv;
 use crate::config::FixtureGroupKey;
+use crate::config::GroupId;
 use crate::config::Options;
 use crate::dmx::DmxUniverse;
 use crate::fixture::FixtureGroupControls;
@@ -28,9 +29,13 @@ use crate::strobe::FlashState;
 use crate::strobe::StrobeResponse;
 
 pub struct FixtureGroup {
+    /// Stable identity for this group, used to carry state across repatch
+    /// even when the operator renames the group.
+    id: GroupId,
     /// The fixture type of this group.
     fixture_type: FixtureType,
-    /// The unique identifier of this group. Often identical to the fixture type.
+    /// The display name of this group. Used in OSC addresses and patch YAML.
+    /// May change across repatches; identity is `id`, not this.
     key: FixtureGroupKey,
     /// The configurations for the fixtures in the group.
     fixture_configs: Vec<GroupFixtureConfig>,
@@ -56,6 +61,7 @@ pub struct FixtureGroup {
 impl FixtureGroup {
     /// Create empty fixture group from an initialized fixture model.
     pub fn empty(
+        id: GroupId,
         fixture_type: FixtureType,
         key: FixtureGroupKey,
         fixture: Box<dyn Fixture>,
@@ -65,6 +71,7 @@ impl FixtureGroup {
         Self {
             strobe_enabled: false,
             flash_state: strobe_response.map(FlashState::new),
+            id,
             fixture_type,
             key,
             fixture_configs: vec![],
@@ -72,6 +79,17 @@ impl FixtureGroup {
             fixture,
             options,
         }
+    }
+
+    /// Stable identity for this group. Survives renames across repatch.
+    pub fn id(&self) -> GroupId {
+        self.id
+    }
+
+    /// Display name for this group. Used in OSC addresses and patch YAML.
+    /// Convenient `&str` form for string comparisons and address building.
+    pub fn key_str(&self) -> &str {
+        &self.key.0
     }
 
     /// Reconfigure this group using the state from another group, if compatible.

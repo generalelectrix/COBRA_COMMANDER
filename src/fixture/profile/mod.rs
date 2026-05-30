@@ -40,7 +40,7 @@ mod osc_control_test {
     use rosc::{OscMessage, OscType};
 
     use crate::channel::mock::no_op_emitter;
-    use crate::config::{FixtureGroupKey, Options};
+    use crate::config::{FixtureGroupKey, GroupId, Options};
     use crate::fixture::control::{OscControlDescription, OscControlType};
     use crate::fixture::patch::{PATCHERS, PatchOption};
     use crate::osc::{OscClientId, OscControlMessage};
@@ -134,8 +134,9 @@ mod osc_control_test {
             }
 
             let key = FixtureGroupKey(format!("test_{}", patcher.name));
+            let id = GroupId::new();
 
-            let mut group = match (patcher.create_group)(key.clone(), Default::default()) {
+            let mut group = match (patcher.create_group)(id, key.clone(), Default::default()) {
                 Ok(group) => group,
                 Err(_) => {
                     // Try again with example values from the options menu.
@@ -149,7 +150,7 @@ mod osc_control_test {
                         menu.iter()
                             .map(|(name, opt)| (name.clone(), opt.example_value())),
                     );
-                    (patcher.create_group)(key.clone(), options).unwrap_or_else(|e| {
+                    (patcher.create_group)(id, key.clone(), options).unwrap_or_else(|e| {
                         panic!(
                             "{}: create_group failed even with example options: {e}",
                             patcher.name

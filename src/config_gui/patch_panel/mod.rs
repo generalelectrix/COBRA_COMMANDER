@@ -4,7 +4,7 @@ mod working_copy;
 
 use eframe::egui;
 
-use crate::config::{DmxAddrConfig, FixtureGroupConfig, FixtureGroupKey, PatchBlock};
+use crate::config::{DmxAddrConfig, FixtureGroupConfig, FixtureGroupKey, GroupId, PatchBlock};
 use crate::control::MetaCommand;
 use crate::dmx::DmxAddr;
 use crate::fixture::patch::{PatchOption, Patcher};
@@ -818,6 +818,7 @@ impl PatchPanel<'_> {
         };
 
         let config = FixtureGroupConfig {
+            id: GroupId::new(),
             fixture: patcher.name.0.to_string(),
             group: group_name,
             channel: form.channel,
@@ -1021,7 +1022,7 @@ mod test {
     fn mock_simple_patcher() -> Patcher {
         Patcher {
             name: FixtureType("Simple"),
-            create_group: |_, _| unimplemented!(),
+            create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, _| {
                 Ok(PatchConfig {
@@ -1037,7 +1038,7 @@ mod test {
     fn mock_group_opts_patcher() -> Patcher {
         Patcher {
             name: FixtureType("GroupOpts"),
-            create_group: |_, _| unimplemented!(),
+            create_group: |_, _, _| unimplemented!(),
             group_options: || {
                 vec![
                     ("paired".into(), PatchOption::Bool),
@@ -1068,7 +1069,7 @@ mod test {
     fn mock_patch_opts_patcher() -> Patcher {
         Patcher {
             name: FixtureType("PatchOpts"),
-            create_group: |_, _| unimplemented!(),
+            create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, opts| {
                 let ch = match opts.get_string("variant").as_deref() {
@@ -1097,7 +1098,7 @@ mod test {
     fn mock_non_dmx_patcher() -> Patcher {
         Patcher {
             name: FixtureType("NonDmx"),
-            create_group: |_, _| unimplemented!(),
+            create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, _| {
                 Ok(PatchConfig {
@@ -1137,6 +1138,7 @@ mod test {
 
     fn simple_group(name: Option<&str>, addrs: &[usize]) -> FixtureGroupConfig {
         FixtureGroupConfig {
+            id: GroupId::new(),
             fixture: "Simple".to_string(),
             group: name.map(|n| FixtureGroupKey(n.to_string())),
             channel: true,
@@ -1161,6 +1163,7 @@ mod test {
 
     fn patch_opts_group(name: Option<&str>, blocks: Vec<PatchBlock>) -> FixtureGroupConfig {
         FixtureGroupConfig {
+            id: GroupId::new(),
             fixture: "PatchOpts".to_string(),
             group: name.map(|n| FixtureGroupKey(n.to_string())),
             channel: true,
@@ -1177,6 +1180,7 @@ mod test {
         options.set_string("mode", "Fast");
         options.set_string("endpoint", "http://10.0.0.1:8080");
         FixtureGroupConfig {
+            id: GroupId::new(),
             fixture: "GroupOpts".to_string(),
             group: name.map(|n| FixtureGroupKey(n.to_string())),
             channel: true,
@@ -1237,6 +1241,7 @@ mod test {
     fn working_copy_unknown_fixture_gets_zero_channels() {
         let snapshot = PatchSnapshot {
             groups: vec![FixtureGroupConfig {
+                id: GroupId::new(),
                 fixture: "NonexistentFixture".to_string(),
                 group: None,
                 channel: true,
@@ -1387,6 +1392,7 @@ mod test {
             groups: vec![
                 simple_group(Some("A"), &[1]),
                 FixtureGroupConfig {
+                    id: GroupId::new(),
                     fixture: "Simple".to_string(),
                     group: Some(FixtureGroupKey("B".to_string())),
                     channel: true,
@@ -1701,6 +1707,7 @@ mod test {
 
     fn non_dmx_group(name: Option<&str>) -> FixtureGroupConfig {
         FixtureGroupConfig {
+            id: GroupId::new(),
             fixture: "NonDmx".to_string(),
             group: name.map(|n| FixtureGroupKey(n.to_string())),
             channel: true,

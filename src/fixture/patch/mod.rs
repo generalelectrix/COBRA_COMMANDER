@@ -9,7 +9,7 @@ use log::info;
 
 use super::fixture::FixtureType;
 use super::group::FixtureGroup;
-use crate::config::{FixtureGroupConfig, FixtureGroupKey};
+use crate::config::{FixtureGroupConfig, FixtureGroupKey, GroupId};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
 
@@ -31,14 +31,15 @@ pub struct Patch {
     /// Map of registered patchers.
     patchers: HashMap<String, Patcher>,
 
-    /// The fixture groups we've patched.
-    fixtures: OrderMap<FixtureGroupKey, FixtureGroup>,
+    /// The fixture groups we've patched, keyed by stable identity.
+    /// Iteration order matches the order groups appear in the patch config.
+    fixtures: OrderMap<GroupId, FixtureGroup>,
     /// Which DMX addrs already have a fixture patched in them.
     used_addrs: UsedAddrs,
     /// The channels that fixture groups are assigned to.
-    channels: OrderSet<FixtureGroupKey>,
+    channels: OrderSet<GroupId>,
     /// Initialize color organs for these fixture groups.
-    color_organs: OrderSet<FixtureGroupKey>,
+    color_organs: OrderSet<GroupId>,
 }
 
 impl Patch {
@@ -111,10 +112,12 @@ impl Patch {
     pub fn repatch(&mut self, groups: &[FixtureGroupConfig]) -> Result<()> {
         let mut new_patch = Self::patch_all(groups)?;
         // Retain state from existing fixture models if they match.
+        // Reconciliation keys on the stable `GroupId`, so renaming a group
+        // (same id, different display key) carries state across.
         // Since we're mutating the existing patch from here on out, we need to
         // make sure that none of these operations can fail.
-        for (key, new) in new_patch.fixtures.iter_mut() {
-            let Some(existing) = self.fixtures.remove(key) else {
+        for (id, new) in new_patch.fixtures.iter_mut() {
+            let Some(existing) = self.fixtures.remove(id) else {
                 continue;
             };
             new.reconfigure_from(existing);
@@ -140,11 +143,16 @@ impl Patch {
         let group_key = FixtureGroupKey(cfg.key().to_string());
 
         ensure!(
-            !self.fixtures.contains_key(&group_key),
+            !self.fixtures.values().any(|g| g.key_str() == group_key.0),
             "duplicate group key '{group_key}'"
         );
+        ensure!(
+            !self.fixtures.contains_key(&cfg.id),
+            "duplicate group id '{}' for group '{group_key}'",
+            cfg.id
+        );
 
-        let mut group = (patcher.create_group)(group_key.clone(), cfg.options.clone())?;
+        let mut group = (patcher.create_group)(cfg.id, group_key.clone(), cfg.options.clone())?;
 
         ensure!(!cfg.patches.is_empty(), "no patches specified");
 
@@ -214,20 +222,21 @@ impl Patch {
             }
         }
 
-        self.fixtures.insert(group_key.clone(), group);
+        let id = group.id();
+        self.fixtures.insert(id, group);
 
         if cfg.channel {
-            self.channels.insert(group_key.clone());
+            self.channels.insert(id);
         }
         if cfg.color_organ {
-            self.color_organs.insert(group_key.clone());
+            self.color_organs.insert(id);
         }
         Ok(())
     }
 
-    /// Iterate over the fixture group keys assigned to each channel.
-    pub fn channels(&self) -> impl Iterator<Item = &FixtureGroupKey> + '_ {
-        self.channels.iter()
+    /// Iterate over the stable group ids assigned to each channel, in channel order.
+    pub fn channels(&self) -> impl Iterator<Item = GroupId> + '_ {
+        self.channels.iter().copied()
     }
 
     /// Initialize color organs for all fixtures that should have them.
@@ -235,8 +244,8 @@ impl Patch {
     /// This should be called after all fixtures are patched.
     /// TODO: update the color organ codebase to handle a change in fixture count.
     fn initialize_color_organs(&mut self) {
-        for key in &self.color_organs {
-            self.fixtures[key].use_color_organ();
+        for id in &self.color_organs {
+            self.fixtures[id].use_color_organ();
         }
     }
 
@@ -253,28 +262,37 @@ impl Patch {
             .unwrap_or_default()
             + 1
     }
-    /// Get the fixture/channel patched with this key.
+
+    /// Get a fixture group by its display name. Used by OSC entry points where
+    /// the address provides a name string.
     pub fn get(&self, key: &str) -> Result<&FixtureGroup> {
         self.fixtures
-            .get(key)
+            .values()
+            .find(|g| g.key_str() == key)
             .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
     }
 
-    /// Get the fixture/channel patched with this key, mutably.
+    /// Get a fixture group by display name, mutably.
     pub fn get_mut(&mut self, key: &str) -> Result<&mut FixtureGroup> {
         self.fixtures
-            .get_mut(key)
+            .values_mut()
+            .find(|g| g.key_str() == key)
             .ok_or_else(|| anyhow!("fixture {key} not found in patch"))
+    }
+
+    /// Get a fixture group by its stable id.
+    pub fn get_by_id(&self, id: GroupId) -> Option<&FixtureGroup> {
+        self.fixtures.get(&id)
+    }
+
+    /// Get a fixture group by its stable id, mutably.
+    pub fn get_mut_by_id(&mut self, id: GroupId) -> Option<&mut FixtureGroup> {
+        self.fixtures.get_mut(&id)
     }
 
     /// Iterate over all patched fixtures.
     pub fn iter(&self) -> impl Iterator<Item = &FixtureGroup> {
         self.fixtures.values()
-    }
-
-    /// Iterate over all patched fixtures along with their keys.
-    pub fn iter_with_keys(&self) -> impl Iterator<Item = (&FixtureGroupKey, &FixtureGroup)> {
-        self.fixtures.iter()
     }
 
     /// Iterate over all patched fixtures, mutably.
@@ -401,10 +419,8 @@ mod test {
         )?;
         assert_eq!(2, cfg.len());
         let p = Patch::patch_all(&cfg)?;
-        assert_eq!(
-            "Color",
-            p.channels.iter().exactly_one().unwrap().to_string()
-        );
+        let channel_id = *p.channels.iter().exactly_one().unwrap();
+        assert_eq!("Color", p.get_by_id(channel_id).unwrap().key_str());
         assert_eq!(2, p.fixtures.len());
         let color_configs = p.get("Color")?.fixture_configs();
         assert_eq!(3, color_configs.len());
@@ -670,17 +686,19 @@ mod test {
 
         assert_eq!(render(&patch), twiddled);
 
-        // If we change the group names, repatching should force new models.
+        // Renaming a group keeps its stable id, so repatching preserves its
+        // fixture model state — the operator-typed name changed but the
+        // controller knows it's the same group.
         cfg[0].group = Some(FixtureGroupKey("NewColor".to_string()));
 
         patch.repatch(&cfg)?;
         let new_bufs = render(&patch);
         assert_eq!(2, new_bufs.len());
-        assert_eq!(new_bufs[0], initial[0]);
+        assert_eq!(
+            new_bufs[0], twiddled[0],
+            "renaming a group should preserve its state via stable GroupId"
+        );
         assert_eq!(new_bufs[1], twiddled[1]);
-
-        twiddle(patch.iter_mut().next().unwrap());
-        assert_eq!(twiddled, render(&patch));
 
         // Repatching with different patches should not force a new model.
         cfg[0].patches.truncate(1);
@@ -806,7 +824,8 @@ mod test {
 
             // Create a fixture group to get its control descriptions.
             let key = FixtureGroupKey(format!("test_{}", name));
-            let group = match (patcher.create_group)(key.clone(), Default::default()) {
+            let id = GroupId::new();
+            let group = match (patcher.create_group)(id, key.clone(), Default::default()) {
                 Ok(g) => g,
                 Err(_) => {
                     let menu = (patcher.group_options)();
@@ -816,7 +835,7 @@ mod test {
                     let options = Options::from_entries(
                         menu.iter().map(|(k, opt)| (k.clone(), opt.example_value())),
                     );
-                    match (patcher.create_group)(key.clone(), options) {
+                    match (patcher.create_group)(id, key.clone(), options) {
                         Ok(g) => g,
                         Err(_) => continue,
                     }

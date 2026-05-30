@@ -55,6 +55,7 @@ tiny_http = "0.12"
 mdns-sd = "0.13"
 gethostname = "1"
 rfd = "0.15"
+uuid = { version = "1", features = ["v4", "serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5"

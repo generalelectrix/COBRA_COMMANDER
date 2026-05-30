@@ -4,6 +4,35 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, fmt::Display, ops::Deref};
+use uuid::Uuid;
+
+/// Stable, opaque identifier for a fixture group.
+///
+/// Minted when the group is first created in the patch editor and preserved
+/// across renames, repatches, and (eventually) restarts. The operator never
+/// sees this; it exists purely so the controller can answer "is this the same
+/// group it was before?" when the display name has changed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct GroupId(Uuid);
+
+impl GroupId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl Default for GroupId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Display for GroupId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -16,6 +45,12 @@ pub enum DmxAddrConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FixtureGroupConfig {
+    /// Stable opaque identifier. Minted on first load (or first creation in the
+    /// patch editor) and preserved across renames so the controller can carry
+    /// per-group state forward through repatches.
+    #[serde(default)]
+    pub id: GroupId,
+
     /// The type of fixture to patch.
     pub fixture: String,
 
@@ -246,5 +281,36 @@ mod test {
     fn options_remove_missing_key_is_noop() {
         let mut opts = Options::default();
         opts.remove("nonexistent"); // should not panic
+    }
+
+    /// Existing patch YAML on disk does not carry a `id` field. Loading must
+    /// silently mint a UUID per group; round-tripping that loaded config back
+    /// to YAML and reloading it must preserve the freshly-minted id so identity
+    /// is stable on the next launch.
+    #[test]
+    fn fixture_group_config_serde_defaults_id_and_round_trips() {
+        let yaml = "
+- fixture: Color
+  control_color_space: Hsluv
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  group: TestGroup
+  patches:
+    - addr: 1
+      universe: 1
+";
+        let loaded: Vec<FixtureGroupConfig> =
+            serde_yaml::from_str(yaml).expect("legacy YAML without ids should still parse");
+        assert_eq!(loaded.len(), 2);
+
+        let id_color = loaded[0].id;
+        let id_dimmer = loaded[1].id;
+        assert_ne!(id_color, id_dimmer, "each group gets a distinct fresh id");
+
+        let round_tripped: Vec<FixtureGroupConfig> =
+            serde_yaml::from_str(&serde_yaml::to_string(&loaded).unwrap()).unwrap();
+        assert_eq!(round_tripped[0].id, id_color);
+        assert_eq!(round_tripped[1].id, id_dimmer);
     }
 }

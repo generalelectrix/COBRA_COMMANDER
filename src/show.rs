@@ -62,7 +62,7 @@ impl Show {
         gui_state: SharedGuiState,
         envelope_streams_tx: Sender<EnvelopeStreams>,
     ) -> Result<Self> {
-        let channels = Channels::from_iter(patch.channels().cloned());
+        let channels = Channels::from_iter(patch.channels());
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
@@ -265,7 +265,7 @@ impl Show {
                 emitter: &sender,
             },
         );
-        self.channels = Channels::from_iter(self.patch.channels().cloned());
+        self.channels = Channels::from_iter(self.patch.channels());
         if self.master_strobe_channel.is_some() {
             // Re-resolve: channel may have moved to a new wing or become occupied.
             self.set_master_strobe_channel(self.resolve_strobe_channel());
@@ -424,13 +424,10 @@ impl Show {
             }
             // Assume any other control group is referring to a fixture group.
             fixture_group => {
-                self.patch.get_mut(fixture_group)?.control(
-                    msg,
-                    ChannelStateEmitter::new(
-                        self.channels.channel_for_fixture(fixture_group),
-                        &sender,
-                    ),
-                )?;
+                let channel_id = self.channels.channel_for_name(fixture_group, &self.patch);
+                self.patch
+                    .get_mut(fixture_group)?
+                    .control(msg, ChannelStateEmitter::new(channel_id, &sender))?;
                 Ok(GuiDirty::CLEAN)
             }
         }
@@ -529,9 +526,9 @@ impl Show {
     /// Send messages to refresh all UI state.
     fn refresh_ui(&mut self) {
         let emitter = &self.controller.sender_with_metadata(None);
-        for (key, group) in self.patch.iter_with_keys() {
+        for group in self.patch.iter() {
             group.emit_state(ChannelStateEmitter::new(
-                self.channels.channel_for_fixture(key),
+                self.channels.channel_for_id(group.id()),
                 emitter,
             ));
         }
@@ -665,7 +662,7 @@ impl Show {
     ) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
         let (controller, send) = Controller::test_new();
         let universe_count = patch.universe_count();
-        let channels = Channels::from_iter(patch.channels().cloned());
+        let channels = Channels::from_iter(patch.channels());
         let initial_channel = channels.current_channel();
         let (envelope_streams_tx, _envelope_rx) = std::sync::mpsc::channel();
         let clocks = build_clocks(envelope_streams_tx.clone());

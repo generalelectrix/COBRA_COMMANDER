@@ -2,14 +2,14 @@
 
 use std::{collections::HashMap, fmt::Display};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use log::{debug, error};
 use number::{BipolarFloat, UnipolarFloat};
 use serde::Deserialize;
 
 use crate::{
     animation::AnimationUIState,
-    config::FixtureGroupKey,
+    config::GroupId,
     control::EmitControlMessage,
     fixture::{FixtureGroup, Patch},
     osc::{EmitOscMessage, GroupControlMap, OscControlMessage, ScopedControlEmitter},
@@ -38,10 +38,10 @@ impl Display for ChannelId {
 }
 
 pub struct Channels {
-    /// Lookup from channel index to the fixture group assigned to that channel.
-    channel_index: Vec<FixtureGroupKey>,
-    /// Reverse-lookup from fixture group key to channel index.
-    fixture_channel_index: HashMap<FixtureGroupKey, ChannelId>,
+    /// Lookup from channel index to the stable id of the fixture group on that channel.
+    channel_index: Vec<GroupId>,
+    /// Reverse-lookup from stable group id to channel index.
+    fixture_channel_index: HashMap<GroupId, ChannelId>,
     /// The channel ID that is currently selected.
     current_channel: Option<ChannelId>,
     controls: GroupControlMap<ControlMessage>,
@@ -59,18 +59,18 @@ impl Channels {
         }
     }
 
-    pub fn from_iter(keys: impl IntoIterator<Item = FixtureGroupKey>) -> Self {
+    pub fn from_iter(ids: impl IntoIterator<Item = GroupId>) -> Self {
         let mut c = Self::new();
-        for k in keys {
-            c.add(k);
+        for id in ids {
+            c.add(id);
         }
         c
     }
 
-    /// Add new channel controls, wired to the specified fixture.
-    pub fn add(&mut self, group: FixtureGroupKey) -> ChannelId {
+    /// Add new channel controls, wired to the specified fixture group.
+    pub fn add(&mut self, group: GroupId) -> ChannelId {
         let id = ChannelId(self.channel_index.len());
-        self.channel_index.push(group.clone());
+        self.channel_index.push(group);
         self.fixture_channel_index.insert(group, id);
         // If this is the first channel we're configuring, set it as selected.
         if self.current_channel.is_none() {
@@ -104,19 +104,26 @@ impl Channels {
         }
     }
 
-    /// Look up a channel ID by fixture group key.
-    pub fn channel_for_fixture(&self, group: &str) -> Option<ChannelId> {
-        self.fixture_channel_index.get(group).cloned()
+    /// Look up a channel ID by the fixture group's stable identity.
+    pub fn channel_for_id(&self, group: GroupId) -> Option<ChannelId> {
+        self.fixture_channel_index.get(&group).cloned()
     }
 
-    /// Iterate over all of the labels for each channels.
+    /// Look up a channel ID by the fixture group's display name. For OSC entry
+    /// points where the address provides a name string.
+    pub fn channel_for_name(&self, name: &str, patch: &Patch) -> Option<ChannelId> {
+        let group = patch.get(name).ok()?;
+        self.channel_for_id(group.id())
+    }
+
+    /// Iterate over all of the labels for each channel.
     pub fn channel_labels<'a>(&'a self, patch: &'a Patch) -> impl Iterator<Item = String> + 'a {
         self.channel_index
             .iter()
-            .filter_map(|i| match patch.get(i) {
-                Ok(f) => Some(f),
-                Err(err) => {
-                    error!("Patch inconsistency generating channel labels: {err}");
+            .filter_map(|id| match patch.get_by_id(*id) {
+                Some(f) => Some(f),
+                None => {
+                    error!("Patch inconsistency generating channel labels: missing group {id}");
                     None
                 }
             })
@@ -129,12 +136,12 @@ impl Channels {
         patch: &'a Patch,
         channel: ChannelId,
     ) -> Result<&'a FixtureGroup> {
-        let Some(fixture_key) = self.channel_index.get(channel.0) else {
+        let Some(group_id) = self.channel_index.get(channel.0) else {
             bail!("tried to get out-of-range channel {channel}");
         };
         patch
-            .get(fixture_key)
-            .with_context(|| format!("channel {channel}"))
+            .get_by_id(*group_id)
+            .ok_or_else(|| anyhow!("channel {channel}: group {group_id} not in patch"))
     }
 
     /// Get a fixture group by channel ID, mutably.
@@ -143,12 +150,12 @@ impl Channels {
         patch: &'a mut Patch,
         channel: ChannelId,
     ) -> Result<&'a mut FixtureGroup> {
-        let Some(fixture_key) = self.channel_index.get(channel.0) else {
+        let Some(group_id) = self.channel_index.get(channel.0).copied() else {
             bail!("tried to get out-of-range channel {channel}");
         };
         patch
-            .get_mut(fixture_key)
-            .with_context(|| format!("channel {channel}"))
+            .get_mut_by_id(group_id)
+            .ok_or_else(|| anyhow!("channel {channel}: group {group_id} not in patch"))
     }
 
     pub fn current_channel(&self) -> Option<ChannelId> {
