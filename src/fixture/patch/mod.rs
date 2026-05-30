@@ -68,7 +68,7 @@ pub struct Patch {
     /// O(1) lookup from stable id to physical location.
     by_id: HashMap<GroupId, GroupLocation>,
     /// O(1) lookup from group name to physical location.
-    by_name: HashMap<String, GroupLocation>,
+    by_name: HashMap<GroupName, GroupLocation>,
     /// Which DMX addrs already have a fixture patched in them.
     used_addrs: UsedAddrs,
 }
@@ -173,7 +173,7 @@ impl Patch {
         let group_name = GroupName(cfg.name().to_string());
 
         ensure!(
-            !self.by_name.contains_key(&group_name.0),
+            !self.by_name.contains_key(&group_name),
             "duplicate group name '{group_name}'"
         );
         ensure!(
@@ -270,7 +270,7 @@ impl Patch {
             GroupLocation::NonChannel(idx)
         };
         self.by_id.insert(id, location);
-        self.by_name.insert(group_name.0, location);
+        self.by_name.insert(group_name, location);
         Ok(())
     }
 
