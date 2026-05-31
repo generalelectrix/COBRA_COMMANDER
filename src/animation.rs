@@ -9,9 +9,9 @@ use crate::{
     fixture::{
         FixtureGroup,
         animation_target::{AnimationTargetIndex, ControllableTargetedAnimation, N_ANIM},
+        patch::ChannelId,
     },
     osc::{GroupControlMap, OscControlMessage},
-    show::ChannelId,
 };
 
 pub struct AnimationUIState {

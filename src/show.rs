@@ -21,7 +21,6 @@ use crate::{
     preview::Previewer,
 };
 
-pub use crate::channel::ChannelId;
 use tunnels::audio::EnvelopeStreams;
 
 use anyhow::{Context, Result, bail};

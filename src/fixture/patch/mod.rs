@@ -2,11 +2,12 @@
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use itertools::Itertools;
 use log::info;
+use serde::Deserialize;
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use super::fixture::FixtureType;
 use super::group::FixtureGroup;
-use crate::channel::ChannelId;
 use crate::config::{FixtureGroupConfig, GroupId, GroupName};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
@@ -277,7 +278,7 @@ impl Patch {
 
         let id = group.id();
         let location = if cfg.channel {
-            let channel_id = ChannelId::new(self.channels.len());
+            let channel_id = ChannelId(self.channels.len());
             self.channels.push(group);
             GroupLocation::Channel(channel_id)
         } else {
@@ -304,6 +305,11 @@ impl Patch {
     }
 
     // ---- Lookups ------------------------------------------------------------
+
+    /// Return the first channel ID, if we have at least one group with a channel.
+    pub fn first_channel(&self) -> Option<ChannelId> {
+        (self.channel_count() > 0).then_some(ChannelId(0))
+    }
 
     /// Look up a group by its name. Exercised by tests; production OSC
     /// dispatch goes through [`lookup_mut_by_name`] which also returns the
@@ -363,7 +369,7 @@ impl Patch {
                 self.channels.len()
             )
         })?;
-        Ok((ChannelId::new(raw_id), group))
+        Ok((ChannelId(raw_id), group))
     }
 
     /// Mutable counterpart to [`Patch::channel`].
@@ -372,7 +378,7 @@ impl Patch {
         let group = self.channels.get_mut(raw_id).ok_or_else(|| {
             anyhow!("channel selector {raw_id} out of range, only {len} channels are configured")
         })?;
-        Ok((ChannelId::new(raw_id), group))
+        Ok((ChannelId(raw_id), group))
     }
 
     /// Look up the group on a specific channel by trusted [`ChannelId`].
@@ -410,7 +416,7 @@ impl Patch {
         self.channels
             .iter()
             .enumerate()
-            .map(|(i, g)| (ChannelId::new(i), g))
+            .map(|(i, g)| (ChannelId(i), g))
     }
 
     /// Iterate over the channel labels, in channel order. Uses each group's
@@ -497,6 +503,28 @@ impl UsedAddrs {
         // TODO: destroy this or generalize it.
         let swarm = crate::fixture::swarmolon::affinity();
         swarm.contains(&f0) && swarm.contains(&f1)
+    }
+}
+
+/// The index of a channel within the patch's channel-bound groups.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Deserialize)]
+pub struct ChannelId(usize);
+
+impl ChannelId {
+    pub fn inner(&self) -> usize {
+        self.0
+    }
+}
+
+impl From<ChannelId> for usize {
+    fn from(value: ChannelId) -> Self {
+        value.0
+    }
+}
+
+impl Display for ChannelId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

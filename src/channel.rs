@@ -4,48 +4,16 @@
 //! per-show selection state ("which channel is the operator focused on?") and
 //! the OSC control handlers that route channel-scoped messages.
 
-use std::fmt::Display;
-
 use anyhow::{Result, anyhow, bail};
 use log::{debug, error};
 use number::{BipolarFloat, UnipolarFloat};
-use serde::Deserialize;
 
 use crate::{
     animation::AnimationUIState,
     control::EmitControlMessage,
-    fixture::Patch,
+    fixture::{Patch, patch::ChannelId},
     osc::{EmitOscMessage, GroupControlMap, OscControlMessage, ScopedControlEmitter},
 };
-
-/// The index of a channel within the patch's channel-bound groups.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Deserialize)]
-pub struct ChannelId(usize);
-
-impl ChannelId {
-    /// Construct a `ChannelId` from a raw index. The caller is responsible for
-    /// ensuring it's in range for the current patch; use
-    /// [`Patch::validate_channel`] to validate untrusted indices.
-    pub fn new(index: usize) -> Self {
-        Self(index)
-    }
-
-    pub fn inner(&self) -> usize {
-        self.0
-    }
-}
-
-impl From<ChannelId> for usize {
-    fn from(value: ChannelId) -> Self {
-        value.0
-    }
-}
-
-impl Display for ChannelId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
 
 /// OSC dispatch and selection state for channels.
 pub struct Channels {
@@ -60,9 +28,8 @@ impl Channels {
     pub fn new(patch: &Patch) -> Self {
         let mut controls = GroupControlMap::default();
         Self::map_controls(&mut controls);
-        let current_channel = (patch.channel_count() > 0).then(|| ChannelId::new(0));
         Self {
-            current_channel,
+            current_channel: patch.first_channel(),
             controls,
         }
     }
@@ -77,8 +44,7 @@ impl Channels {
     pub fn reconcile_to_patch(&mut self, patch: &Patch) {
         self.current_channel = match self.current_channel {
             Some(ch) if ch.inner() < patch.channel_count() => Some(ch),
-            _ if patch.channel_count() > 0 => Some(ChannelId::new(0)),
-            _ => None,
+            _ => patch.first_channel(),
         };
     }
 

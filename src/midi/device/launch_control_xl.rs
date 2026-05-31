@@ -6,7 +6,7 @@ use tunnels::{
     midi_controls::MidiDevice,
 };
 
-use crate::{channel::KnobValue, show::ChannelId};
+use crate::{channel::KnobValue, fixture::patch::ChannelId};
 
 /// Model of the Novation Launch Control XL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
