@@ -25,12 +25,14 @@ impl Default for Radiance {
 impl AnimatedFixture for Radiance {
     type Target = AnimationTarget;
 
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        _animation_vals: &TargetedAnimationValues<Self::Target>,
+        _animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<Self::Target>,
+    {
         self.haze
             .render(group_controls, std::iter::empty(), dmx_buf);
         self.fan.render(group_controls, std::iter::empty(), dmx_buf);

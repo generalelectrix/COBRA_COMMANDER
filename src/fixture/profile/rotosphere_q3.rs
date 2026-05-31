@@ -31,12 +31,14 @@ impl Default for RotosphereQ3 {
 impl AnimatedFixture for RotosphereQ3 {
     type Target = AnimationTarget;
 
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<Self::Target>,
+    {
         self.color.render_for_model(
             Rgbw,
             group_controls,

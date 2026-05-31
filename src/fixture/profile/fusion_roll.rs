@@ -65,12 +65,14 @@ impl Default for FusionRoll {
 }
 
 impl FusionRoll {
-    fn render_led_intensity(
+    fn render_led_intensity<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<AnimationTarget>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<AnimationTarget>,
+    {
         if self.led_strobe_on.val()
             && group_controls.strobe_enabled
             && let Some(strobe_override) = group_controls.strobe_intensity()
@@ -101,12 +103,14 @@ impl FusionRoll {
 impl AnimatedFixture for FusionRoll {
     type Target = AnimationTarget;
 
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<Self::Target>,
+    {
         self.drum_swivel.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumSwivel),

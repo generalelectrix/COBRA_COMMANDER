@@ -89,12 +89,14 @@ impl Update for FlashBang {
 impl AnimatedFixture for FlashBang {
     type Target = AnimationTarget;
 
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<Self::Target>,
+    {
         // If strobing is disabled, blackout.
         if !group_controls.strobe_enabled {
             dmx_buf.fill(0);

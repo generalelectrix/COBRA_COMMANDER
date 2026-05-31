@@ -141,13 +141,15 @@ impl Color {
     ///
     /// This method is useful for fixtures that embed a Color as a full sub-
     /// control.
-    pub fn render_for_model(
+    pub fn render_for_model<A>(
         &self,
         model: Model,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<AnimationTarget>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<AnimationTarget>,
+    {
         // If a color override has been provided, render it scaled by the level.
         if let Some(mut color_override) = group_controls.color.clone() {
             // TODO: do we want to allow strobing to layer on top of a color override?
@@ -207,12 +209,14 @@ impl Color {
 
 impl AnimatedFixture for Color {
     type Target = AnimationTarget;
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<Self::Target>,
+    {
         let model = match Model::model_for_mode(group_controls.render_mode) {
             Ok(m) => m,
             Err(err) => {
