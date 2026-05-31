@@ -57,12 +57,14 @@ impl Default for H2O {
 impl AnimatedFixture for H2O {
     type Target = AnimationTarget;
 
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<Self::Target>,
+    {
         self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),

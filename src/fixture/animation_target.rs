@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::marker::PhantomData;
 
 use anyhow::bail;
 use num_traits::FromPrimitive;
@@ -15,42 +16,79 @@ pub type TargetedAnimations<T> = [TargetedAnimation<T>; N_ANIM];
 /// This is used to represent an animation target as a generic selection.
 pub type AnimationTargetIndex = usize;
 
-/// A collection of animation values paired with targets.
-pub struct TargetedAnimationValues<T: PartialEq>(pub [(f64, T); N_ANIM]);
-
-impl<T: PartialEq + Sized + 'static> TargetedAnimationValues<T> {
-    pub fn iter(&self) -> core::slice::Iter<'_, (f64, T)> {
-        self.0.iter()
-    }
+/// A source of (animation_value, target) pairs that consumers can iterate
+/// without caring about the underlying storage.
+///
+/// Implementations include [`AnimationSlice`] (the leaf, backed by a stack
+/// buffer materialized in `FixtureWithAnimations::render`) and
+/// [`SubtargetView`] (a lazy projection produced by [`Self::subtarget`]).
+///
+/// `filter`, `all`, and `subtarget` are derived from `iter` and apply lazily,
+/// so chaining them never materializes an intermediate buffer. Static
+/// dispatch (generic trait params at call sites) keeps the hot render path
+/// allocation-free.
+pub trait TargetedAnimationValues<T>
+where
+    T: PartialEq + Copy,
+{
+    /// Iterate over the (value, target) pairs in this source.
+    fn iter(&self) -> impl Iterator<Item = (f64, T)>;
 
     /// Iterate over all of the animation values, regardless of target.
-    pub fn all(&self) -> impl Iterator<Item = f64> + '_ {
-        self.0.iter().map(|(v, _)| *v)
+    fn all(&self) -> impl Iterator<Item = f64> {
+        self.iter().map(|(v, _)| v)
     }
 
     /// Iterate over all animation values matching the provided target.
-    pub fn filter<'a>(&'a self, target: &'a T) -> impl Iterator<Item = f64> + 'a {
-        self.0
-            .iter()
-            .filter_map(move |(v, t)| (*t == *target).then_some(*v))
+    fn filter<'a>(&'a self, target: &'a T) -> impl Iterator<Item = f64> + 'a {
+        self.iter()
+            .filter_map(move |(v, t)| (t == *target).then_some(v))
+    }
+
+    /// Lazily project this source down to a subtarget type. The returned
+    /// view borrows `self`; iterating it walks the source and applies the
+    /// supertarget→subtarget projection on the fly. Entries whose targets
+    /// don't map are skipped.
+    fn subtarget<U>(&self) -> SubtargetView<'_, Self, U, T>
+    where
+        U: PartialEq + Copy + FromSupertarget<T>,
+        Self: Sized,
+    {
+        SubtargetView(self, PhantomData)
     }
 }
 
-impl<T: Copy + PartialEq + Sized + 'static> TargetedAnimationValues<T> {
-    /// Return targeted animations subset down to a specific subtarget type.
-    pub fn subtarget<U>(&self) -> TargetedAnimationValues<U>
-    where
-        U: Default + Copy + PartialEq + FromSupertarget<T>,
-    {
-        let mut animation_vals = [(0.0, U::default()); N_ANIM];
-        for (i, (val, t)) in self.iter().enumerate() {
-            if let Some(subtarget) = U::from_supertarget(t) {
-                animation_vals[i] = (*val, subtarget);
-            }
-        }
-        TargetedAnimationValues(animation_vals)
+/// Leaf source: a borrowed slice of (value, target) pairs. Typically the slice
+/// is materialized on the caller's stack in `FixtureWithAnimations::render`.
+pub struct AnimationSlice<'a, T>(pub &'a [(f64, T)]);
+
+impl<'a, T> TargetedAnimationValues<T> for AnimationSlice<'a, T>
+where
+    T: PartialEq + Copy,
+{
+    fn iter(&self) -> impl Iterator<Item = (f64, T)> {
+        self.0.iter().map(|(v, t)| (*v, *t))
     }
 }
+
+/// Lazy projection from supertarget type `T` to subtarget type `U`. Created by
+/// [`TargetedAnimationValues::subtarget`]. Iterating it walks the underlying
+/// source and applies [`FromSupertarget`]; entries that don't map are dropped.
+pub struct SubtargetView<'a, S: ?Sized, U, T>(&'a S, PhantomData<(U, T)>);
+
+impl<'a, S, T, U> TargetedAnimationValues<U> for SubtargetView<'a, S, U, T>
+where
+    S: TargetedAnimationValues<T> + ?Sized,
+    T: PartialEq + Copy,
+    U: PartialEq + Copy + FromSupertarget<T>,
+{
+    fn iter(&self) -> impl Iterator<Item = (f64, U)> {
+        self.0
+            .iter()
+            .filter_map(|(v, t)| U::from_supertarget(&t).map(|u| (v, u)))
+    }
+}
+
 /// A pairing of an animation and a target.
 #[derive(Debug, Clone, Default)]
 pub struct TargetedAnimation<T: AnimationTarget> {

@@ -11,7 +11,8 @@ use strum::VariantArray;
 
 use super::FixtureGroupControls;
 use super::animation_target::{
-    ControllableTargetedAnimation, N_ANIM, TargetedAnimationValues, TargetedAnimations,
+    AnimationSlice, ControllableTargetedAnimation, N_ANIM, TargetedAnimationValues,
+    TargetedAnimations,
 };
 use crate::channel::ChannelControlMessage;
 use crate::fixture::animation_target::AnimationTarget;
@@ -137,12 +138,13 @@ pub trait NonAnimatedFixture: Update + EmitState + Control + DescribeOscControls
 pub trait AnimatedFixture: Update + EmitState + Control + DescribeOscControls {
     type Target: AnimationTarget;
 
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    );
+    ) where
+        A: TargetedAnimationValues<Self::Target>;
 }
 
 pub trait Fixture: Update + EmitState + Control + DescribeOscControls {
@@ -253,10 +255,14 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     ) {
-        let mut animation_vals = [(0.0, F::Target::default()); N_ANIM];
+        // Stack buffer holding (animation_value, target) for every contribution
+        // visible to the fixture. Sized for the animator slots; positioner
+        // contributions will share this buffer once that feature lands.
+        let mut buf = [(0.0, F::Target::default()); N_ANIM];
+        let mut count = 0;
         // FIXME: implement unipolar variant of animations
-        for (i, ta) in self.animations.iter().enumerate() {
-            animation_vals[i] = (
+        for ta in self.animations.iter() {
+            buf[count] = (
                 ta.animation.get_value(
                     phase_offset,
                     offset_index,
@@ -265,10 +271,11 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
                 ),
                 ta.target,
             );
+            count += 1;
         }
         self.fixture.render_with_animations(
             group_controls,
-            &TargetedAnimationValues(animation_vals),
+            &AnimationSlice(&buf[..count]),
             dmx_buffer,
         );
     }

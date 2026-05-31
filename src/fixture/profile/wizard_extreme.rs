@@ -68,12 +68,14 @@ impl Default for WizardExtreme {
 impl AnimatedFixture for WizardExtreme {
     type Target = AnimationTarget;
 
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<Self::Target>,
+    {
         self.shutter.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Shutter),

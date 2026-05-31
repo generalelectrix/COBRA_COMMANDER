@@ -70,12 +70,14 @@ impl Default for Wizlet {
 impl AnimatedFixture for Wizlet {
     type Target = AnimationTarget;
 
-    fn render_with_animations(
+    fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
-        animation_vals: &TargetedAnimationValues<Self::Target>,
+        animation_vals: &A,
         dmx_buf: &mut [u8],
-    ) {
+    ) where
+        A: TargetedAnimationValues<Self::Target>,
+    {
         self.drum_swivel.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::DrumSwivel),
