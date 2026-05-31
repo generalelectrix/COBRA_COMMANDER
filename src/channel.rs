@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::{
     animation::AnimationUIState,
     control::EmitControlMessage,
-    fixture::Patch,
+    fixture::{Patch, patch::patch_inconsistency},
     osc::{EmitOscMessage, GroupControlMap, OscControlMessage, ScopedControlEmitter},
 };
 
@@ -47,9 +47,7 @@ impl Display for ChannelId {
     }
 }
 
-/// OSC dispatch and selection state for channels. Channel membership and
-/// channel→group lookups live on `Patch`; this struct just remembers which
-/// channel is currently selected and routes incoming channel control messages.
+/// OSC dispatch and selection state for channels.
 pub struct Channels {
     /// The channel ID that is currently selected.
     current_channel: Option<ChannelId>,
@@ -111,7 +109,15 @@ impl Channels {
                         channel_id: Some(channel_id),
                         emitter,
                     }),
-                    None => error!("Failed to emit state for missing channel {channel_id}"),
+                    None => error!(
+                        "{}",
+                        patch_inconsistency(
+                            "PI-008",
+                            format!(
+                                "emit_state: selected channel {channel_id} has no group in patch"
+                            ),
+                        )
+                    ),
                 }
             }
         } else {
@@ -121,7 +127,15 @@ impl Channels {
                         channel_id: Some(channel_id),
                         emitter,
                     }),
-                    None => error!("Failed to emit state for missing channel {channel_id}"),
+                    None => error!(
+                        "{}",
+                        patch_inconsistency(
+                            "PI-009",
+                            format!(
+                                "emit_state: channel {channel_id} from channel_ids() has no group in patch"
+                            ),
+                        )
+                    ),
                 }
             }
         }
@@ -158,10 +172,16 @@ impl Channels {
                 }
                 self.current_channel = Some(channel);
                 self.emit_state(true, patch, emitter);
+
+                let group = patch.group_in_channel(channel).ok_or_else(|| {
+                    patch_inconsistency(
+                        "PI-002",
+                        format!(
+                            "SelectChannel: channel {channel} validated but has no group in patch"
+                        ),
+                    )
+                })?;
                 // FIXME this is so goddamn inside out, I hate it.
-                let group = patch
-                    .group_in_channel(channel)
-                    .ok_or_else(|| anyhow!("no group in channel {channel}"))?;
                 animation_ui.emit_state(
                     channel,
                     group,
@@ -183,7 +203,14 @@ impl Channels {
                 };
                 let handled = patch
                     .group_in_channel_mut(channel_id)
-                    .ok_or_else(|| anyhow!("no group in channel {channel_id}"))?
+                    .ok_or_else(|| {
+                        patch_inconsistency(
+                            "PI-003",
+                            format!(
+                                "channel control: channel {channel_id} validated but has no group in patch"
+                            ),
+                        )
+                    })?
                     .control_from_channel(
                         msg,
                         ChannelStateEmitter {

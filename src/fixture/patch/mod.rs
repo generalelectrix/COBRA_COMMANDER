@@ -20,6 +20,25 @@ pub use patcher::{
 
 pub use option::{AsPatchOption, NoOptions, OptionsMenu, PatchOption, enum_patch_option};
 
+/// Build an [`anyhow::Error`] describing an internal patch inconsistency.
+///
+/// Use this for error paths that can only be reached due to a programmer bug
+/// — a violated patch invariant rather than a user-input or config error. We
+/// surface these as ordinary errors (rather than panicking) so a show in
+/// progress can keep running, but the message format makes the diagnosis
+/// unambiguous and the unique code makes the originating site easy to grep.
+///
+/// `code` should be of the form `"PI-NNN"` and unique across the codebase.
+/// Pass a `format!(...)`-built `String` (or any `Display`) for `details` to
+/// include the local context (channel ids, group names, etc.) that made the
+/// invariant violation visible.
+pub fn patch_inconsistency(code: &'static str, details: impl std::fmt::Display) -> anyhow::Error {
+    anyhow::anyhow!(
+        "Error code: {code}. Internal patch inconsistency: {details}. \
+         This is a bug — please report to this application's developers."
+    )
+}
+
 /// Where a fixture group physically lives inside a `Patch`.
 ///
 /// Returned by name/id lookups so callers can both access the group and know
@@ -312,7 +331,12 @@ impl Patch {
             GroupLocation::Channel(c) => self.channels.get_mut(c.inner()),
             GroupLocation::NonChannel(i) => self.non_channel.get_mut(i),
         }
-        .ok_or_else(|| anyhow!("internal patch index inconsistency for {name}"))?;
+        .ok_or_else(|| {
+            patch_inconsistency(
+                "PI-001",
+                format!("by_name had {location:?} for '{name}' but the backing vec lookup failed"),
+            )
+        })?;
 
         Ok((group, channel_id))
     }

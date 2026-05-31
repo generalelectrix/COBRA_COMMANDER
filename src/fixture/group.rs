@@ -80,7 +80,7 @@ impl FixtureGroup {
         }
     }
 
-    /// Stable identity for this group. Survives renames across repatch.
+    /// Universally-stable identity for this group.
     pub fn id(&self) -> GroupId {
         self.id
     }
@@ -244,9 +244,16 @@ impl FixtureGroup {
             let phase_offset = phase_offset_per_fixture * i as f64;
             let Some(dmx_univ) = dmx.get_mut(cfg.universe) else {
                 error!(
-                    "Universe index {} for patch {i} of {} is out of range.",
-                    cfg.universe,
-                    self.qualified_name(),
+                    "{}",
+                    crate::fixture::patch::patch_inconsistency(
+                        "PI-010",
+                        format!(
+                            "render: fixture {i} of {} requested universe {} but only {} are available",
+                            self.qualified_name(),
+                            cfg.universe,
+                            dmx.len(),
+                        ),
+                    )
                 );
                 continue;
             };

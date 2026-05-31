@@ -11,7 +11,8 @@ use crate::{
     control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
     dmx::DmxUniverse,
     fixture::{
-        Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
+        Patch, animation_target::ControllableTargetedAnimation, patch::patch_inconsistency,
+        prelude::FixtureGroupUpdate,
     },
     gui_state::{AnimationSnapshot, DmxPortInfo, DmxPortStatus, PatchSnapshot},
     gui_state::{GuiDirty, SharedGuiState},
@@ -24,7 +25,7 @@ use crate::{
 pub use crate::channel::ChannelId;
 use tunnels::audio::EnvelopeStreams;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
 use log::error;
 use rust_dmx::{DmxPort, OfflineDmxPort};
@@ -349,10 +350,14 @@ impl Show {
                         "cannot handle animation control message because no channel is selected\n{msg:?}"
                     );
                 };
-                let group = self
-                    .patch
-                    .group_in_channel_mut(channel)
-                    .ok_or_else(|| anyhow!("no group in selected channel {channel}"))?;
+                let group = self.patch.group_in_channel_mut(channel).ok_or_else(|| {
+                    patch_inconsistency(
+                        "PI-004",
+                        format!(
+                            "animation control: selected channel {channel} has no group in patch"
+                        ),
+                    )
+                })?;
                 self.animation_ui_state.control(
                     msg,
                     channel,
@@ -408,10 +413,12 @@ impl Show {
                         "cannot handle animation control message because no channel is selected\n{msg:?}"
                     );
                 };
-                let group = self
-                    .patch
-                    .group_in_channel_mut(channel)
-                    .ok_or_else(|| anyhow!("no group in selected channel {channel}"))?;
+                let group = self.patch.group_in_channel_mut(channel).ok_or_else(|| {
+                    patch_inconsistency(
+                        "PI-005",
+                        format!("animation OSC: selected channel {channel} has no group in patch"),
+                    )
+                })?;
                 self.animation_ui_state.control_osc(
                     msg,
                     channel,
@@ -553,7 +560,13 @@ impl Show {
                 );
             } else {
                 error!(
-                    "Refreshing UI: could not get fixture group for current channel {current_channel}."
+                    "{}",
+                    patch_inconsistency(
+                        "PI-007",
+                        format!(
+                            "refresh_ui: selected channel {current_channel} has no group in patch"
+                        ),
+                    )
                 );
             }
         }
@@ -573,10 +586,14 @@ impl Show {
         let Some(current_channel) = self.channels.current_channel() else {
             return Ok(());
         };
-        let group = self
-            .patch
-            .group_in_channel(current_channel)
-            .ok_or_else(|| anyhow!("no group in selected channel {current_channel}"))?;
+        let group = self.patch.group_in_channel(current_channel).ok_or_else(|| {
+            patch_inconsistency(
+                "PI-006",
+                format!(
+                    "snapshot_animation_state: selected channel {current_channel} has no group in patch"
+                ),
+            )
+        })?;
         let animation_index = self
             .animation_ui_state
             .animation_index_for_channel(current_channel);
