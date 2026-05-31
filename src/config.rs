@@ -4,6 +4,23 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, fmt::Display, ops::Deref};
+use uuid::Uuid;
+
+/// Stable, opaque identifier for a fixture group.
+///
+/// Minted when the group is first created in the patch editor and preserved
+/// across renames, repatches, and restarts. The operator never
+/// sees this; it exists purely so the controller can answer "is this the same
+/// group it was before?" when the group name has changed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct GroupId(Uuid);
+
+impl GroupId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -16,13 +33,19 @@ pub enum DmxAddrConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FixtureGroupConfig {
+    /// Stable opaque identifier. Minted on first load (or first creation in the
+    /// patch editor) and preserved across renames so the controller can carry
+    /// per-group state forward through repatches.
+    #[serde(default = "GroupId::new")]
+    pub id: GroupId,
+
     /// The type of fixture to patch.
     pub fixture: String,
 
     /// For fixtures that we may want to separately control multiple instances,
     /// provide a group name.
     #[serde(default)]
-    pub group: Option<FixtureGroupKey>,
+    pub group: Option<GroupName>,
 
     /// If true, assign to a channel. Defaults to true.
     #[serde(default = "_true")]
@@ -41,9 +64,9 @@ pub struct FixtureGroupConfig {
 }
 
 impl FixtureGroupConfig {
-    /// Get the key for this group, either the name of the fixture, or the
-    /// group name if one is provided.
-    pub fn key(&self) -> &str {
+    /// Get the name of this group: the explicit group name if provided,
+    /// otherwise the fixture type name.
+    pub fn name(&self) -> &str {
         self.group.as_deref().unwrap_or(&self.fixture)
     }
 }
@@ -173,23 +196,25 @@ fn string_value(v: &Value) -> String {
     }
 }
 
-/// Uniquely identify a specific fixture group.
+/// Human-readable name for a fixture group. Used in OSC addresses and patch
+/// YAML; serves as a unique lookup key into the patch alongside the stable
+/// [`GroupId`]. May be changed by the operator (renames are non-destructive).
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
-pub struct FixtureGroupKey(pub String);
+pub struct GroupName(pub String);
 
-impl Display for FixtureGroupKey {
+impl Display for GroupName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(&self.0, f)
     }
 }
 
-impl Borrow<str> for FixtureGroupKey {
+impl Borrow<str> for GroupName {
     fn borrow(&self) -> &str {
         &self.0
     }
 }
 
-impl Deref for FixtureGroupKey {
+impl Deref for GroupName {
     type Target = str;
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -246,5 +271,36 @@ mod test {
     fn options_remove_missing_key_is_noop() {
         let mut opts = Options::default();
         opts.remove("nonexistent"); // should not panic
+    }
+
+    /// Existing patch YAML on disk does not carry a `id` field. Loading must
+    /// silently mint a UUID per group; round-tripping that loaded config back
+    /// to YAML and reloading it must preserve the freshly-minted id so identity
+    /// is stable on the next launch.
+    #[test]
+    fn fixture_group_config_serde_defaults_id_and_round_trips() {
+        let yaml = "
+- fixture: Color
+  control_color_space: Hsluv
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  group: TestGroup
+  patches:
+    - addr: 1
+      universe: 1
+";
+        let loaded: Vec<FixtureGroupConfig> =
+            serde_yaml::from_str(yaml).expect("legacy YAML without ids should still parse");
+        assert_eq!(loaded.len(), 2);
+
+        let id_color = loaded[0].id;
+        let id_dimmer = loaded[1].id;
+        assert_ne!(id_color, id_dimmer, "each group gets a distinct fresh id");
+
+        let round_tripped: Vec<FixtureGroupConfig> =
+            serde_yaml::from_str(&serde_yaml::to_string(&loaded).unwrap()).unwrap();
+        assert_eq!(round_tripped[0].id, id_color);
+        assert_eq!(round_tripped[1].id, id_dimmer);
     }
 }

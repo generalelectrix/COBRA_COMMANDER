@@ -19,7 +19,7 @@ impl AddressMap {
     pub fn from_working_copy(wc: &PatchWorkingCopy) -> Self {
         let mut map = BTreeMap::new();
         for group in &wc.groups {
-            let name = group.config.key().to_string();
+            let name = group.config.name().to_string();
             for (pi, block) in group.config.patches.iter().enumerate() {
                 let (start, count) = block.start_count();
                 let Some(start_addr) = start else { continue };

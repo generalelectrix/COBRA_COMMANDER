@@ -40,7 +40,7 @@ mod osc_control_test {
     use rosc::{OscMessage, OscType};
 
     use crate::channel::mock::no_op_emitter;
-    use crate::config::{FixtureGroupKey, Options};
+    use crate::config::{GroupId, GroupName, Options};
     use crate::fixture::control::{OscControlDescription, OscControlType};
     use crate::fixture::patch::{PATCHERS, PatchOption};
     use crate::osc::{OscClientId, OscControlMessage};
@@ -50,10 +50,7 @@ mod osc_control_test {
     const EXCLUDED_FIXTURES: &[&str] = &["RugDoctor"];
 
     /// Generate fuzz (addr, arg) pairs for a control based on its type.
-    fn fuzz_values(
-        key: &FixtureGroupKey,
-        control: &OscControlDescription,
-    ) -> Vec<(String, OscType)> {
+    fn fuzz_values(key: &GroupName, control: &OscControlDescription) -> Vec<(String, OscType)> {
         let base = format!("/{}/{}", key.0, control.name);
         match &control.control_type {
             OscControlType::Unipolar | OscControlType::Phase => vec![
@@ -133,9 +130,10 @@ mod osc_control_test {
                 continue;
             }
 
-            let key = FixtureGroupKey(format!("test_{}", patcher.name));
+            let key = GroupName(format!("test_{}", patcher.name));
+            let id = GroupId::new();
 
-            let mut group = match (patcher.create_group)(key.clone(), Default::default()) {
+            let mut group = match (patcher.create_group)(id, key.clone(), Default::default()) {
                 Ok(group) => group,
                 Err(_) => {
                     // Try again with example values from the options menu.
@@ -149,7 +147,7 @@ mod osc_control_test {
                         menu.iter()
                             .map(|(name, opt)| (name.clone(), opt.example_value())),
                     );
-                    (patcher.create_group)(key.clone(), options).unwrap_or_else(|e| {
+                    (patcher.create_group)(id, key.clone(), options).unwrap_or_else(|e| {
                         panic!(
                             "{}: create_group failed even with example options: {e}",
                             patcher.name

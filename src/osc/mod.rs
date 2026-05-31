@@ -1,5 +1,5 @@
 use crate::channel::{ChannelStateChange, ChannelStateEmitter};
-use crate::config::FixtureGroupKey;
+use crate::config::GroupName;
 use crate::control::ControlMessage;
 use crate::control::EmitControlMessage;
 use crate::midi::{EmitMidiAnimationMessage, EmitMidiMasterMessage};
@@ -128,16 +128,16 @@ impl OscController {
     }
 }
 
-/// Decorate a control message emitter to inject a group into the address.
+/// Decorate a control message emitter to inject a group name into the address.
 pub struct FixtureStateEmitter<'a> {
-    key: &'a FixtureGroupKey,
+    name: &'a GroupName,
     channel_emitter: ChannelStateEmitter<'a>,
 }
 
 impl<'a> FixtureStateEmitter<'a> {
-    pub fn new(key: &'a FixtureGroupKey, channel_emitter: ChannelStateEmitter<'a>) -> Self {
+    pub fn new(name: &'a GroupName, channel_emitter: ChannelStateEmitter<'a>) -> Self {
         Self {
-            key,
+            name,
             channel_emitter,
         }
     }
@@ -149,7 +149,7 @@ impl<'a> FixtureStateEmitter<'a> {
 
 impl<'a> EmitScopedOscMessage for FixtureStateEmitter<'a> {
     fn emit_osc(&self, msg: ScopedOscMessage) {
-        let addr = format!("/{}/{}", self.key, msg.control);
+        let addr = format!("/{}/{}", self.name, msg.control);
         self.channel_emitter.emit_osc(OscMessage {
             addr,
             args: vec![msg.arg],

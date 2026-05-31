@@ -16,7 +16,8 @@ use super::fixture::{Fixture, FixtureType, RenderMode};
 use super::prelude::ChannelStateEmitter;
 use crate::channel::ChannelControlMessage;
 use crate::color::Hsluv;
-use crate::config::FixtureGroupKey;
+use crate::config::GroupId;
+use crate::config::GroupName;
 use crate::config::Options;
 use crate::dmx::DmxUniverse;
 use crate::fixture::FixtureGroupControls;
@@ -28,10 +29,13 @@ use crate::strobe::FlashState;
 use crate::strobe::StrobeResponse;
 
 pub struct FixtureGroup {
+    /// Stable UUID-based identity for this group.
+    id: GroupId,
     /// The fixture type of this group.
     fixture_type: FixtureType,
-    /// The unique identifier of this group. Often identical to the fixture type.
-    key: FixtureGroupKey,
+    /// Human-readable name for this group. Used in OSC addresses.
+    /// May change across repatches; stable identity is `id`, not this.
+    name: GroupName,
     /// The configurations for the fixtures in the group.
     fixture_configs: Vec<GroupFixtureConfig>,
     /// A color organ for controlling the group.
@@ -56,8 +60,9 @@ pub struct FixtureGroup {
 impl FixtureGroup {
     /// Create empty fixture group from an initialized fixture model.
     pub fn empty(
+        id: GroupId,
         fixture_type: FixtureType,
-        key: FixtureGroupKey,
+        name: GroupName,
         fixture: Box<dyn Fixture>,
         strobe_response: Option<StrobeResponse>,
         options: Options,
@@ -65,13 +70,19 @@ impl FixtureGroup {
         Self {
             strobe_enabled: false,
             flash_state: strobe_response.map(FlashState::new),
+            id,
             fixture_type,
-            key,
+            name,
             fixture_configs: vec![],
             color_organ: None,
             fixture,
             options,
         }
+    }
+
+    /// Universally-stable identity for this group.
+    pub fn id(&self) -> GroupId {
+        self.id
     }
 
     /// Reconfigure this group using the state from another group, if compatible.
@@ -112,12 +123,13 @@ impl FixtureGroup {
 
     /// Return a struct that can write the qualified name of this group.
     ///
-    /// This will be just the fixture type name if the key is identical.
-    /// Otherwise, it will be the key followed by the fixture type in parentheses.
+    /// This will be just the fixture type name if the group name is identical.
+    /// Otherwise, it will be the group name followed by the fixture type in
+    /// parentheses.
     pub fn qualified_name(&self) -> FixtureGroupQualifiedNameFormatter<'_> {
         FixtureGroupQualifiedNameFormatter {
             fixture_type: self.fixture_type,
-            key: &self.key.0,
+            name: &self.name.0,
         }
     }
 
@@ -157,7 +169,7 @@ impl FixtureGroup {
             self.strobe_enabled,
         ));
         self.fixture
-            .emit_state(&FixtureStateEmitter::new(&self.key, emitter));
+            .emit_state(&FixtureStateEmitter::new(&self.name, emitter));
     }
 
     /// Process the provided control message.
@@ -168,7 +180,7 @@ impl FixtureGroup {
     ) -> anyhow::Result<()> {
         let handled = self
             .fixture
-            .control(msg, &FixtureStateEmitter::new(&self.key, emitter))
+            .control(msg, &FixtureStateEmitter::new(&self.name, emitter))
             .with_context(|| self.qualified_name().to_string())?;
         ensure!(
             handled,
@@ -184,7 +196,7 @@ impl FixtureGroup {
         msg: &ChannelControlMessage,
         channel_emitter: ChannelStateEmitter,
     ) -> anyhow::Result<bool> {
-        let emitter = &FixtureStateEmitter::new(&self.key, channel_emitter);
+        let emitter = &FixtureStateEmitter::new(&self.name, channel_emitter);
         if matches!(msg, ChannelControlMessage::ToggleStrobe) {
             // If the fixture can't strobe, ignore the control.
             if self.flash_state.is_none() {
@@ -232,9 +244,16 @@ impl FixtureGroup {
             let phase_offset = phase_offset_per_fixture * i as f64;
             let Some(dmx_univ) = dmx.get_mut(cfg.universe) else {
                 error!(
-                    "Universe index {} for patch {i} of {} is out of range.",
-                    cfg.universe,
-                    self.qualified_name(),
+                    "{}",
+                    crate::fixture::patch::patch_inconsistency(
+                        "PI-004",
+                        format!(
+                            "render: fixture {i} of {} requested universe {} but only {} are available",
+                            self.qualified_name(),
+                            cfg.universe,
+                            dmx.len(),
+                        ),
+                    )
                 );
                 continue;
             };
@@ -289,15 +308,15 @@ pub struct GroupFixtureConfig {
 /// Format the qualified name of a fixture group without allocating.
 pub struct FixtureGroupQualifiedNameFormatter<'a> {
     fixture_type: FixtureType,
-    key: &'a str,
+    name: &'a str,
 }
 
 impl<'a> Display for FixtureGroupQualifiedNameFormatter<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.key == self.fixture_type.0 {
+        if self.name == self.fixture_type.0 {
             f.write_str(&self.fixture_type)
         } else {
-            write!(f, "{}({})", self.key, self.fixture_type)
+            write!(f, "{}({})", self.name, self.fixture_type)
         }
     }
 }

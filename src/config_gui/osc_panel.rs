@@ -98,7 +98,7 @@ impl OscPanel<'_> {
             .groups
             .iter()
             .map(|cfg| GroupEntry {
-                group_name: cfg.key(),
+                group_name: cfg.name(),
                 fixture_type: &cfg.fixture,
             })
             .collect();

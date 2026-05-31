@@ -1,158 +1,51 @@
-//! State and control definitions for fixture group channels.
+//! Selection state and OSC dispatch for fixture group channels.
+//!
+//! Channel storage itself lives on `Patch` — this module only holds the
+//! per-show selection state ("which channel is the operator focused on?") and
+//! the OSC control handlers that route channel-scoped messages.
 
-use std::{collections::HashMap, fmt::Display};
-
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use log::{debug, error};
 use number::{BipolarFloat, UnipolarFloat};
-use serde::Deserialize;
 
 use crate::{
     animation::AnimationUIState,
-    config::FixtureGroupKey,
     control::EmitControlMessage,
-    fixture::{FixtureGroup, Patch},
+    fixture::{Patch, patch::ChannelId},
     osc::{EmitOscMessage, GroupControlMap, OscControlMessage, ScopedControlEmitter},
 };
 
-/// The index of a channel.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Deserialize)]
-pub struct ChannelId(usize);
-
-impl ChannelId {
-    pub fn inner(&self) -> usize {
-        self.0
-    }
-}
-
-impl From<ChannelId> for usize {
-    fn from(value: ChannelId) -> Self {
-        value.0
-    }
-}
-
-impl Display for ChannelId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
+/// OSC dispatch and selection state for channels.
 pub struct Channels {
-    /// Lookup from channel index to the fixture group assigned to that channel.
-    channel_index: Vec<FixtureGroupKey>,
-    /// Reverse-lookup from fixture group key to channel index.
-    fixture_channel_index: HashMap<FixtureGroupKey, ChannelId>,
     /// The channel ID that is currently selected.
     current_channel: Option<ChannelId>,
     controls: GroupControlMap<ControlMessage>,
 }
 
 impl Channels {
-    pub fn new() -> Self {
+    /// Build a `Channels` for a patch. If the patch has any channels, the
+    /// first one is selected by default.
+    pub fn new(patch: &Patch) -> Self {
         let mut controls = GroupControlMap::default();
         Self::map_controls(&mut controls);
         Self {
-            channel_index: Default::default(),
-            fixture_channel_index: Default::default(),
-            current_channel: Default::default(),
+            current_channel: patch.first_channel(),
             controls,
         }
     }
 
-    pub fn from_iter(keys: impl IntoIterator<Item = FixtureGroupKey>) -> Self {
-        let mut c = Self::new();
-        for k in keys {
-            c.add(k);
-        }
-        c
-    }
-
-    /// Add new channel controls, wired to the specified fixture.
-    pub fn add(&mut self, group: FixtureGroupKey) -> ChannelId {
-        let id = ChannelId(self.channel_index.len());
-        self.channel_index.push(group.clone());
-        self.fixture_channel_index.insert(group, id);
-        // If this is the first channel we're configuring, set it as selected.
-        if self.current_channel.is_none() {
-            self.current_channel = Some(id);
-        }
-        id
-    }
-
-    /// Return the number of channels.
-    pub fn channel_count(&self) -> usize {
-        self.channel_index.len()
-    }
-
-    /// Iterate over valid channel IDs.
-    pub fn channel_ids(&self) -> impl Iterator<Item = ChannelId> + '_ {
-        self.channel_index
-            .iter()
-            .enumerate()
-            .map(|(i, _)| ChannelId(i))
-    }
-
-    /// Validate that a channel index refers to a channel that actually exists.
-    pub fn validate_channel(&self, channel: usize) -> Result<ChannelId> {
-        if channel < self.channel_index.len() {
-            Ok(ChannelId(channel))
-        } else {
-            bail!(
-                "channel selector {channel} out of range, only {} channels are configured",
-                self.channel_index.len()
-            );
-        }
-    }
-
-    /// Look up a channel ID by fixture group key.
-    pub fn channel_for_fixture(&self, group: &str) -> Option<ChannelId> {
-        self.fixture_channel_index.get(group).cloned()
-    }
-
-    /// Iterate over all of the labels for each channels.
-    pub fn channel_labels<'a>(&'a self, patch: &'a Patch) -> impl Iterator<Item = String> + 'a {
-        self.channel_index
-            .iter()
-            .filter_map(|i| match patch.get(i) {
-                Ok(f) => Some(f),
-                Err(err) => {
-                    error!("Patch inconsistency generating channel labels: {err}");
-                    None
-                }
-            })
-            .map(move |g| g.qualified_name().to_string())
-    }
-
-    /// Get a fixture group by channel ID.
-    pub fn group_by_channel<'a>(
-        &self,
-        patch: &'a Patch,
-        channel: ChannelId,
-    ) -> Result<&'a FixtureGroup> {
-        let Some(fixture_key) = self.channel_index.get(channel.0) else {
-            bail!("tried to get out-of-range channel {channel}");
-        };
-        patch
-            .get(fixture_key)
-            .with_context(|| format!("channel {channel}"))
-    }
-
-    /// Get a fixture group by channel ID, mutably.
-    pub fn group_by_channel_mut<'a>(
-        &self,
-        patch: &'a mut Patch,
-        channel: ChannelId,
-    ) -> Result<&'a mut FixtureGroup> {
-        let Some(fixture_key) = self.channel_index.get(channel.0) else {
-            bail!("tried to get out-of-range channel {channel}");
-        };
-        patch
-            .get_mut(fixture_key)
-            .with_context(|| format!("channel {channel}"))
-    }
-
     pub fn current_channel(&self) -> Option<ChannelId> {
         self.current_channel
+    }
+
+    /// Reconcile selection state against a freshly-(re)built patch. If the
+    /// currently-selected channel is no longer in range, fall back to the
+    /// first channel (or `None` if the patch has none).
+    pub fn reconcile_to_patch(&mut self, patch: &Patch) {
+        self.current_channel = match self.current_channel {
+            Some(ch) if ch.inner() < patch.channel_count() => Some(ch),
+            _ => patch.first_channel(),
+        };
     }
 
     /// Emit all current channel state.
@@ -172,28 +65,25 @@ impl Channels {
             Self::emit_osc_state_change(sc, &scoped_emitter);
         }
         Self::emit_osc_state_change(
-            StateChange::ChannelLabels(self.channel_labels(patch).collect()),
+            StateChange::ChannelLabels(patch.channel_labels().collect()),
             &scoped_emitter,
         );
         if selected_fixture_only {
             if let Some(channel_id) = self.current_channel {
-                match self.group_by_channel(patch, channel_id) {
+                match patch.channel_group(channel_id) {
                     Ok(f) => f.emit_state(ChannelStateEmitter {
                         channel_id: Some(channel_id),
                         emitter,
                     }),
-                    Err(err) => error!("Failed to emit channel {channel_id} state: {err}."),
+                    Err(e) => error!("{e:#}"),
                 }
             }
         } else {
-            for channel_id in self.channel_ids() {
-                match self.group_by_channel(patch, channel_id) {
-                    Ok(f) => f.emit_state(ChannelStateEmitter {
-                        channel_id: Some(channel_id),
-                        emitter,
-                    }),
-                    Err(err) => error!("Failed to emit channel {channel_id} state: {err}."),
-                }
+            for (channel_id, group) in patch.channels_with_ids() {
+                group.emit_state(ChannelStateEmitter {
+                    channel_id: Some(channel_id),
+                    emitter,
+                });
             }
         }
     }
@@ -222,8 +112,7 @@ impl Channels {
     ) -> anyhow::Result<()> {
         match ctl {
             ControlMessage::SelectChannel(g) => {
-                // Validate the channel.
-                let channel = self.validate_channel(*g)?;
+                let (channel, group) = patch.channel(*g)?;
                 if self.current_channel == Some(channel) {
                     // Channel is not changed, ignore.
                     return Ok(());
@@ -233,7 +122,7 @@ impl Channels {
                 // FIXME this is so goddamn inside out, I hate it.
                 animation_ui.emit_state(
                     channel,
-                    self.group_by_channel(patch, channel)?,
+                    group,
                     &ScopedControlEmitter {
                         entity: crate::osc::animation::GROUP,
                         emitter,
@@ -241,24 +130,23 @@ impl Channels {
                 );
             }
             ControlMessage::Control { channel_id, msg } => {
-                let channel_id = if let Some(id) = channel_id {
-                    self.validate_channel(*id)?
+                let (channel_id, group) = if let Some(id) = channel_id {
+                    patch.channel_mut(*id)?
                 } else {
-                    self.current_channel.ok_or_else(|| {
+                    let selected = self.current_channel.ok_or_else(|| {
                         anyhow!(
                             "no channel ID provided or selected for channel control message {msg:?}"
                         )
-                    })?
+                    })?;
+                    (selected, patch.channel_group_mut(selected)?)
                 };
-                let handled = self
-                    .group_by_channel_mut(patch, channel_id)?
-                    .control_from_channel(
-                        msg,
-                        ChannelStateEmitter {
-                            channel_id: Some(channel_id),
-                            emitter,
-                        },
-                    )?;
+                let handled = group.control_from_channel(
+                    msg,
+                    ChannelStateEmitter {
+                        channel_id: Some(channel_id),
+                        emitter,
+                    },
+                )?;
                 if !handled {
                     debug!(
                         "Fixture in channel {channel_id} did not handle channel control message {msg:?}."
