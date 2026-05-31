@@ -11,8 +11,7 @@ use crate::{
     control::{ControlMessage, Controller, MetaCommand, meta_command_from_osc},
     dmx::DmxUniverse,
     fixture::{
-        Patch, animation_target::ControllableTargetedAnimation, patch::patch_inconsistency,
-        prelude::FixtureGroupUpdate,
+        Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
     gui_state::{AnimationSnapshot, DmxPortInfo, DmxPortStatus, PatchSnapshot},
     gui_state::{GuiDirty, SharedGuiState},
@@ -292,7 +291,7 @@ impl Show {
     /// strobe, `None` if it is occupied by a fixture group.
     fn resolve_strobe_channel(&self) -> Option<usize> {
         let ch = strobe_control_channel(self.patch.channel_count());
-        if self.patch.validate_channel(ch).is_ok() {
+        if ch < self.patch.channel_count() {
             None // channel is occupied by a fixture group
         } else {
             Some(ch) // available
@@ -350,14 +349,7 @@ impl Show {
                         "cannot handle animation control message because no channel is selected\n{msg:?}"
                     );
                 };
-                let group = self.patch.group_in_channel_mut(channel).ok_or_else(|| {
-                    patch_inconsistency(
-                        "PI-004",
-                        format!(
-                            "animation control: selected channel {channel} has no group in patch"
-                        ),
-                    )
-                })?;
+                let group = self.patch.channel_group_mut(channel)?;
                 self.animation_ui_state.control(
                     msg,
                     channel,
@@ -413,12 +405,7 @@ impl Show {
                         "cannot handle animation control message because no channel is selected\n{msg:?}"
                     );
                 };
-                let group = self.patch.group_in_channel_mut(channel).ok_or_else(|| {
-                    patch_inconsistency(
-                        "PI-005",
-                        format!("animation OSC: selected channel {channel} has no group in patch"),
-                    )
-                })?;
+                let group = self.patch.channel_group_mut(channel)?;
                 self.animation_ui_state.control_osc(
                     msg,
                     channel,
@@ -549,25 +536,16 @@ impl Show {
         self.channels.emit_state(false, &self.patch, emitter);
 
         if let Some(current_channel) = self.channels.current_channel() {
-            if let Some(group) = self.patch.group_in_channel(current_channel) {
-                self.animation_ui_state.emit_state(
+            match self.patch.channel_group(current_channel) {
+                Ok(group) => self.animation_ui_state.emit_state(
                     current_channel,
                     group,
                     &ScopedControlEmitter {
                         entity: crate::osc::animation::GROUP,
                         emitter,
                     },
-                );
-            } else {
-                error!(
-                    "{}",
-                    patch_inconsistency(
-                        "PI-007",
-                        format!(
-                            "refresh_ui: selected channel {current_channel} has no group in patch"
-                        ),
-                    )
-                );
+                ),
+                Err(e) => error!("{e:#}"),
             }
         }
 
@@ -586,14 +564,7 @@ impl Show {
         let Some(current_channel) = self.channels.current_channel() else {
             return Ok(());
         };
-        let group = self.patch.group_in_channel(current_channel).ok_or_else(|| {
-            patch_inconsistency(
-                "PI-006",
-                format!(
-                    "snapshot_animation_state: selected channel {current_channel} has no group in patch"
-                ),
-            )
-        })?;
+        let group = self.patch.channel_group(current_channel)?;
         let animation_index = self
             .animation_ui_state
             .animation_index_for_channel(current_channel);

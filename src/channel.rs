@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::{
     animation::AnimationUIState,
     control::EmitControlMessage,
-    fixture::{Patch, patch::patch_inconsistency},
+    fixture::Patch,
     osc::{EmitOscMessage, GroupControlMap, OscControlMessage, ScopedControlEmitter},
 };
 
@@ -104,39 +104,20 @@ impl Channels {
         );
         if selected_fixture_only {
             if let Some(channel_id) = self.current_channel {
-                match patch.group_in_channel(channel_id) {
-                    Some(f) => f.emit_state(ChannelStateEmitter {
+                match patch.channel_group(channel_id) {
+                    Ok(f) => f.emit_state(ChannelStateEmitter {
                         channel_id: Some(channel_id),
                         emitter,
                     }),
-                    None => error!(
-                        "{}",
-                        patch_inconsistency(
-                            "PI-008",
-                            format!(
-                                "emit_state: selected channel {channel_id} has no group in patch"
-                            ),
-                        )
-                    ),
+                    Err(e) => error!("{e:#}"),
                 }
             }
         } else {
-            for channel_id in patch.channel_ids() {
-                match patch.group_in_channel(channel_id) {
-                    Some(f) => f.emit_state(ChannelStateEmitter {
-                        channel_id: Some(channel_id),
-                        emitter,
-                    }),
-                    None => error!(
-                        "{}",
-                        patch_inconsistency(
-                            "PI-009",
-                            format!(
-                                "emit_state: channel {channel_id} from channel_ids() has no group in patch"
-                            ),
-                        )
-                    ),
-                }
+            for (channel_id, group) in patch.channels_with_ids() {
+                group.emit_state(ChannelStateEmitter {
+                    channel_id: Some(channel_id),
+                    emitter,
+                });
             }
         }
     }
@@ -165,22 +146,13 @@ impl Channels {
     ) -> anyhow::Result<()> {
         match ctl {
             ControlMessage::SelectChannel(g) => {
-                let channel = patch.validate_channel(*g)?;
+                let (channel, group) = patch.channel(*g)?;
                 if self.current_channel == Some(channel) {
                     // Channel is not changed, ignore.
                     return Ok(());
                 }
                 self.current_channel = Some(channel);
                 self.emit_state(true, patch, emitter);
-
-                let group = patch.group_in_channel(channel).ok_or_else(|| {
-                    patch_inconsistency(
-                        "PI-002",
-                        format!(
-                            "SelectChannel: channel {channel} validated but has no group in patch"
-                        ),
-                    )
-                })?;
                 // FIXME this is so goddamn inside out, I hate it.
                 animation_ui.emit_state(
                     channel,
@@ -192,32 +164,23 @@ impl Channels {
                 );
             }
             ControlMessage::Control { channel_id, msg } => {
-                let channel_id = if let Some(id) = channel_id {
-                    patch.validate_channel(*id)?
+                let (channel_id, group) = if let Some(id) = channel_id {
+                    patch.channel_mut(*id)?
                 } else {
-                    self.current_channel.ok_or_else(|| {
+                    let selected = self.current_channel.ok_or_else(|| {
                         anyhow!(
                             "no channel ID provided or selected for channel control message {msg:?}"
                         )
-                    })?
+                    })?;
+                    (selected, patch.channel_group_mut(selected)?)
                 };
-                let handled = patch
-                    .group_in_channel_mut(channel_id)
-                    .ok_or_else(|| {
-                        patch_inconsistency(
-                            "PI-003",
-                            format!(
-                                "channel control: channel {channel_id} validated but has no group in patch"
-                            ),
-                        )
-                    })?
-                    .control_from_channel(
-                        msg,
-                        ChannelStateEmitter {
-                            channel_id: Some(channel_id),
-                            emitter,
-                        },
-                    )?;
+                let handled = group.control_from_channel(
+                    msg,
+                    ChannelStateEmitter {
+                        channel_id: Some(channel_id),
+                        emitter,
+                    },
+                )?;
                 if !handled {
                     debug!(
                         "Fixture in channel {channel_id} did not handle channel control message {msg:?}."

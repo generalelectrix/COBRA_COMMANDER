@@ -9,7 +9,7 @@ use uuid::Uuid;
 /// Stable, opaque identifier for a fixture group.
 ///
 /// Minted when the group is first created in the patch editor and preserved
-/// across renames, repatches, and (eventually) restarts. The operator never
+/// across renames, repatches, and restarts. The operator never
 /// sees this; it exists purely so the controller can answer "is this the same
 /// group it was before?" when the group name has changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -19,12 +19,6 @@ pub struct GroupId(Uuid);
 impl GroupId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
-    }
-}
-
-impl Display for GroupId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.0, f)
     }
 }
 

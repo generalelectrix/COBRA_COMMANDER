@@ -197,7 +197,7 @@ impl Patch {
         );
         ensure!(
             !self.by_id.contains_key(&cfg.id),
-            "duplicate group id '{}' for group '{group_name}'",
+            "duplicate group id '{:?}' for group '{group_name}'",
             cfg.id
         );
 
@@ -341,16 +341,6 @@ impl Patch {
         Ok((group, channel_id))
     }
 
-    /// Look up the group on a specific channel.
-    pub fn group_in_channel(&self, channel: ChannelId) -> Option<&FixtureGroup> {
-        self.channels.get(channel.inner())
-    }
-
-    /// Look up the group on a specific channel, mutably.
-    pub fn group_in_channel_mut(&mut self, channel: ChannelId) -> Option<&mut FixtureGroup> {
-        self.channels.get_mut(channel.inner())
-    }
-
     /// Look up the channel id for a group by stable id, or `None` if the group
     /// isn't channel-bound (or doesn't exist).
     pub fn channel_for_id(&self, id: GroupId) -> Option<ChannelId> {
@@ -364,21 +354,63 @@ impl Patch {
         self.channels.len()
     }
 
-    /// Validate that a channel index refers to a channel that actually exists.
-    pub fn validate_channel(&self, channel: usize) -> Result<ChannelId> {
-        if channel < self.channels.len() {
-            Ok(ChannelId::new(channel))
-        } else {
-            bail!(
-                "channel selector {channel} out of range, only {} channels are configured",
+    /// Validate a raw channel index (typically from an OSC payload) and return
+    /// the matching channel id paired with the group on that channel.
+    pub fn channel(&self, raw_id: usize) -> Result<(ChannelId, &FixtureGroup)> {
+        let group = self.channels.get(raw_id).ok_or_else(|| {
+            anyhow!(
+                "channel selector {raw_id} out of range, only {} channels are configured",
                 self.channels.len()
-            );
-        }
+            )
+        })?;
+        Ok((ChannelId::new(raw_id), group))
     }
 
-    /// Iterate over the valid channel ids, in channel order.
-    pub fn channel_ids(&self) -> impl Iterator<Item = ChannelId> + '_ {
-        (0..self.channels.len()).map(ChannelId::new)
+    /// Mutable counterpart to [`Patch::channel`].
+    pub fn channel_mut(&mut self, raw_id: usize) -> Result<(ChannelId, &mut FixtureGroup)> {
+        let len = self.channels.len();
+        let group = self.channels.get_mut(raw_id).ok_or_else(|| {
+            anyhow!("channel selector {raw_id} out of range, only {len} channels are configured")
+        })?;
+        Ok((ChannelId::new(raw_id), group))
+    }
+
+    /// Look up the group on a specific channel by trusted [`ChannelId`].
+    ///
+    /// A `ChannelId` can only be produced by methods on this `Patch` (either
+    /// [`channel`], [`channels_with_ids`], or [`channel_ids`]), so failure
+    /// here indicates a programmer bug rather than an invalid input — the
+    /// error is reported via [`patch_inconsistency`] so the show can keep
+    /// running.
+    pub fn channel_group(&self, channel: ChannelId) -> Result<&FixtureGroup> {
+        self.channels.get(channel.inner()).ok_or_else(|| {
+            patch_inconsistency(
+                "PI-002",
+                format!(
+                    "channel {channel} has no group in patch (channel_count = {})",
+                    self.channels.len()
+                ),
+            )
+        })
+    }
+
+    /// Mutable counterpart to [`Patch::channel_group`].
+    pub fn channel_group_mut(&mut self, channel: ChannelId) -> Result<&mut FixtureGroup> {
+        let len = self.channels.len();
+        self.channels.get_mut(channel.inner()).ok_or_else(|| {
+            patch_inconsistency(
+                "PI-003",
+                format!("channel {channel} has no group in patch (channel_count = {len})"),
+            )
+        })
+    }
+
+    /// Iterate over `(ChannelId, &FixtureGroup)` pairs in channel order.
+    pub fn channels_with_ids(&self) -> impl Iterator<Item = (ChannelId, &FixtureGroup)> + '_ {
+        self.channels
+            .iter()
+            .enumerate()
+            .map(|(i, g)| (ChannelId::new(i), g))
     }
 
     /// Iterate over the channel labels, in channel order. Uses each group's
@@ -519,15 +551,9 @@ mod test {
         )?;
         assert_eq!(2, cfg.len());
         let p = Patch::patch_all(&cfg)?;
-        let channel_ids: Vec<_> = p.channel_ids().collect();
-        assert_eq!(channel_ids.len(), 1);
-        let channel_id = channel_ids[0];
-        assert_eq!(
-            "Color",
-            p.group_in_channel(channel_id)
-                .map(|g| g.qualified_name().to_string())
-                .unwrap_or_default()
-        );
+        let channel_pairs: Vec<_> = p.channels_with_ids().collect();
+        assert_eq!(channel_pairs.len(), 1);
+        assert_eq!("Color", channel_pairs[0].1.qualified_name().to_string());
         assert_eq!(2, p.iter().count());
         let color_configs = p
             .group_by_name("Color")

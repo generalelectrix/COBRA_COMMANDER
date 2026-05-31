@@ -246,7 +246,7 @@ impl FixtureGroup {
                 error!(
                     "{}",
                     crate::fixture::patch::patch_inconsistency(
-                        "PI-010",
+                        "PI-004",
                         format!(
                             "render: fixture {i} of {} requested universe {} but only {} are available",
                             self.qualified_name(),
