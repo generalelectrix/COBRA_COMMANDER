@@ -18,15 +18,6 @@ pub type AnimationTargetIndex = usize;
 
 /// A source of (animation_value, target) pairs that consumers can iterate
 /// without caring about the underlying storage.
-///
-/// Implementations include [`AnimationSlice`] (the leaf, backed by a stack
-/// buffer materialized in `FixtureWithAnimations::render`) and
-/// [`SubtargetView`] (a lazy projection produced by [`Self::subtarget`]).
-///
-/// `filter`, `all`, and `subtarget` are derived from `iter` and apply lazily,
-/// so chaining them never materializes an intermediate buffer. Static
-/// dispatch (generic trait params at call sites) keeps the hot render path
-/// allocation-free.
 pub trait TargetedAnimationValues<T>
 where
     T: PartialEq + Copy,
@@ -58,8 +49,7 @@ where
     }
 }
 
-/// Leaf source: a borrowed slice of (value, target) pairs. Typically the slice
-/// is materialized on the caller's stack in `FixtureWithAnimations::render`.
+/// Leaf source: a borrowed slice of (value, target) pairs.
 pub struct AnimationSlice<'a, T>(pub &'a [(f64, T)]);
 
 impl<'a, T> TargetedAnimationValues<T> for AnimationSlice<'a, T>

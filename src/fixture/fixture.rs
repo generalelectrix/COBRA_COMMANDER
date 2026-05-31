@@ -256,11 +256,9 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         dmx_buffer: &mut [u8],
     ) {
         // Stack buffer holding (animation_value, target) for every contribution
-        // visible to the fixture. Sized for the animator slots; positioner
-        // contributions will share this buffer once that feature lands.
+        // visible to the fixture.
         let mut buf = [(0.0, F::Target::default()); N_ANIM];
         let mut count = 0;
-        // FIXME: implement unipolar variant of animations
         for ta in self.animations.iter() {
             buf[count] = (
                 ta.animation.get_value(
