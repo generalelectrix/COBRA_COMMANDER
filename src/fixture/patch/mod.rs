@@ -252,9 +252,6 @@ impl Patch {
             }
         }
 
-        // Color organ initialization used to be deferred until all groups were
-        // patched. It's actually safe to do it now because a single group's
-        // fixture count is fixed by the time we reach this point.
         if cfg.color_organ {
             group.use_color_organ();
         }
@@ -292,7 +289,7 @@ impl Patch {
     /// Look up a group by its name. Exercised by tests; production OSC
     /// dispatch goes through [`lookup_mut_by_name`] which also returns the
     /// channel id.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn group_by_name(&self, name: &str) -> Option<&FixtureGroup> {
         match *self.by_name.get(name)? {
             GroupLocation::Channel(c) => self.channels.get(c.inner()),
@@ -301,8 +298,7 @@ impl Patch {
     }
 
     /// Look up a group by its name, also returning the channel id if it's
-    /// channel-bound. Hot path for OSC dispatch — single hash lookup plus a
-    /// direct Vec index.
+    /// channel-bound. Hot path for OSC dispatch.
     pub fn lookup_mut_by_name(
         &mut self,
         name: &str,
@@ -312,9 +308,12 @@ impl Patch {
             .get(name)
             .ok_or_else(|| anyhow!("fixture {name} not found in patch"))?;
         let channel_id = location.as_channel();
-        let group = self
-            .group_at_mut(location)
-            .ok_or_else(|| anyhow!("internal patch index inconsistency for {name}"))?;
+        let group = match location {
+            GroupLocation::Channel(c) => self.channels.get_mut(c.inner()),
+            GroupLocation::NonChannel(i) => self.non_channel.get_mut(i),
+        }
+        .ok_or_else(|| anyhow!("internal patch index inconsistency for {name}"))?;
+
         Ok((group, channel_id))
     }
 
@@ -375,15 +374,6 @@ impl Patch {
     /// Iterate over all patched fixture groups, mutably.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FixtureGroup> {
         self.channels.iter_mut().chain(self.non_channel.iter_mut())
-    }
-
-    // ---- Private helpers ----------------------------------------------------
-
-    fn group_at_mut(&mut self, location: GroupLocation) -> Option<&mut FixtureGroup> {
-        match location {
-            GroupLocation::Channel(c) => self.channels.get_mut(c.inner()),
-            GroupLocation::NonChannel(i) => self.non_channel.get_mut(i),
-        }
     }
 }
 

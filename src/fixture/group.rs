@@ -29,13 +29,12 @@ use crate::strobe::FlashState;
 use crate::strobe::StrobeResponse;
 
 pub struct FixtureGroup {
-    /// Stable identity for this group, used to carry state across repatch
-    /// even when the operator renames the group.
+    /// Stable UUID-based identity for this group.
     id: GroupId,
     /// The fixture type of this group.
     fixture_type: FixtureType,
-    /// Human-readable name for this group. Used in OSC addresses and patch
-    /// YAML. May change across repatches; stable identity is `id`, not this.
+    /// Human-readable name for this group. Used in OSC addresses.
+    /// May change across repatches; stable identity is `id`, not this.
     name: GroupName,
     /// The configurations for the fixtures in the group.
     fixture_configs: Vec<GroupFixtureConfig>,
