@@ -129,6 +129,18 @@ impl Channels {
                         emitter,
                     },
                 );
+                // Channel-scoped Positioner tab: refresh state for the new
+                // current channel. Required because channel change does not
+                // go through refresh_ui.
+                if let Some(positioner) = group.positioner() {
+                    positioner.emit_channel_state(
+                        group.fixture_configs().len(),
+                        &ScopedControlEmitter {
+                            entity: crate::osc::positioner::GROUP,
+                            emitter,
+                        },
+                    );
+                }
             }
             ControlMessage::Control { channel_id, msg } => {
                 let (channel_id, group) = if let Some(id) = channel_id {
@@ -203,7 +215,6 @@ impl ChannelBinding {
     }
 
     /// True iff the addressed group is the currently-selected channel.
-    #[expect(unused)] // Will be used by the positioner work in a follow-up.
     pub fn is_current(&self) -> bool {
         matches!(self, Self::Current(_))
     }

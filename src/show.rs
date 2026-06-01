@@ -436,6 +436,35 @@ impl Show {
                 self.clocks.control_clock_osc(msg, &mut self.controller)?;
                 Ok(GuiDirty::CLEAN)
             }
+            crate::osc::positioner::GROUP => {
+                // Channel-scoped /Positioner/... dispatch. Look up the
+                // current channel's group; if it has a positioner, hand the
+                // message off with a `ChannelBinding::Current` emitter (we
+                // know we're in current-channel context by construction).
+                let Some(channel) = self.channels.current_channel() else {
+                    return Ok(GuiDirty::CLEAN);
+                };
+                let group = self.patch.channel_group_mut(channel)?;
+                let fixture_count = group.fixture_configs().len();
+                let channel_emitter = ChannelStateEmitter::new(
+                    crate::channel::ChannelBinding::Current(channel),
+                    &sender,
+                );
+                // The fixture emitter and the positioner_mut borrow target
+                // different fields of `group`; spell that out via let
+                // bindings so the borrow checker can split them.
+                let (name, positioner) = group.split_for_positioner_dispatch();
+                if let Some(positioner) = positioner {
+                    let fixture_emitter =
+                        crate::osc::FixtureStateEmitter::new(name, channel_emitter);
+                    if let Some(result) =
+                        positioner.control_osc(msg, fixture_count, &fixture_emitter)
+                    {
+                        result?;
+                    }
+                }
+                Ok(GuiDirty::CLEAN)
+            }
             // Assume any other control group is referring to a fixture group.
             fixture_group => {
                 let (group, channel_id) = self.patch.lookup_mut_by_name(fixture_group)?;
@@ -583,14 +612,25 @@ impl Show {
 
         if let Some(current_channel) = self.channels.current_channel() {
             match self.patch.channel_group(current_channel) {
-                Ok(group) => self.animation_ui_state.emit_state(
-                    current_channel,
-                    group,
-                    &ScopedControlEmitter {
-                        entity: crate::osc::animation::GROUP,
-                        emitter,
-                    },
-                ),
+                Ok(group) => {
+                    self.animation_ui_state.emit_state(
+                        current_channel,
+                        group,
+                        &ScopedControlEmitter {
+                            entity: crate::osc::animation::GROUP,
+                            emitter,
+                        },
+                    );
+                    if let Some(positioner) = group.positioner() {
+                        positioner.emit_channel_state(
+                            group.fixture_configs().len(),
+                            &ScopedControlEmitter {
+                                entity: crate::osc::positioner::GROUP,
+                                emitter,
+                            },
+                        );
+                    }
+                }
                 Err(e) => error!("{e:#}"),
             }
         }

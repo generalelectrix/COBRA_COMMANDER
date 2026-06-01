@@ -179,13 +179,36 @@ impl FixtureGroup {
         &self.fixture_configs
     }
 
+    /// Read-only access to the positioner, if this group is positionable.
+    pub fn positioner(&self) -> Option<&crate::positioner::Positioner> {
+        self.positioner.as_ref()
+    }
+
+    /// Disjoint-field accessor for the positioner-dispatch path in `Show`.
+    /// Returns `(&self.name, self.positioner.as_mut())`, which is borrow-
+    /// checker-friendly thanks to split borrows on disjoint fields — the
+    /// caller would otherwise hit E0502 trying to hold both a `&self.name`
+    /// for the [`FixtureStateEmitter`] and a `&mut self.positioner` for
+    /// dispatch via the existing accessors.
+    pub fn split_for_positioner_dispatch(
+        &mut self,
+    ) -> (&GroupName, Option<&mut crate::positioner::Positioner>) {
+        (&self.name, self.positioner.as_mut())
+    }
+
     /// Emit the current state of all controls.
     pub fn emit_state(&self, emitter: ChannelStateEmitter) {
         emitter.emit(crate::channel::ChannelStateChange::Strobe(
             self.strobe_enabled,
         ));
-        self.fixture
-            .emit_state(&FixtureStateEmitter::new(&self.name, emitter));
+        let fixture_emitter = FixtureStateEmitter::new(&self.name, emitter);
+        // Per-group positioner state (preset radio + label array). Scoped to
+        // /{group_name}/... via the FixtureStateEmitter that already wraps
+        // the address with the group name.
+        if let Some(positioner) = &self.positioner {
+            positioner.emit_per_group_state(&fixture_emitter);
+        }
+        self.fixture.emit_state(&fixture_emitter);
     }
 
     /// Process the provided control message.
@@ -194,9 +217,22 @@ impl FixtureGroup {
         msg: &OscControlMessage,
         emitter: ChannelStateEmitter,
     ) -> anyhow::Result<()> {
+        let fixture_emitter = FixtureStateEmitter::new(&self.name, emitter);
+        let fixture_count = self.fixture_configs.len();
+
+        // Try positioner first so per-group `PositionPreset*` messages don't
+        // fall through to the fixture's own dispatch. Returns `None` for
+        // anything that isn't a positioner control; the fixture handles the
+        // rest.
+        if let Some(positioner) = self.positioner.as_mut()
+            && let Some(result) = positioner.control_osc(msg, fixture_count, &fixture_emitter)
+        {
+            return result.with_context(|| self.qualified_name().to_string());
+        }
+
         let handled = self
             .fixture
-            .control(msg, &FixtureStateEmitter::new(&self.name, emitter))
+            .control(msg, &fixture_emitter)
             .with_context(|| self.qualified_name().to_string())?;
         ensure!(
             handled,

@@ -34,6 +34,7 @@ pub mod clock;
 mod control_message;
 mod label_array;
 mod listener;
+pub mod positioner;
 mod radio_button;
 mod sender;
 mod unipolar_array;
@@ -185,7 +186,6 @@ impl<'a> FixtureStateEmitter<'a> {
 
     /// The channel binding of the addressed group: whether it is the
     /// currently-selected channel, another channel, or unbound.
-    #[expect(unused)] // Will be used by the positioner work in a follow-up.
     pub fn channel(&self) -> &ChannelBinding {
         self.channel_emitter.channel()
     }
@@ -197,7 +197,6 @@ impl<'a> FixtureStateEmitter<'a> {
     /// different from this emitter's group-name scope — e.g. the positioner
     /// emitting to `/Positioner/...` while it was handed a
     /// `/{group_name}/`-scoped emitter.
-    #[expect(unused)] // Will be used by the positioner work in a follow-up.
     pub fn scoped(&self, entity: &'a str) -> ScopedControlEmitter<'a> {
         ScopedControlEmitter {
             entity,

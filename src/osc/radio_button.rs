@@ -33,12 +33,14 @@ impl RadioButton {
         F: Fn(usize) -> Result<T> + 'static + Copy,
     {
         map.add(self.control, move |m| {
-            self.parse(m)?.map(process).transpose()
+            self.parse_press(m)?.map(process).transpose()
         })
     }
 
-    /// Get a index from a collection of radio buttons, mapped to numeric addresses.
-    fn parse(&self, v: &OscControlMessage) -> Result<Option<usize>, OscError> {
+    /// Get the index from a radio button press. Returns `Ok(None)` for the
+    /// release (`0.0`) message. Useful for handlers that need to parse a
+    /// radio button outside of the standard [`GroupControlMap`] flow.
+    pub fn parse_press(&self, v: &OscControlMessage) -> Result<Option<usize>, OscError> {
         let (x, y) = match parse_radio_button_indices(v.addr_payload()) {
             Ok(indices) => indices,
             Err(err) => {
