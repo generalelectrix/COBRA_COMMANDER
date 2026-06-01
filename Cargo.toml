@@ -8,7 +8,6 @@ edition = "2024"
 [dependencies]
 serde = { version = "1", features = ["derive", "rc"] }
 log = "0.4"
-simplelog = "0.12"
 rosc = "0.11"
 rust_dmx = "0.9"
 serde_yaml = "0.9"

@@ -1,9 +1,15 @@
 use anyhow::Result;
 use clap::Parser;
-use log::LevelFilter;
-use simplelog::{Config as LogConfig, SimpleLogger};
 
 use crate::cli::Cli;
+
+/// Backlog of in-flight log records between the producer and the drain thread.
+/// Records are dropped (and counted) when this fills, so logging never blocks
+/// a real-time thread.
+const LOG_CHANNEL_CAPACITY: usize = 1024;
+
+/// Per-severity scrollback retained for the in-GUI log view.
+const LOG_SCROLLBACK_PER_SEVERITY: usize = 500;
 
 /// Override NSApplication's terminate: to send performClose: to the key
 /// window instead of killing the process. This converts Cmd+Q into the
@@ -66,16 +72,19 @@ mod wled;
 fn main() -> Result<()> {
     let args = Cli::try_parse()?;
 
-    let log_level = if args.debug {
-        LevelFilter::Debug
+    // The in-GUI Status view is the only log destination — no stderr/terminal output.
+    // The sink captures whatever passes the global gate; the GUI "Capture" dropdown owns
+    // that gate via `log::set_max_level`.
+    let (capture, log_rx) = gui_common::log_status::channel(LOG_CHANNEL_CAPACITY);
+    log::set_boxed_logger(Box::new(capture))?;
+    log::set_max_level(if args.debug {
+        log::LevelFilter::Debug
     } else {
-        LevelFilter::Warn
-    };
-
-    SimpleLogger::init(log_level, LogConfig::default())?;
+        log::LevelFilter::Warn
+    });
 
     #[cfg(target_os = "macos")]
     install_terminate_override();
 
-    config_gui::run_console(args.osc_receive_port)
+    config_gui::run_console(args.osc_receive_port, log_rx)
 }
