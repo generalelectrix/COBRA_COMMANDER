@@ -38,6 +38,7 @@ use midi_harness::install_midi_device_change_handler;
 use tunnels::audio::EnvelopeStreams;
 use tunnels_lib::repaint::RepaintSignal;
 
+use crate::LOG_SCROLLBACK_PER_SEVERITY;
 use crate::clocks::Clocks;
 use crate::control::{CommandClient, Controller};
 use crate::fixture::Patch;
@@ -51,6 +52,7 @@ use audio_panel::AudioPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
 use gui_common::envelope_viewer::EnvelopeViewerState;
+use gui_common::log_status::{self, LogRecord, LogStatusPanel, LogStatusState};
 use gui_common::{CloseHandler, MessageModal};
 use midi_panel::{MidiPanel, MidiPanelState};
 use patch_panel::{PatchPanel, PatchPanelState};
@@ -79,6 +81,7 @@ enum Tab {
     Osc,
     ClocksAudio,
     Animation,
+    Status,
 }
 
 struct ConsoleApp {
@@ -113,6 +116,7 @@ struct ConsoleApp {
     modal: MessageModal,
     active_tab: Tab,
     gui_state: SharedGuiState,
+    log_status: LogStatusState,
 }
 
 impl eframe::App for ConsoleApp {
@@ -127,8 +131,15 @@ impl eframe::App for ConsoleApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
                 ui.selectable_value(&mut self.active_tab, Tab::ClocksAudio, "Clocks/Audio");
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
+                if log_status::status_tab(ui, self.active_tab == Tab::Status, &self.log_status) {
+                    self.active_tab = Tab::Status;
+                }
             });
         });
+
+        // Let the drain thread know whether the live log view is in front, so
+        // it wakes the GUI on plain records only while the Status tab is open.
+        self.log_status.set_viewing(self.active_tab == Tab::Status);
 
         // Notify the show when the visualizer is visible (either tab or detached window).
         let detached = self.visualizer_detached.load(Ordering::Relaxed);
@@ -321,6 +332,12 @@ impl eframe::App for ConsoleApp {
                 }
                 .ui(ui);
             }
+            Tab::Status => {
+                LogStatusPanel {
+                    state: &mut self.log_status,
+                }
+                .ui(ui);
+            }
         });
 
         self.modal.ui(ctx);
@@ -329,7 +346,7 @@ impl eframe::App for ConsoleApp {
 
 /// Single entry point for the console. Runs the welcome screen, initializes
 /// the show, and runs the main console GUI.
-pub fn run_console(osc_receive_port: u16) -> Result<()> {
+pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result<()> {
     // Phase 1: Welcome screen.
     let welcome_result = welcome::run_welcome()?;
 
@@ -360,7 +377,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
     )?;
 
     // Move-once values for the eframe creator closure.
-    let mut startup = Some((controller, osc_listen_addr, initial_configs));
+    let mut startup = Some((controller, osc_listen_addr, initial_configs, log_rx));
 
     // Phase 3: Run the console GUI. GuiState construction (which needs a
     // RepaintSignal built from cc.egui_ctx) and the show-thread spawn live
@@ -377,13 +394,28 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
         Box::new(move |cc| {
             stage_theme::apply(&cc.egui_ctx);
 
-            let (controller, osc_listen_addr, initial_configs) =
+            let (controller, osc_listen_addr, initial_configs, log_rx) =
                 startup.take().expect("creator closure called once");
 
             let repaint: RepaintSignal = {
                 let ctx = cc.egui_ctx.clone();
                 Arc::new(move || ctx.request_repaint())
             };
+
+            // Build the in-GUI log surfaces and spawn the drain thread that
+            // moves captured records into scrollback and fires the repaint.
+            let log_alert = Arc::new(log_status::LogAlert::new(repaint.clone()));
+            let scrollback = Arc::new(Mutex::new(log_status::Scrollback::new(
+                LOG_SCROLLBACK_PER_SEVERITY,
+            )));
+            let viewing = Arc::new(AtomicBool::new(false));
+            log_status::spawn_drain_thread(
+                log_rx,
+                scrollback.clone(),
+                log_alert.clone(),
+                viewing.clone(),
+            );
+            let log_status = LogStatusState::new(log_alert, scrollback, viewing);
 
             // The DMX debug window is a separate deferred viewport, so a plain
             // root `request_repaint()` won't re-render it. Its snapshot Notified
@@ -473,6 +505,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
                 modal: MessageModal::default(),
                 active_tab: Tab::default(),
                 gui_state,
+                log_status,
             }))
         }),
     )
