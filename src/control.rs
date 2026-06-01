@@ -331,6 +331,10 @@ pub enum MetaCommand {
     AudioControl(tunnels::audio::ControlMessage),
     /// Give the OSC listener a pre-bound receive socket.
     SwapOscSocket(UdpSocket),
+    /// Rename the currently-active preset of the currently-selected
+    /// channel's group. Silent no-op if the current channel has no
+    /// positioner or no channel is selected.
+    RenamePositionerPreset(String),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -361,6 +365,7 @@ impl fmt::Debug for MetaCommand {
             }
             Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
             Self::SwapOscSocket(_) => write!(f, "SwapOscSocket"),
+            Self::RenamePositionerPreset(name) => write!(f, "RenamePositionerPreset({name:?})"),
         }
     }
 }

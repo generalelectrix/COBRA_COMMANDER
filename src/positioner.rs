@@ -142,7 +142,6 @@ impl Positioner {
     ///
     /// Extending pads with default (zero) offsets; truncating drops the tail
     /// entries.
-    #[cfg_attr(not(test), expect(dead_code))] // Wired into reconfigure_from in step 4.
     pub fn reconcile_to_fixture_count(&mut self, new_count: usize) {
         for preset in &mut self.presets {
             preset

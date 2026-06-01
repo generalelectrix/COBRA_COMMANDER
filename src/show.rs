@@ -265,6 +265,41 @@ impl Show {
             MetaCommand::AudioControl(msg) => {
                 Ok(self.clocks.control_audio(msg, &mut self.controller))
             }
+            MetaCommand::RenamePositionerPreset(name) => {
+                // Look up the current channel's group. If positionable,
+                // rename the active preset and re-emit so TouchOSC labels
+                // update on both the channel-scoped tab and the per-group
+                // selector. Silent no-op if there's no current channel or
+                // the current channel has no positioner.
+                let Some(channel) = self.channels.current_channel() else {
+                    return Ok(GuiDirty::CLEAN);
+                };
+                let group = self.patch.channel_group_mut(channel)?;
+                let fixture_count = group.fixture_configs().len();
+                let (group_name, positioner) = group.split_for_positioner_dispatch();
+                let Some(positioner) = positioner else {
+                    return Ok(GuiDirty::CLEAN);
+                };
+                if let Some(preset) = positioner.presets.get_mut(positioner.active) {
+                    preset.name = name;
+                }
+                let sender = self.controller.sender_with_metadata(None);
+                positioner.emit_channel_state(
+                    fixture_count,
+                    &ScopedControlEmitter {
+                        entity: crate::osc::positioner::GROUP,
+                        emitter: &sender,
+                    },
+                );
+                positioner.emit_per_group_state(&crate::osc::FixtureStateEmitter::new(
+                    group_name,
+                    ChannelStateEmitter::new(
+                        crate::channel::ChannelBinding::Current(channel),
+                        &sender,
+                    ),
+                ));
+                Ok(GuiDirty::CLEAN)
+            }
         }
     }
 

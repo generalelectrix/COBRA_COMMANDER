@@ -103,6 +103,14 @@ impl FixtureGroup {
         }
         self.fixture = other.fixture;
         self.strobe_enabled = other.strobe_enabled;
+        // Positioner state survives a repatch when the fixture type and
+        // options match. If the new patch has a different fixture count,
+        // resize each preset's per-fixture offset vector (zero-padding on
+        // growth, truncating tail entries on shrinkage).
+        if let Some(mut positioner) = other.positioner {
+            positioner.reconcile_to_fixture_count(self.fixture_configs.len());
+            self.positioner = Some(positioner);
+        }
         true
     }
 

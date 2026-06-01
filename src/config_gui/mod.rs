@@ -23,6 +23,7 @@ mod dmx_panel;
 mod midi_panel;
 mod osc_panel;
 mod patch_panel;
+mod positioner_panel;
 mod welcome;
 
 use std::path::PathBuf;
@@ -55,6 +56,7 @@ use gui_common::log_status::{self, LogRecord, LogStatusPanel, LogStatusState};
 use gui_common::{CloseHandler, MessageModal};
 use midi_panel::{MidiPanel, MidiPanelState};
 use patch_panel::{PatchPanel, PatchPanelState};
+use positioner_panel::{PositionerPanel, PositionerPanelState};
 use welcome::WelcomeResult;
 
 fn apply_dark_theme(ctx: &egui::Context) {
@@ -80,6 +82,7 @@ enum Tab {
     Osc,
     ClocksAudio,
     Animation,
+    Positioner,
     Status,
 }
 
@@ -110,6 +113,7 @@ struct ConsoleApp {
     /// deferred viewport closure can write the combo box selection; the main
     /// loop reads it to drive the Show's watch signal.
     dmx_debug_selected: Arc<AtomicUsize>,
+    positioner_panel: PositionerPanelState,
     patchers: Vec<crate::fixture::patch::Patcher>,
     close_handler: CloseHandler,
     modal: MessageModal,
@@ -130,6 +134,7 @@ impl eframe::App for ConsoleApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
                 ui.selectable_value(&mut self.active_tab, Tab::ClocksAudio, "Clocks/Audio");
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
+                ui.selectable_value(&mut self.active_tab, Tab::Positioner, "Positioner");
                 if log_status::status_tab(ui, self.active_tab == Tab::Status, &self.log_status) {
                     self.active_tab = Tab::Status;
                 }
@@ -331,6 +336,16 @@ impl eframe::App for ConsoleApp {
                 }
                 .ui(ui);
             }
+            Tab::Positioner => {
+                PositionerPanel {
+                    ctx: GuiContext {
+                        modal: &mut self.modal,
+                        client: &self.client,
+                    },
+                    state: &mut self.positioner_panel,
+                }
+                .ui(ui);
+            }
             Tab::Status => {
                 LogStatusPanel {
                     state: &mut self.log_status,
@@ -509,6 +524,7 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
                 dmx_panel: DmxPortPanelState::new(),
                 dmx_debug_open: Arc::new(AtomicBool::new(false)),
                 dmx_debug_selected: Arc::new(AtomicUsize::new(0)),
+                positioner_panel: PositionerPanelState::default(),
                 patchers: Patch::menu(),
                 client: command_client,
                 show_file_path,
