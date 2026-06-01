@@ -22,6 +22,23 @@ pub(crate) fn dmx_debug_panel_ui(
     gui_state: &SharedGuiState,
     selected_universe: &AtomicUsize,
 ) {
+    // The global stage theme inflates spacing and font sizes for at-a-distance
+    // legibility, which makes this dense 512-cell grid require an enormous
+    // window. Restore egui's default spacing and font sizes for this window's
+    // UI subtree only — keeping the dark theme colors — so the values fit.
+    // `style_mut` is copy-on-write, so this does not touch the shared context.
+    {
+        let defaults = egui::Style::default();
+        let style = ui.style_mut();
+        style.spacing = defaults.spacing;
+        style.text_styles = defaults.text_styles;
+        // Labels are selectable by default, which gives each grid cell a text
+        // I-beam cursor and swallows the hover tooltip. These cells are
+        // read-only numbers, so disable selection — restoring the normal cursor
+        // and letting the per-cell channel/value tooltip show.
+        style.interaction.selectable_labels = false;
+    }
+
     let universe_count = gui_state.dmx_port_status.load().ports.len();
     if universe_count == 0 {
         ui.label("No universes patched.");
@@ -91,13 +108,19 @@ fn render_grid(ui: &mut egui::Ui, values: &DmxBuffer) {
                     for col in 0..16 {
                         let channel = row * 16 + col + 1; // 1-indexed DMX channel
                         let value = values.get(row * 16 + col).copied().unwrap_or(0);
-                        ui.label(
+                        let response = ui.label(
                             egui::RichText::new(format!("{value:>3}"))
                                 .monospace()
                                 .background_color(heat_color(value))
                                 .color(text_color(value)),
-                        )
-                        .on_hover_text(format!("Channel {channel}: {value}"));
+                        );
+                        // Show the channel/value immediately on rollover rather
+                        // than via `on_hover_text`, which waits out the shared
+                        // `tooltip_delay` (and we can't shorten that per-window
+                        // since tooltip timing is read from the global context).
+                        if response.contains_pointer() {
+                            response.show_tooltip_text(format!("Channel {channel}: {value}"));
+                        }
                     }
                     ui.end_row();
                 }
@@ -125,7 +148,7 @@ mod test {
     use super::*;
     use std::sync::Arc;
 
-    use egui_kittest::Harness;
+    use egui_kittest::{Harness, kittest::Queryable};
     use tunnels_lib::repaint::noop_repaint;
 
     use crate::dmx::DmxBuffer;
@@ -198,5 +221,40 @@ mod test {
     fn render_no_universes() {
         let state = gui_state(0, None);
         snapshot_render("dmx_debug_no_universes", &state, 0);
+    }
+
+    #[test]
+    fn cell_hover_shows_channel_tooltip() {
+        // Unique value at channel 1 so we can locate exactly that cell by text.
+        let mut values = [0u8; 512];
+        values[0] = 200;
+        let state = gui_state(
+            1,
+            Some(DmxDebugSnapshot {
+                universe: 0,
+                values,
+            }),
+        );
+        let selected = AtomicUsize::new(0);
+
+        // No `tooltip_delay` override: the panel shows the tooltip immediately
+        // on rollover, so it must appear on the frame the pointer arrives.
+        let mut harness = Harness::new_ui(|ui| {
+            dmx_debug_panel_ui(ui, &state, &selected);
+        });
+        harness.run();
+
+        // The cell for channel 1 renders "200"; hover it.
+        let cells: Vec<_> = harness.get_all_by_label("200").collect();
+        cells
+            .first()
+            .unwrap_or_else(|| panic!("no grid cell labeled \"200\" found"))
+            .hover();
+        harness.run();
+
+        assert!(
+            harness.query_by_label("Channel 1: 200").is_some(),
+            "expected an immediate \"Channel 1: 200\" tooltip after hovering channel 1's cell",
+        );
     }
 }
