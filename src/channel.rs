@@ -71,19 +71,20 @@ impl Channels {
         if selected_fixture_only {
             if let Some(channel_id) = self.current_channel {
                 match patch.channel_group(channel_id) {
-                    Ok(f) => f.emit_state(ChannelStateEmitter {
-                        channel_id: Some(channel_id),
+                    // The addressed group is the current channel by construction.
+                    Ok(f) => f.emit_state(ChannelStateEmitter::new(
+                        ChannelBinding::Current(channel_id),
                         emitter,
-                    }),
+                    )),
                     Err(e) => error!("{e:#}"),
                 }
             }
         } else {
             for (channel_id, group) in patch.channels_with_ids() {
-                group.emit_state(ChannelStateEmitter {
-                    channel_id: Some(channel_id),
+                group.emit_state(ChannelStateEmitter::new(
+                    ChannelBinding::resolve(Some(channel_id), self.current_channel),
                     emitter,
-                });
+                ));
             }
         }
     }
@@ -142,10 +143,10 @@ impl Channels {
                 };
                 let handled = group.control_from_channel(
                     msg,
-                    ChannelStateEmitter {
-                        channel_id: Some(channel_id),
+                    ChannelStateEmitter::new(
+                        ChannelBinding::resolve(Some(channel_id), self.current_channel),
                         emitter,
-                    },
+                    ),
                 )?;
                 if !handled {
                     debug!(
@@ -164,25 +165,78 @@ pub fn strobe_control_channel(channel_count: usize) -> usize {
     (crate::midi::slots::submaster_wing_count(channel_count) * 8) - 1
 }
 
+/// The relationship between the channel an emitter is addressing and the
+/// currently-selected channel.
+///
+/// Carried by [`ChannelStateEmitter`] so downstream code (e.g. the positioner)
+/// can answer "should I update channel-scoped UI tabs?" without separately
+/// threading current-channel state. Mirrors how a `channel_id` baked into the
+/// emitter routes MIDI knob updates to the right hardware: the emitter's type
+/// encodes the binding context.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChannelBinding {
+    /// The addressed group IS the currently-selected channel.
+    Current(ChannelId),
+    /// The addressed group has a channel id but isn't currently selected.
+    Other(ChannelId),
+    /// The addressed group isn't channel-bound at all.
+    Unbound,
+}
+
+impl ChannelBinding {
+    /// Resolve from the addressed group's channel id and the global
+    /// current-channel selection.
+    pub fn resolve(addressed: Option<ChannelId>, current: Option<ChannelId>) -> Self {
+        match addressed {
+            None => Self::Unbound,
+            Some(id) if Some(id) == current => Self::Current(id),
+            Some(id) => Self::Other(id),
+        }
+    }
+
+    /// The channel id of the addressed group, if any.
+    pub fn channel_id(&self) -> Option<ChannelId> {
+        match self {
+            Self::Current(id) | Self::Other(id) => Some(*id),
+            Self::Unbound => None,
+        }
+    }
+
+    /// True iff the addressed group is the currently-selected channel.
+    #[expect(unused)] // Will be used by the positioner work in a follow-up.
+    pub fn is_current(&self) -> bool {
+        matches!(self, Self::Current(_))
+    }
+}
+
 /// Provide methods to emit channel control state changes for a specific channel.
-/// If no channel is set, no state change events will be emitted.
+/// If no channel is set (binding is [`ChannelBinding::Unbound`]), no state
+/// change events will be emitted.
 pub struct ChannelStateEmitter<'a> {
-    channel_id: Option<ChannelId>,
+    channel: ChannelBinding,
     emitter: &'a dyn EmitControlMessage,
 }
 
 impl<'a> ChannelStateEmitter<'a> {
-    /// An emitter that ignores channel state changes.
-    pub fn new(channel_id: Option<ChannelId>, emitter: &'a dyn EmitControlMessage) -> Self {
-        Self {
-            channel_id,
-            emitter,
-        }
+    pub fn new(channel: ChannelBinding, emitter: &'a dyn EmitControlMessage) -> Self {
+        Self { channel, emitter }
+    }
+
+    /// The channel binding this emitter is addressing.
+    pub fn channel(&self) -> &ChannelBinding {
+        &self.channel
+    }
+
+    /// The underlying control message sender. Useful for building sibling
+    /// scoped emitters (e.g. a `/Positioner/`-scoped emitter from a
+    /// `/{group_name}/`-scoped one).
+    pub fn underlying(&self) -> &'a dyn EmitControlMessage {
+        self.emitter
     }
 
     /// Emit the provided state change.
     pub fn emit(&self, msg: ChannelStateChange) {
-        let Some(channel_id) = self.channel_id else {
+        let Some(channel_id) = self.channel.channel_id() else {
             return;
         };
         let sc = StateChange::State { channel_id, msg };
@@ -290,12 +344,12 @@ impl KnobValue {
 
 #[cfg(test)]
 pub mod mock {
-    use crate::{channel::ChannelStateEmitter, control::mock::NoOpEmitter};
+    use crate::{
+        channel::{ChannelBinding, ChannelStateEmitter},
+        control::mock::NoOpEmitter,
+    };
 
     pub fn no_op_emitter() -> ChannelStateEmitter<'static> {
-        ChannelStateEmitter {
-            channel_id: None,
-            emitter: &NoOpEmitter,
-        }
+        ChannelStateEmitter::new(ChannelBinding::Unbound, &NoOpEmitter)
     }
 }

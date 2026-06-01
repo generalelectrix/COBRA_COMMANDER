@@ -439,7 +439,11 @@ impl Show {
             // Assume any other control group is referring to a fixture group.
             fixture_group => {
                 let (group, channel_id) = self.patch.lookup_mut_by_name(fixture_group)?;
-                group.control(msg, ChannelStateEmitter::new(channel_id, &sender))?;
+                let binding = crate::channel::ChannelBinding::resolve(
+                    channel_id,
+                    self.channels.current_channel(),
+                );
+                group.control(msg, ChannelStateEmitter::new(binding, &sender))?;
                 Ok(GuiDirty::CLEAN)
             }
         }
@@ -564,11 +568,13 @@ impl Show {
     /// Send messages to refresh all UI state.
     fn refresh_ui(&mut self) {
         let emitter = &self.controller.sender_with_metadata(None);
+        let current_channel = self.channels.current_channel();
         for group in self.patch.iter() {
-            group.emit_state(ChannelStateEmitter::new(
+            let binding = crate::channel::ChannelBinding::resolve(
                 self.patch.channel_for_id(group.id()),
-                emitter,
-            ));
+                current_channel,
+            );
+            group.emit_state(ChannelStateEmitter::new(binding, emitter));
         }
 
         self.master_controls.emit_state(emitter);
