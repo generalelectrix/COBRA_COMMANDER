@@ -610,6 +610,10 @@ impl Show {
 
         self.channels.emit_state(false, &self.patch, emitter);
 
+        let positioner_emitter = ScopedControlEmitter {
+            entity: crate::osc::positioner::GROUP,
+            emitter,
+        };
         if let Some(current_channel) = self.channels.current_channel() {
             match self.patch.channel_group(current_channel) {
                 Ok(group) => {
@@ -622,17 +626,18 @@ impl Show {
                         },
                     );
                     if let Some(positioner) = group.positioner() {
-                        positioner.emit_channel_state(
-                            group.fixture_configs().len(),
-                            &ScopedControlEmitter {
-                                entity: crate::osc::positioner::GROUP,
-                                emitter,
-                            },
-                        );
+                        positioner
+                            .emit_channel_state(group.fixture_configs().len(), &positioner_emitter);
+                    } else {
+                        crate::positioner::emit_non_positionable_channel_state(&positioner_emitter);
                     }
                 }
                 Err(e) => error!("{e:#}"),
             }
+        } else {
+            // No current channel at all (e.g. empty patch at cold start).
+            // Same cleared state as the non-positionable case.
+            crate::positioner::emit_non_positionable_channel_state(&positioner_emitter);
         }
 
         self.clocks.emit_state(&mut self.controller);

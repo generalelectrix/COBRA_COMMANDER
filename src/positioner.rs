@@ -424,6 +424,42 @@ impl Positioner {
     }
 }
 
+/// Push neutral / cleared values for every channel-scoped Positioner control.
+///
+/// Used in two cases where there is no live positioner to drive the
+/// `/Positioner/...` tab:
+///
+/// - The current channel's group has no positioner (non-positionable
+///   fixture type).
+/// - There is no current channel at all (e.g. an empty patch at cold
+///   start).
+///
+/// Without this emit, the tab would display stale state lingering from
+/// whichever positionable channel was last selected, which can mislead the
+/// operator into thinking they're still editing it. The plan specifies the
+/// FixtureLabel `"—"` as the visible cue; we also reset the faders and
+/// deselect both radios so the tab visually matches the "no live state"
+/// condition.
+///
+/// The emitter should be scoped to [`addr::GROUP`] (`"Positioner"`).
+pub fn emit_non_positionable_channel_state<E: EmitScopedOscMessage + ?Sized>(emitter: &E) {
+    let dash = || OscType::String("—".to_string());
+    emitter.emit_osc(ScopedOscMessage {
+        control: addr::FIXTURE_LABEL,
+        arg: dash(),
+    });
+    emitter.emit_float(addr::X_FADER, 0.0);
+    emitter.emit_float(addr::Y_FADER, 0.0);
+    emitter.emit_float(addr::FOCUS_FADER, 0.0);
+    // Deselect every preset / bump-step button via an out-of-range set.
+    addr::PRESET_SELECT.set(usize::MAX, /* allow_out_of_range = */ true, emitter);
+    emitter.emit_osc(ScopedOscMessage {
+        control: addr::PRESET_NAME,
+        arg: dash(),
+    });
+    addr::BUMP_STEP_SELECT.set(usize::MAX, true, emitter);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -488,5 +524,46 @@ mod tests {
         assert!((BumpStep::Coarse.magnitude() - 0.05).abs() < 1e-9);
         assert!((BumpStep::Medium.magnitude() - 0.01).abs() < 1e-9);
         assert!((BumpStep::Fine.magnitude() - 0.002).abs() < 1e-9);
+    }
+
+    #[test]
+    fn non_positionable_emit_clears_every_channel_scoped_control() {
+        let emitter = crate::osc::MockEmitter::new();
+        emit_non_positionable_channel_state(&emitter);
+        let msgs = emitter.take();
+
+        // Indexed lookups by control name for clarity.
+        let by_addr: std::collections::HashMap<String, OscType> = msgs.into_iter().collect();
+
+        assert_eq!(
+            by_addr.get(addr::FIXTURE_LABEL),
+            Some(&OscType::String("—".to_string())),
+        );
+        assert_eq!(
+            by_addr.get(addr::PRESET_NAME),
+            Some(&OscType::String("—".to_string())),
+        );
+        assert_eq!(by_addr.get(addr::X_FADER), Some(&OscType::Float(0.0)));
+        assert_eq!(by_addr.get(addr::Y_FADER), Some(&OscType::Float(0.0)));
+        assert_eq!(by_addr.get(addr::FOCUS_FADER), Some(&OscType::Float(0.0)));
+
+        // Every preset radio button should be 0.0 (none selected).
+        for i in 1..=N_POSITIONER_SLOTS {
+            let addr = format!("{}/1/{}", addr::PRESET_SELECT.control, i);
+            assert_eq!(
+                by_addr.get(&addr),
+                Some(&OscType::Float(0.0)),
+                "preset radio {addr} not cleared",
+            );
+        }
+        // Every bump-step radio button should be 0.0.
+        for i in 1..=3 {
+            let addr = format!("{}/1/{}", addr::BUMP_STEP_SELECT.control, i);
+            assert_eq!(
+                by_addr.get(&addr),
+                Some(&OscType::Float(0.0)),
+                "bump-step radio {addr} not cleared",
+            );
+        }
     }
 }
