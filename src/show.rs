@@ -13,7 +13,10 @@ use crate::{
     fixture::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
-    gui_state::{AnimationSnapshot, DmxPortInfo, DmxPortStatus, PatchSnapshot},
+    gui_state::{
+        AnimationSnapshot, DMX_DEBUG_NOT_WATCHING, DmxDebugSnapshot, DmxPortInfo, DmxPortStatus,
+        PatchSnapshot,
+    },
     gui_state::{GuiDirty, SharedGuiState},
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
@@ -40,9 +43,15 @@ pub struct Show {
     master_strobe_channel: Option<usize>,
     gui_state: SharedGuiState,
     envelope_streams_tx: Sender<EnvelopeStreams>,
+    /// Last time a DMX output debug snapshot was pushed, for rate limiting.
+    last_dmx_debug: Instant,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
+/// Minimum interval between DMX output debug snapshots (~4fps). The debug
+/// window only needs a coarse view of output, so we throttle well below the
+/// show framerate to keep the snapshot off the hot path.
+const DMX_DEBUG_INTERVAL: Duration = Duration::from_millis(250);
 /// The enttec hypothetically outputs 40 fps. This seems to only truly be the
 /// case when no writes are being performed. Writing at the port framerate (or
 /// even twice as fast) seems to bring the framerate down a bit - adding about
@@ -77,6 +86,7 @@ impl Show {
             master_strobe_channel: None,
             gui_state,
             envelope_streams_tx,
+            last_dmx_debug: Instant::now(),
         };
         show.reconcile_submaster_wings()?;
         show.reconcile_clock_wing()?;
@@ -125,6 +135,7 @@ impl Show {
                         error!("DMX write error: {e:#}.");
                     }
                 }
+                self.snapshot_dmx_debug();
             }
         }
     }
@@ -508,6 +519,32 @@ impl Show {
         }
     }
 
+    /// Push the current output buffer for the watched universe to the GUI, if
+    /// the DMX output debug window is open. Throttled to `DMX_DEBUG_INTERVAL`
+    /// (~4fps) and a no-op when no window is watching.
+    fn snapshot_dmx_debug(&mut self) {
+        let watched = self
+            .gui_state
+            .dmx_debug_watch
+            .load(std::sync::atomic::Ordering::Relaxed);
+        if watched == DMX_DEBUG_NOT_WATCHING {
+            return;
+        }
+        if self.last_dmx_debug.elapsed() < DMX_DEBUG_INTERVAL {
+            return;
+        }
+        // Out of range after a repatch shrank the universe count — skip until
+        // the GUI selects a valid universe.
+        let Some(univ) = self.dmx.get(watched) else {
+            return;
+        };
+        self.gui_state.dmx_debug.store(Some(DmxDebugSnapshot {
+            universe: watched,
+            values: univ.buffer,
+        }));
+        self.last_dmx_debug = Instant::now();
+    }
+
     /// Reconcile MIDI submaster wing slots with the current channel count.
     fn reconcile_submaster_wings(&mut self) -> Result<()> {
         self.controller
@@ -664,6 +701,7 @@ impl Show {
             initial_clock_status,
             String::new(),
             tunnels_lib::repaint::noop_repaint(),
+            tunnels_lib::repaint::noop_repaint(),
         ));
         let mut show = Self {
             controller,
@@ -679,6 +717,7 @@ impl Show {
             master_strobe_channel: None,
             gui_state,
             envelope_streams_tx,
+            last_dmx_debug: Instant::now(),
         };
         show.reconcile_submaster_wings().unwrap();
         show.reconcile_clock_wing().unwrap();

@@ -1,4 +1,7 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize},
+};
 
 use arc_swap::ArcSwap;
 use midi_harness::SlotStatus;
@@ -6,6 +9,7 @@ use tunnels::{animation::Animation, audio::AudioSnapshot, clock_server::SharedCl
 use tunnels_lib::{notified::Notified, repaint::RepaintSignal};
 
 use crate::config::FixtureGroupConfig;
+use crate::dmx::{DmxBuffer, UniverseIdx};
 use crate::osc::OscClientId;
 
 /// Snapshot of animation state for the visualizer panel.
@@ -40,6 +44,18 @@ pub struct DmxPortInfo {
 pub struct DmxPortStatus {
     /// One entry per universe.
     pub ports: Vec<DmxPortInfo>,
+}
+
+/// Sentinel `dmx_debug_watch` value meaning "no debug window is watching".
+pub const DMX_DEBUG_NOT_WATCHING: usize = usize::MAX;
+
+/// Snapshot of the live DMX output buffer for one universe, for the output
+/// debug window. Carries its universe index so the GUI can discard stale data
+/// left over from a previous selection while a switch is in flight.
+#[derive(Clone, Debug)]
+pub struct DmxDebugSnapshot {
+    pub universe: UniverseIdx,
+    pub values: DmxBuffer,
 }
 
 bitflags::bitflags! {
@@ -78,14 +94,26 @@ pub struct GuiState {
     pub master_strobe_fader_channel_mapped: AtomicBool,
     /// Snapshot of the current audio input state for the audio panel.
     pub audio_state: Notified<AudioSnapshot>,
+    /// Universe the DMX output debug window is watching, written by the GUI and
+    /// read by the Show each loop. `DMX_DEBUG_NOT_WATCHING` when no window is open
+    /// — gates whether the Show snapshots output at all.
+    pub dmx_debug_watch: AtomicUsize,
+    /// Snapshot of the live DMX output buffer for the watched universe, pushed by
+    /// the Show at ~4fps. `None` until the first snapshot for a selection arrives.
+    pub dmx_debug: Notified<Option<DmxDebugSnapshot>>,
 }
 
 impl GuiState {
+    /// `repaint` wakes the root viewport (where all the main-window panels
+    /// live). `dmx_debug_repaint` is a separate signal that must also wake the
+    /// DMX debug viewport — the debug window is a distinct deferred viewport, so
+    /// a root-only repaint would never re-render it (see `dmx_debug`).
     pub fn new(
         midi_slots: Vec<SlotStatus>,
         clock_status: ClockStatus,
         osc_listen_addr: String,
         repaint: RepaintSignal,
+        dmx_debug_repaint: RepaintSignal,
     ) -> Self {
         Self {
             midi_slots: Notified::new(midi_slots, repaint.clone()),
@@ -98,6 +126,8 @@ impl GuiState {
             dmx_port_status: ArcSwap::from_pointee(DmxPortStatus::default()),
             master_strobe_fader_channel_mapped: AtomicBool::new(false),
             audio_state: Notified::new(AudioSnapshot::default(), repaint),
+            dmx_debug_watch: AtomicUsize::new(DMX_DEBUG_NOT_WATCHING),
+            dmx_debug: Notified::new(None, dmx_debug_repaint),
         }
     }
 }

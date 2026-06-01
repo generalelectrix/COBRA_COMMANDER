@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use eframe::egui;
@@ -45,6 +46,8 @@ pub(crate) struct DmxPortPanel<'a> {
     pub ctx: GuiContext<'a>,
     pub state: &'a mut DmxPortPanelState,
     pub port_status: &'a DmxPortStatus,
+    /// Open flag for the DMX output debug window; the launch button sets it.
+    pub debug_open: &'a AtomicBool,
 }
 
 impl DmxPortPanel<'_> {
@@ -58,7 +61,14 @@ impl DmxPortPanel<'_> {
                 .unwrap_or(false);
 
         // Header.
-        ui.heading("DMX Ports");
+        ui.horizontal(|ui| {
+            ui.heading("DMX Ports");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Open Output Monitor").clicked() {
+                    self.debug_open.store(true, Ordering::Relaxed);
+                }
+            });
+        });
 
         // Refresh + ArtNet options.
         ui.horizontal(|ui| {
@@ -278,12 +288,17 @@ mod test {
         }
     }
 
+    fn debug_open() -> AtomicBool {
+        AtomicBool::new(false)
+    }
+
     #[test]
     fn render_no_universes() {
         let client = auto_respond_client();
         let status = DmxPortStatus { ports: vec![] };
         let mut modal = MessageModal::default();
         let mut state = DmxPortPanelState::new();
+        let debug_open = debug_open();
 
         let mut harness = Harness::new_ui(|ui| {
             DmxPortPanel {
@@ -293,6 +308,7 @@ mod test {
                 },
                 state: &mut state,
                 port_status: &status,
+                debug_open: &debug_open,
             }
             .ui(ui);
         });
@@ -308,6 +324,7 @@ mod test {
         };
         let mut modal = MessageModal::default();
         let mut state = DmxPortPanelState::new();
+        let debug_open = debug_open();
 
         let mut harness = Harness::new_ui(|ui| {
             DmxPortPanel {
@@ -317,6 +334,7 @@ mod test {
                 },
                 state: &mut state,
                 port_status: &status,
+                debug_open: &debug_open,
             }
             .ui(ui);
         });
@@ -338,6 +356,7 @@ mod test {
             }],
         };
         let mut modal = MessageModal::default();
+        let debug_open = debug_open();
 
         let mut harness = Harness::new_ui_state(
             |ui, state: &mut DmxPortPanelState| {
@@ -348,6 +367,7 @@ mod test {
                     },
                     state,
                     port_status: &status,
+                    debug_open: &debug_open,
                 }
                 .ui(ui);
             },
@@ -401,6 +421,7 @@ mod test {
         };
         let mut modal = MessageModal::default();
         let mut state = DmxPortPanelState::new();
+        let debug_open = debug_open();
 
         let mut harness = Harness::new_ui(|ui| {
             DmxPortPanel {
@@ -410,6 +431,7 @@ mod test {
                 },
                 state: &mut state,
                 port_status: &status,
+                debug_open: &debug_open,
             }
             .ui(ui);
         });
