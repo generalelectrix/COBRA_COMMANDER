@@ -525,6 +525,97 @@ mod tests {
         assert!((BumpStep::Fine.magnitude() - 0.002).abs() < 1e-9);
     }
 
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            rosc::OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            crate::osc::OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    /// Build a FixtureStateEmitter that drops anything emitted through it.
+    /// `control_osc` only invokes the emitter when a message matched a
+    /// positioner control, so for the "no-match returns None" test the
+    /// emitter is never actually used. For the bump-clamp tests we just
+    /// want to exercise the mutation path; we don't need to inspect emits.
+    fn null_fixture_emitter<'a>(
+        name: &'a crate::config::GroupName,
+    ) -> crate::osc::FixtureStateEmitter<'a> {
+        crate::osc::FixtureStateEmitter::new(name, crate::channel::mock::no_op_emitter())
+    }
+
+    #[test]
+    fn control_osc_returns_none_for_non_positioner_address() {
+        let mut p = Positioner::default_for(4);
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+
+        // Not one of the addresses control_osc matches.
+        let msg = make_msg("/Test/SomeOtherControl", OscType::Float(1.0));
+        let result = p.control_osc(&msg, 4, &emitter);
+        assert!(
+            result.is_none(),
+            "expected None for non-positioner address, got {result:?}",
+        );
+
+        // Also not a match — looks like a positioner subaddress that
+        // doesn't exist.
+        let msg = make_msg("/Test/PositionMystery", OscType::Float(1.0));
+        let result = p.control_osc(&msg, 4, &emitter);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn bump_up_clamps_at_positive_one() {
+        let mut p = Positioner::default_for(1);
+        p.bump_step = BumpStep::Coarse; // 0.05
+        // Sit just below the boundary so a bump-up overshoots.
+        p.presets[0].offsets[0].x = BipolarFloat::new(0.99);
+
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+        let msg = make_msg("/Test/XBumpUp", OscType::Float(1.0));
+        let result = p.control_osc(&msg, 1, &emitter);
+        assert!(matches!(result, Some(Ok(()))));
+
+        // 0.99 + 0.05 = 1.04, clamped to 1.0 by BipolarFloat::new.
+        assert_eq!(p.presets[0].offsets[0].x.val(), 1.0);
+    }
+
+    #[test]
+    fn bump_down_clamps_at_negative_one() {
+        let mut p = Positioner::default_for(1);
+        p.bump_step = BumpStep::Coarse; // 0.05
+        p.presets[0].offsets[0].y = BipolarFloat::new(-0.99);
+
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+        let msg = make_msg("/Test/YBumpDown", OscType::Float(1.0));
+        let result = p.control_osc(&msg, 1, &emitter);
+        assert!(matches!(result, Some(Ok(()))));
+
+        // -0.99 + -0.05 = -1.04, clamped to -1.0.
+        assert_eq!(p.presets[0].offsets[0].y.val(), -1.0);
+    }
+
+    #[test]
+    fn bump_release_does_not_apply_delta() {
+        // Bump buttons are momentary; the release (`0.0`) should be a no-op.
+        let mut p = Positioner::default_for(1);
+        p.bump_step = BumpStep::Coarse;
+        p.presets[0].offsets[0].x = BipolarFloat::new(0.5);
+
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+        let msg = make_msg("/Test/XBumpUp", OscType::Float(0.0));
+        let result = p.control_osc(&msg, 1, &emitter);
+        assert!(matches!(result, Some(Ok(()))));
+        assert_eq!(p.presets[0].offsets[0].x.val(), 0.5);
+    }
+
     #[test]
     fn non_positionable_emit_clears_every_channel_scoped_control() {
         let emitter = crate::osc::MockEmitter::new();

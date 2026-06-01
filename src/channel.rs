@@ -368,3 +368,62 @@ pub mod mock {
         ChannelStateEmitter::new(ChannelBinding::Unbound, &NoOpEmitter)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cid(n: usize) -> ChannelId {
+        ChannelId::for_test(n)
+    }
+
+    #[test]
+    fn resolve_unbound_when_addressed_is_none() {
+        // No addressed channel — binding is Unbound regardless of current.
+        assert_eq!(ChannelBinding::resolve(None, None), ChannelBinding::Unbound);
+        assert_eq!(
+            ChannelBinding::resolve(None, Some(cid(0))),
+            ChannelBinding::Unbound,
+        );
+    }
+
+    #[test]
+    fn resolve_current_when_addressed_equals_current() {
+        let id = cid(3);
+        assert_eq!(
+            ChannelBinding::resolve(Some(id), Some(id)),
+            ChannelBinding::Current(id),
+        );
+    }
+
+    #[test]
+    fn resolve_other_when_addressed_differs_from_current() {
+        // Different channel.
+        assert_eq!(
+            ChannelBinding::resolve(Some(cid(1)), Some(cid(2))),
+            ChannelBinding::Other(cid(1)),
+        );
+        // Addressed exists but no current channel — still Other, not Current.
+        assert_eq!(
+            ChannelBinding::resolve(Some(cid(1)), None),
+            ChannelBinding::Other(cid(1)),
+        );
+    }
+
+    #[test]
+    fn channel_id_and_is_current_match_each_variant() {
+        let id = cid(7);
+
+        let current = ChannelBinding::Current(id);
+        assert!(current.is_current());
+        assert_eq!(current.channel_id(), Some(id));
+
+        let other = ChannelBinding::Other(id);
+        assert!(!other.is_current());
+        assert_eq!(other.channel_id(), Some(id));
+
+        let unbound = ChannelBinding::Unbound;
+        assert!(!unbound.is_current());
+        assert_eq!(unbound.channel_id(), None);
+    }
+}
