@@ -18,6 +18,7 @@
 mod animation_panel;
 mod audio_panel;
 mod clock_panel;
+mod dmx_debug_panel;
 mod dmx_panel;
 mod midi_panel;
 mod osc_panel;
@@ -25,7 +26,7 @@ mod patch_panel;
 mod welcome;
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::sync::{Arc, Mutex};
 
@@ -40,7 +41,7 @@ use tunnels_lib::repaint::RepaintSignal;
 use crate::clocks::Clocks;
 use crate::control::{CommandClient, Controller};
 use crate::fixture::Patch;
-use crate::gui_state::{ClockStatus, GuiState, SharedGuiState};
+use crate::gui_state::{ClockStatus, DMX_DEBUG_NOT_WATCHING, GuiState, SharedGuiState};
 use crate::midi::ControlHandler;
 use crate::preview::Previewer;
 use crate::show::Show;
@@ -95,6 +96,13 @@ struct ConsoleApp {
     osc_panel: osc_panel::OscPanelState,
     patch_panel: PatchPanelState,
     dmx_panel: DmxPortPanelState,
+    /// Whether the DMX output debug window is open. Arc<AtomicBool> so the
+    /// deferred viewport closure ('static + Send + Sync) can signal "close".
+    dmx_debug_open: Arc<AtomicBool>,
+    /// Universe selected in the DMX output debug window. Arc<AtomicUsize> so the
+    /// deferred viewport closure can write the combo box selection; the main
+    /// loop reads it to drive the Show's watch signal.
+    dmx_debug_selected: Arc<AtomicUsize>,
     patchers: Vec<crate::fixture::patch::Patcher>,
     close_handler: CloseHandler,
     modal: MessageModal,
@@ -142,6 +150,40 @@ impl eframe::App for ConsoleApp {
                     });
                     if ctx.input(|i| i.viewport().close_requested()) {
                         detached_flag.store(false, Ordering::Relaxed);
+                    }
+                },
+            );
+        }
+
+        // Tell the show which universe to snapshot for the DMX output debug
+        // window — only while it is open. This is the only trigger for the
+        // show's snapshot work, so closing the window stops it entirely.
+        let dmx_debug_open = self.dmx_debug_open.load(Ordering::Relaxed);
+        self.gui_state.dmx_debug_watch.store(
+            if dmx_debug_open {
+                self.dmx_debug_selected.load(Ordering::Relaxed)
+            } else {
+                DMX_DEBUG_NOT_WATCHING
+            },
+            Ordering::Relaxed,
+        );
+
+        // DMX output debug — separate OS window via deferred viewport.
+        if dmx_debug_open {
+            let gui_state = self.gui_state.clone();
+            let selected = self.dmx_debug_selected.clone();
+            let open_flag = self.dmx_debug_open.clone();
+            ctx.show_viewport_deferred(
+                egui::ViewportId::from_hash_of("dmx_output_debug"),
+                egui::ViewportBuilder::default()
+                    .with_title("DMX Output Monitor")
+                    .with_inner_size(egui::vec2(560.0, 640.0)),
+                move |ctx, _class| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        dmx_debug_panel::dmx_debug_panel_ui(ui, &gui_state, &selected);
+                    });
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        open_flag.store(false, Ordering::Relaxed);
                     }
                 },
             );
@@ -269,6 +311,7 @@ impl eframe::App for ConsoleApp {
                     },
                     state: &mut self.dmx_panel,
                     port_status: &port_status,
+                    debug_open: &self.dmx_debug_open,
                 }
                 .ui(ui);
             }
@@ -401,6 +444,8 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
                 osc_panel: osc_panel::OscPanelState::new(),
                 patch_panel: PatchPanelState::new(),
                 dmx_panel: DmxPortPanelState::new(),
+                dmx_debug_open: Arc::new(AtomicBool::new(false)),
+                dmx_debug_selected: Arc::new(AtomicUsize::new(0)),
                 patchers: Patch::menu(),
                 client: command_client,
                 show_file_path,
