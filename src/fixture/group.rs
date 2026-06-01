@@ -24,6 +24,7 @@ use crate::fixture::FixtureGroupControls;
 use crate::fixture::fixture::FixtureGroupUpdate;
 use crate::master::MasterControls;
 use crate::osc::{FixtureStateEmitter, OscControlMessage};
+use crate::positioner::Positioner;
 use crate::preview::Previewer;
 use crate::strobe::FlashState;
 use crate::strobe::StrobeResponse;
@@ -55,6 +56,10 @@ pub struct FixtureGroup {
     /// Current strobe flash state for this group. If the fixture cannot strobe,
     /// this will be None.
     flash_state: Option<FlashState>,
+    /// Per-group positioner state. `Some` iff this group's fixture type opts
+    /// into the positioner via [`Fixture::supports_positioner`]. Initialized
+    /// after all fixtures are patched (analogous to `use_color_organ`).
+    positioner: Option<Positioner>,
 }
 
 impl FixtureGroup {
@@ -77,6 +82,7 @@ impl FixtureGroup {
             color_organ: None,
             fixture,
             options,
+            positioner: None,
         }
     }
 
@@ -114,6 +120,16 @@ impl FixtureGroup {
     /// eventually make patching dynamic.
     pub fn use_color_organ(&mut self) {
         self.color_organ = Some(ColorOrganHsluv::new(self.fixture_configs.len()));
+    }
+
+    /// Seed a positioner for this group if its fixture type opts in via
+    /// [`Fixture::supports_positioner`]. Like `use_color_organ`, this should
+    /// only be called after patching is complete so the offset vectors are
+    /// sized correctly.
+    pub fn init_positioner_if_supported(&mut self) {
+        if self.fixture.supports_positioner() {
+            self.positioner = Some(Positioner::default_for(self.fixture_configs.len()));
+        }
     }
 
     /// Get a mutable reference to the group's color organ, if in use.
@@ -258,6 +274,12 @@ impl FixtureGroup {
                 continue;
             };
             let dmx_buf = &mut dmx_univ.buffer[dmx_index..dmx_index + cfg.channel_count];
+            let positioner_offset = self.positioner.as_ref().and_then(|p| {
+                p.presets
+                    .get(p.active)
+                    .and_then(|preset| preset.offsets.get(i))
+                    .copied()
+            });
             self.fixture.render(
                 phase_offset,
                 i,
@@ -279,6 +301,7 @@ impl FixtureGroup {
                         .map(FlashState::is_on)
                         .unwrap_or_default(),
                     preview: &preview,
+                    positioner_offset,
                 },
                 dmx_buf,
             );

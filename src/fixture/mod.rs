@@ -1,4 +1,7 @@
-use crate::{color::Hsluv, master::MasterControls, preview::FixturePreviewer, strobe::StrobeClock};
+use crate::{
+    color::Hsluv, master::MasterControls, positioner::PositionOffset, preview::FixturePreviewer,
+    strobe::StrobeClock,
+};
 
 pub mod animation_target;
 mod control;
@@ -31,6 +34,10 @@ pub struct FixtureGroupControls<'a> {
     flash_on: bool,
     /// Fixture previewer.
     preview: &'a FixturePreviewer<'a>,
+    /// Per-fixture positioner offset, if the group has a positioner and
+    /// this fixture index has an offset entry. Contributes to render as
+    /// additional animation values for the fixture's positioner axes.
+    pub positioner_offset: Option<PositionOffset>,
 }
 
 impl<'a> FixtureGroupControls<'a> {

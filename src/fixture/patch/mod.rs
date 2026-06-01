@@ -275,6 +275,7 @@ impl Patch {
         if cfg.color_organ {
             group.use_color_organ();
         }
+        group.init_positioner_if_supported();
 
         let id = group.id();
         let location = if cfg.channel {

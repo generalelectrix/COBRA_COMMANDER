@@ -47,6 +47,36 @@ where
     {
         SubtargetView(self, PhantomData)
     }
+
+    /// Combine this source with another into a single source that yields
+    /// all entries from `self` followed by all entries from `other`.
+    ///
+    /// Lets multiple value sources (e.g. the animation buffer plus
+    /// positioner offset contributions) be fed into a single
+    /// `render_with_animations` call as one concrete type, avoiding extra
+    /// monomorphizations per call site.
+    fn chain<O>(self, other: O) -> Chain<Self, O>
+    where
+        Self: Sized,
+        O: TargetedAnimationValues<T>,
+    {
+        Chain(self, other)
+    }
+}
+
+/// Two `TargetedAnimationValues` sources concatenated end-to-end. Produced
+/// by [`TargetedAnimationValues::chain`].
+pub struct Chain<A, B>(pub A, pub B);
+
+impl<T, A, B> TargetedAnimationValues<T> for Chain<A, B>
+where
+    T: PartialEq + Copy,
+    A: TargetedAnimationValues<T>,
+    B: TargetedAnimationValues<T>,
+{
+    fn iter(&self) -> impl Iterator<Item = (f64, T)> {
+        self.0.iter().chain(self.1.iter())
+    }
 }
 
 /// Leaf source: a borrowed slice of (value, target) pairs.

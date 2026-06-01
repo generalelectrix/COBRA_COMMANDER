@@ -32,6 +32,15 @@ impl Default for IWashLed {
 impl AnimatedFixture for IWashLed {
     type Target = AnimationTarget;
 
+    fn positioner_axes() -> Option<crate::positioner::PositionerAxes<Self::Target>> {
+        Some(crate::positioner::PositionerAxes {
+            x: AnimationTarget::Pan,
+            y: AnimationTarget::Tilt,
+            // iWashLed is a moving-head LED wash with no focus parameter.
+            focus: None,
+        })
+    }
+
     fn render_with_animations<A>(
         &self,
         group_controls: &FixtureGroupControls,
