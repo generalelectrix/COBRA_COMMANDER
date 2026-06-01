@@ -54,12 +54,13 @@ Add to `touchosc/base.touchosc`. Address prefix: `/Positioner/`.
 | `/Positioner/Next` | momentary button | Step `selected_fixture` forward. |
 | `/Positioner/FixtureLabel` | text label (read-only) | Shows `"{selected+1} / {fixture_count}"`, or `"—"` when non-positionable / no current channel. |
 | `/Positioner/Preset/1/1`<br>… `/Positioner/Preset/1/8` | 8-button radio (1 col × 8 rows) | Active preset slot. |
-| `/Positioner/PresetName` | text label (read-only) | Name of the active preset slot (e.g. `"Position 3"` by default), or `"—"` when non-positionable / no current channel. |
+| `/Positioner/PresetLabel/0`<br>… `/Positioner/PresetLabel/7` | 8 text labels (read-only) | Preset names, drawn on top of the `Preset` radio buttons so every slot shows its name. Blank when non-positionable / no current channel. |
 | `/Positioner/Reset` | momentary button | Zero only the *selected fixture's* offset (all 3 axes) in the active preset. |
 | `/Positioner/ResetPreset` | momentary button | Zero *all fixtures'* offsets in the active preset. |
 
-**Total: 3 faders, 6 bump buttons, 3-button radio, 2 stepper buttons, 2
-labels, 8-button radio, 2 reset buttons = 25 controls.**
+**Total: 3 faders, 6 bump buttons, 3-button radio, 2 stepper buttons,
+1 label, 8-button radio, 8 preset-name labels, 2 reset buttons = 33
+controls.**
 
 ---
 
@@ -73,7 +74,7 @@ per-instance pages.
 | OSC address (in template) | Resolved address (after `set_group_name`) | Control type | Notes |
 |---|---|---|---|
 | `PositionPresetSelect/1/1`<br>… `PositionPresetSelect/1/8` | `/{group_name}/PositionPresetSelect/1/{1..8}` | 8-button radio (1 col × 8 rows) | Per-group preset selector. Drives the same `Positioner.active` field as the channel-scoped `/Positioner/Preset` radio. |
-| `PositionPresetLabels/0`<br>… `PositionPresetLabels/7` | `/{group_name}/PositionPresetLabels/{0..7}` | 8 text labels (read-only) | Preset names (`"Position 1"` through `"Position 8"` by default). Indexed 0–7 to match `LabelArray`'s zero-indexed convention. |
+| `PositionPresetLabel/0`<br>… `PositionPresetLabel/7` | `/{group_name}/PositionPresetLabel/{0..7}` | 8 text labels (read-only) | Preset names (`"Position 1"` through `"Position 8"` by default). Indexed 0–7 to match `LabelArray`'s zero-indexed convention. |
 
 **Total: 8-button radio + 8 labels = 16 controls.**
 
@@ -94,22 +95,22 @@ primitives parse them directly — same convention as the existing
       no focus axis); the value is silently stored but never contributes
       to render.
 - [ ] Tap `/Positioner/Preset/1/3` → DMX snaps to whatever offsets are
-      in slot 2 (1-indexed button → 0-indexed slot); `/Positioner/PresetName`
-      text label updates to `"Position 3"`; per-group radio on the
-      iWashLed page lights button 3.
+      in slot 2 (1-indexed button → 0-indexed slot); per-group radio on
+      the iWashLed page lights button 3.
 - [ ] Tap `/IWashFront/PositionPresetSelect/1/5` while iWashFront IS the
       current channel → both the per-group radio AND the channel-scoped
-      `/Positioner/Preset` radio light button 5; `/Positioner/PresetName`
-      becomes `"Position 5"`; DMX snaps.
+      `/Positioner/Preset` radio light button 5; DMX snaps.
 - [ ] Tap `/IWashFront/PositionPresetSelect/1/5` while iWashBack IS the
       current channel → only iWashFront's per-group radio lights;
       channel-scoped tab is unchanged.
 - [ ] Switch channels via `/Channels/Select` → `/Positioner/...` state
-      refreshes to reflect the new channel's positioner, or clears to
-      `"—"` if the new channel is non-positionable.
+      refreshes to reflect the new channel's positioner, including the 8
+      `PresetLabel/{0..7}` slots; FixtureLabel reads `"—"` and the
+      preset labels blank out if the new channel is non-positionable.
 - [ ] On the desktop **Positioner** tab, type a name + Enter → the active
-      preset's name updates on both the channel-scoped `PresetName` label
-      and the per-group `PositionPresetLabels/{active}` slot.
+      preset's name updates on both the channel-scoped
+      `/Positioner/PresetLabel/{active}` slot and the per-group
+      `/{group_name}/PositionPresetLabel/{active}` slot.
 - [ ] Set offsets in a preset, then repatch the iWashLed group with a
       different fixture count → offsets preserved where they overlap;
       new fixtures land at zero; dropped fixtures' offsets vanish.

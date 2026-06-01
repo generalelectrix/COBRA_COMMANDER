@@ -60,8 +60,15 @@ pub const PRESET_SELECT: RadioButton = RadioButton {
     x_primary_coordinate: false,
 };
 
-/// Read-only text label of the active preset's name.
-pub const PRESET_NAME: &str = "PresetName";
+/// 8-slot label array of preset names on the channel-scoped Positioner tab.
+/// Address pattern `/Positioner/PresetLabel/{0..7}`. Drawn on top of the
+/// `PRESET_SELECT` radio in the TouchOSC layout, so the operator can see
+/// every slot's name (not just the active one).
+pub const PRESET_LABELS: LabelArray = LabelArray {
+    control: "PresetLabel",
+    n: crate::positioner::N_POSITIONER_SLOTS,
+    empty_label: "",
+};
 
 /// Zero the selected fixture's offset (all three axes) in the active preset.
 pub const RESET_FIXTURE: &str = "Reset";
@@ -70,7 +77,7 @@ pub const RESET_PRESET: &str = "ResetPreset";
 
 // === Per-group controls (under `/{group_name}/...`) ===
 //
-// Address naming is flat (`PositionPresetSelect`, `PositionPresetLabels`)
+// Address naming is flat (`PositionPresetSelect`, `PositionPresetLabel`)
 // rather than nested (`PositionPreset/Select`, `PositionPreset/Label`) so the
 // standard `RadioButton` and `LabelArray` primitives parse them directly.
 // TouchOSC visual grouping of "Position Preset" controls is independent of
@@ -85,10 +92,10 @@ pub const POSITION_PRESET_SELECT: RadioButton = RadioButton {
     x_primary_coordinate: false,
 };
 
-/// Per-group 8-slot label array (the preset names). Address pattern
-/// `/{group_name}/PositionPresetLabels/{0..7}`.
-pub const POSITION_PRESET_LABELS: LabelArray = LabelArray {
-    control: "PositionPresetLabels",
+/// Per-group 8-slot label array of preset names. Address pattern
+/// `/{group_name}/PositionPresetLabel/{0..7}`.
+pub const POSITION_PRESET_LABEL: LabelArray = LabelArray {
+    control: "PositionPresetLabel",
     n: crate::positioner::N_POSITIONER_SLOTS,
     empty_label: "",
 };

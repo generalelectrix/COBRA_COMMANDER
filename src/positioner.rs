@@ -395,16 +395,7 @@ impl Positioner {
         emitter.emit_float(addr::FOCUS_FADER, focus);
 
         addr::PRESET_SELECT.set(self.active, false, emitter);
-
-        let name = self
-            .presets
-            .get(self.active)
-            .map(|p| p.name.clone())
-            .unwrap_or_default();
-        emitter.emit_osc(ScopedOscMessage {
-            control: addr::PRESET_NAME,
-            arg: OscType::String(name),
-        });
+        addr::PRESET_LABELS.set(self.presets.iter().map(|p| p.name.clone()), emitter);
 
         let bump_index = match self.bump_step {
             BumpStep::Coarse => 0,
@@ -419,7 +410,7 @@ impl Positioner {
     /// [`FixtureStateEmitter`] that prefixes addresses with the group name).
     pub fn emit_per_group_state<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
         addr::POSITION_PRESET_SELECT.set(self.active, false, emitter);
-        addr::POSITION_PRESET_LABELS.set(self.presets.iter().map(|p| p.name.clone()), emitter);
+        addr::POSITION_PRESET_LABEL.set(self.presets.iter().map(|p| p.name.clone()), emitter);
     }
 }
 
@@ -442,20 +433,18 @@ impl Positioner {
 ///
 /// The emitter should be scoped to [`addr::GROUP`] (`"Positioner"`).
 pub fn emit_non_positionable_channel_state<E: EmitScopedOscMessage + ?Sized>(emitter: &E) {
-    let dash = || OscType::String("—".to_string());
     emitter.emit_osc(ScopedOscMessage {
         control: addr::FIXTURE_LABEL,
-        arg: dash(),
+        arg: OscType::String("—".to_string()),
     });
     emitter.emit_float(addr::X_FADER, 0.0);
     emitter.emit_float(addr::Y_FADER, 0.0);
     emitter.emit_float(addr::FOCUS_FADER, 0.0);
     // Deselect every preset / bump-step button via an out-of-range set.
     addr::PRESET_SELECT.set(usize::MAX, /* allow_out_of_range = */ true, emitter);
-    emitter.emit_osc(ScopedOscMessage {
-        control: addr::PRESET_NAME,
-        arg: dash(),
-    });
+    // Clear all 8 preset labels (LabelArray fills empty slots with the
+    // configured empty_label, which is "" — TouchOSC then shows blanks).
+    addr::PRESET_LABELS.set(std::iter::empty(), emitter);
     addr::BUMP_STEP_SELECT.set(usize::MAX, true, emitter);
 }
 
@@ -629,10 +618,6 @@ mod tests {
             by_addr.get(addr::FIXTURE_LABEL),
             Some(&OscType::String("—".to_string())),
         );
-        assert_eq!(
-            by_addr.get(addr::PRESET_NAME),
-            Some(&OscType::String("—".to_string())),
-        );
         assert_eq!(by_addr.get(addr::X_FADER), Some(&OscType::Float(0.0)));
         assert_eq!(by_addr.get(addr::Y_FADER), Some(&OscType::Float(0.0)));
         assert_eq!(by_addr.get(addr::FOCUS_FADER), Some(&OscType::Float(0.0)));
@@ -644,6 +629,15 @@ mod tests {
                 by_addr.get(&addr),
                 Some(&OscType::Float(0.0)),
                 "preset radio {addr} not cleared",
+            );
+        }
+        // Every preset label slot should be cleared to the empty label "".
+        for i in 0..N_POSITIONER_SLOTS {
+            let addr = format!("{}/{}", addr::PRESET_LABELS.control, i);
+            assert_eq!(
+                by_addr.get(&addr),
+                Some(&OscType::String(String::new())),
+                "preset label {addr} not cleared",
             );
         }
         // Every bump-step radio button should be 0.0.
