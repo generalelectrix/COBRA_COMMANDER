@@ -164,6 +164,7 @@ mod test {
             },
             String::new(),
             noop_repaint(),
+            noop_repaint(),
         ));
         state.dmx_port_status.store(Arc::new(DmxPortStatus {
             ports: (0..universes)

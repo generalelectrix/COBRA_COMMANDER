@@ -65,6 +65,11 @@ fn apply_dark_theme(ctx: &egui::Context) {
     ctx.set_visuals(visuals);
 }
 
+/// Hash source for the DMX output debug window's [`egui::ViewportId`]. Shared
+/// between the `show_viewport_deferred` call and the repaint signal that wakes
+/// that viewport, so both refer to the same window.
+const DMX_DEBUG_VIEWPORT: &str = "dmx_output_debug";
+
 #[derive(Default, PartialEq, Clone, Copy)]
 enum Tab {
     #[default]
@@ -174,10 +179,11 @@ impl eframe::App for ConsoleApp {
             let selected = self.dmx_debug_selected.clone();
             let open_flag = self.dmx_debug_open.clone();
             ctx.show_viewport_deferred(
-                egui::ViewportId::from_hash_of("dmx_output_debug"),
+                egui::ViewportId::from_hash_of(DMX_DEBUG_VIEWPORT),
                 egui::ViewportBuilder::default()
                     .with_title("DMX Output Monitor")
-                    .with_inner_size(egui::vec2(560.0, 640.0)),
+                    // Roughly fits the 16x32 grid + selector at default style.
+                    .with_inner_size(egui::vec2(760.0, 705.0)),
                 move |ctx, _class| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         dmx_debug_panel::dmx_debug_panel_ui(ui, &gui_state, &selected);
@@ -379,6 +385,19 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
                 Arc::new(move || ctx.request_repaint())
             };
 
+            // The DMX debug window is a separate deferred viewport, so a plain
+            // root `request_repaint()` won't re-render it. Its snapshot Notified
+            // gets a signal that also wakes the debug viewport (so new ~4fps
+            // snapshots show up immediately) and the root (to keep the watch
+            // signal in sync after a universe change).
+            let dmx_debug_repaint: RepaintSignal = {
+                let ctx = cc.egui_ctx.clone();
+                Arc::new(move || {
+                    ctx.request_repaint();
+                    ctx.request_repaint_of(egui::ViewportId::from_hash_of(DMX_DEBUG_VIEWPORT));
+                })
+            };
+
             let gui_state: SharedGuiState = Arc::new(GuiState::new(
                 vec![],
                 ClockStatus::Internal {
@@ -386,6 +405,7 @@ pub fn run_console(osc_receive_port: u16) -> Result<()> {
                 },
                 osc_listen_addr,
                 repaint,
+                dmx_debug_repaint,
             ));
 
             let (envelope_tx, envelope_rx) = channel::<EnvelopeStreams>();

@@ -701,6 +701,7 @@ impl Show {
             initial_clock_status,
             String::new(),
             tunnels_lib::repaint::noop_repaint(),
+            tunnels_lib::repaint::noop_repaint(),
         ));
         let mut show = Self {
             controller,

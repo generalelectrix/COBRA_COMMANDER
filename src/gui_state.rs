@@ -104,11 +104,16 @@ pub struct GuiState {
 }
 
 impl GuiState {
+    /// `repaint` wakes the root viewport (where all the main-window panels
+    /// live). `dmx_debug_repaint` is a separate signal that must also wake the
+    /// DMX debug viewport — the debug window is a distinct deferred viewport, so
+    /// a root-only repaint would never re-render it (see `dmx_debug`).
     pub fn new(
         midi_slots: Vec<SlotStatus>,
         clock_status: ClockStatus,
         osc_listen_addr: String,
         repaint: RepaintSignal,
+        dmx_debug_repaint: RepaintSignal,
     ) -> Self {
         Self {
             midi_slots: Notified::new(midi_slots, repaint.clone()),
@@ -120,9 +125,9 @@ impl GuiState {
             patch_snapshot: ArcSwap::from_pointee(PatchSnapshot::default()),
             dmx_port_status: ArcSwap::from_pointee(DmxPortStatus::default()),
             master_strobe_fader_channel_mapped: AtomicBool::new(false),
-            audio_state: Notified::new(AudioSnapshot::default(), repaint.clone()),
+            audio_state: Notified::new(AudioSnapshot::default(), repaint),
             dmx_debug_watch: AtomicUsize::new(DMX_DEBUG_NOT_WATCHING),
-            dmx_debug: Notified::new(None, repaint),
+            dmx_debug: Notified::new(None, dmx_debug_repaint),
         }
     }
 }
