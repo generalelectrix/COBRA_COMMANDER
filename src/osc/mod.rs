@@ -14,7 +14,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::Display;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, UdpSocket};
+#[cfg(test)]
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -60,18 +61,21 @@ pub struct OscController {
     client_manager: sender::OscClientManager,
 }
 
+/// Bind a UDP socket for OSC input on the given port across all interfaces.
+pub fn try_bind(port: u16) -> Result<UdpSocket> {
+    UdpSocket::bind(("0.0.0.0", port))
+        .with_context(|| format!("failed to bind OSC receive port {port}"))
+}
+
 impl OscController {
     pub fn new(
-        receive_port: u16,
+        socket: UdpSocket,
         send_addrs: Vec<OscClientId>,
         send: Sender<ControlMessage>,
     ) -> Result<Self> {
-        let recv_addr = SocketAddr::from_str(&format!("0.0.0.0:{receive_port}"))?;
-
         let (client_manager, initial_listener) = sender::OscClientManager::new(send_addrs);
 
-        let mut listener = OscListener::new(client_manager.listener(), recv_addr, send)
-            .context("failed to start OSC listener")?;
+        let mut listener = OscListener::from_socket(client_manager.listener(), socket, send);
 
         thread::spawn(move || {
             listener.run();
@@ -398,4 +402,26 @@ pub mod prelude {
     pub use super::unipolar_array::{UnipolarArray, unipolar_array};
     pub use super::{GroupControlMap, OscControlMessage};
     pub use crate::util::*;
+}
+
+#[cfg(test)]
+mod bind_tests {
+    use super::try_bind;
+
+    #[test]
+    fn try_bind_collision_reports_port_and_error() {
+        // Bind an OS-assigned free port, then collide with it.
+        let held = try_bind(0).expect("binding an ephemeral port should succeed");
+        let port = held
+            .local_addr()
+            .expect("bound socket should have a local address")
+            .port();
+
+        let err = try_bind(port).expect_err("binding a held port should fail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&port.to_string()),
+            "error should name the conflicting port {port}: {msg}"
+        );
+    }
 }

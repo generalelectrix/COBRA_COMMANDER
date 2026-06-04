@@ -347,17 +347,22 @@ impl eframe::App for ConsoleApp {
 /// Single entry point for the console. Runs the welcome screen, initializes
 /// the show, and runs the main console GUI.
 pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result<()> {
-    // Phase 1: Welcome screen.
-    let welcome_result = welcome::run_welcome()?;
+    // Phase 1: Welcome screen. The OSC receive port is bound here so a port
+    // conflict is recoverable via a prompt instead of crashing show init.
+    let welcome_result = welcome::run_welcome(osc_receive_port)?;
 
-    let (show_file_path, initial_configs) = match welcome_result {
-        WelcomeResult::LoadShow { path, configs } => (path, configs),
-        WelcomeResult::NewShow { path } => (path, vec![]),
+    let (show_file_path, initial_configs, osc_socket, bound_port) = match welcome_result {
+        WelcomeResult::LoadShow {
+            path,
+            configs,
+            bound,
+        } => (path, configs, bound.socket, bound.port),
+        WelcomeResult::NewShow { path, bound } => (path, vec![], bound.socket, bound.port),
         WelcomeResult::Quit => return Ok(()),
     };
 
     // Phase 2: Create infrastructure that doesn't depend on egui_ctx.
-    let osc_listen_addr = crate::local_ip_watch::listen_addr(osc_receive_port);
+    let osc_listen_addr = crate::local_ip_watch::listen_addr(bound_port);
 
     let (send_control_msg, recv_control_msg) = channel();
     let command_client = CommandClient::new(send_control_msg.clone());
@@ -366,7 +371,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
     install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
 
     let controller = Controller::new(
-        osc_receive_port,
+        osc_socket,
         vec![],
         vec![],
         send_control_msg,
@@ -374,7 +379,13 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
     )?;
 
     // Move-once values for the eframe creator closure.
-    let mut startup = Some((controller, osc_listen_addr, initial_configs, log_rx));
+    let mut startup = Some((
+        controller,
+        osc_listen_addr,
+        bound_port,
+        initial_configs,
+        log_rx,
+    ));
 
     // Phase 3: Run the console GUI. GuiState construction (which needs a
     // RepaintSignal built from cc.egui_ctx) and the show-thread spawn live
@@ -391,7 +402,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
         Box::new(move |cc| {
             stage_theme::apply(&cc.egui_ctx);
 
-            let (controller, osc_listen_addr, initial_configs, log_rx) =
+            let (controller, osc_listen_addr, osc_receive_port, initial_configs, log_rx) =
                 startup.take().expect("creator closure called once");
 
             let repaint: RepaintSignal = {

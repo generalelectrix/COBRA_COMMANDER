@@ -2,6 +2,7 @@
 
 use std::{
     fmt,
+    net::UdpSocket,
     sync::mpsc::{Receiver, RecvTimeoutError, Sender},
     time::Duration,
 };
@@ -49,14 +50,14 @@ pub struct Controller {
 
 impl Controller {
     pub fn new(
-        receive_port: u16,
+        osc_socket: UdpSocket,
         osc_controllers: Vec<OscClientId>,
         midi_devices: Vec<DeviceSpec<Device>>,
         send: Sender<ControlMessage>,
         recv: Receiver<ControlMessage>,
     ) -> Result<Self> {
         Ok(Self {
-            osc: OscController::new(receive_port, osc_controllers, send.clone())?,
+            osc: OscController::new(osc_socket, osc_controllers, send.clone())?,
             midi: MidiController::new(midi_devices, send)?,
             recv,
         })

@@ -6,7 +6,7 @@ use crate::osc::{OscClientId, OscControlMessage, OscError};
 use anyhow::Result;
 use log::error;
 use rosc::OscPacket;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::UdpSocket;
 use std::sync::mpsc::Sender;
 
 pub struct OscListener {
@@ -17,20 +17,18 @@ pub struct OscListener {
 }
 
 impl OscListener {
-    /// Initialize OSC listener.
-    pub fn new(
+    /// Build an OSC listener that receives on the given UDP socket.
+    pub fn from_socket(
         clients: OscClientListener,
-        addr: SocketAddr,
+        socket: UdpSocket,
         send: Sender<ControlMessage>,
-    ) -> Result<Self> {
-        let socket = UdpSocket::bind(addr)?;
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             clients,
             socket,
             buf: [0u8; rosc::decoder::MTU],
             send,
-        })
+        }
     }
 
     fn recv_packet(&mut self) -> Result<(OscPacket, OscClientId)> {
