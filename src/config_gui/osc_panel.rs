@@ -12,15 +12,18 @@ use crate::ui_util::GuiContext;
 
 pub struct OscPanelState {
     sync_server: Option<LayoutServer>,
+    /// Port the OSC receive socket is bound to.
+    receive_port: u16,
     /// Port being edited in the receive-port field, distinct from the bound
     /// port while an edit is in flight. `None` tracks the bound port.
     port_draft: Option<u16>,
 }
 
 impl OscPanelState {
-    pub fn new() -> Self {
+    pub fn new(receive_port: u16) -> Self {
         Self {
             sync_server: None,
+            receive_port,
             port_draft: None,
         }
     }
@@ -30,7 +33,6 @@ pub(crate) struct OscPanel<'a> {
     pub ctx: GuiContext<'a>,
     pub state: &'a mut OscPanelState,
     pub local_ip: Option<IpAddr>,
-    pub receive_port: u16,
     pub clients: &'a [OscClientId],
     pub groups: &'a [FixtureGroupConfig],
     pub show_file_path: &'a Path,
@@ -40,7 +42,8 @@ impl OscPanel<'_> {
     pub fn ui(mut self, ui: &mut egui::Ui) {
         ui.heading("OSC");
         ui.separator();
-        let listen_addr = crate::local_ip_watch::format_addr(self.local_ip, self.receive_port);
+        let listen_addr =
+            crate::local_ip_watch::format_addr(self.local_ip, self.state.receive_port);
         ui.label(format!("Listening on {listen_addr}"));
         ui.add_space(4.0);
 
@@ -48,14 +51,14 @@ impl OscPanel<'_> {
         // application needs without a restart.
         ui.horizontal(|ui| {
             ui.label("Receive port:");
-            let mut port = self.state.port_draft.unwrap_or(self.receive_port);
+            let mut port = self.state.port_draft.unwrap_or(self.state.receive_port);
             if ui
                 .add(egui::DragValue::new(&mut port).range(1..=65535))
                 .changed()
             {
                 self.state.port_draft = Some(port);
             }
-            let pending = port != self.receive_port;
+            let pending = port != self.state.receive_port;
             if ui
                 .add_enabled(pending, egui::Button::new("Apply"))
                 .clicked()
@@ -64,6 +67,9 @@ impl OscPanel<'_> {
                 // only adopts the already-bound socket.
                 match crate::osc::BoundOsc::bind(port) {
                     Ok(bound) => {
+                        // The bind succeeded, so this is the live port now.
+                        self.state.receive_port = bound.port;
+                        self.state.port_draft = None;
                         let _ = self.ctx.send_command(MetaCommand::SetOscReceivePort(bound));
                     }
                     Err(e) => {
@@ -74,10 +80,6 @@ impl OscPanel<'_> {
                 }
             }
         });
-        // Drop the draft once the bound port catches up to it.
-        if self.state.port_draft == Some(self.receive_port) {
-            self.state.port_draft = None;
-        }
         ui.add_space(8.0);
 
         if self.clients.is_empty() {
@@ -216,7 +218,7 @@ mod tests {
         let client = auto_respond_client();
         let mut modal = MessageModal::default();
         let clients: Vec<OscClientId> = vec![];
-        let mut state = OscPanelState::new();
+        let mut state = OscPanelState::new(8000);
         let groups: Vec<FixtureGroupConfig> = vec![];
         let show_path = PathBuf::from("/tmp/test_show.cobra");
         let mut harness = Harness::new_ui(|ui| {
@@ -227,7 +229,6 @@ mod tests {
                 },
                 state: &mut state,
                 local_ip: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 42))),
-                receive_port: 8000,
                 clients: &clients,
                 groups: &groups,
                 show_file_path: &show_path,
@@ -250,7 +251,7 @@ mod tests {
             OscClientId::from_addr(SocketAddr::from_str("192.168.1.20:9000").unwrap()),
             OscClientId::from_addr(SocketAddr::from_str("10.0.0.5:8001").unwrap()),
         ];
-        let mut state = OscPanelState::new();
+        let mut state = OscPanelState::new(8000);
         let groups: Vec<FixtureGroupConfig> = vec![];
         let show_path = PathBuf::from("/tmp/test_show.cobra");
         let mut harness = Harness::new_ui(|ui| {
@@ -261,7 +262,6 @@ mod tests {
                 },
                 state: &mut state,
                 local_ip: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 42))),
-                receive_port: 8000,
                 clients: &clients,
                 groups: &groups,
                 show_file_path: &show_path,

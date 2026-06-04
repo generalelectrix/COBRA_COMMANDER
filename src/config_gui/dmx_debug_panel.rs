@@ -163,7 +163,6 @@ mod test {
                 audio_device: String::new(),
             },
             None,
-            0,
             noop_repaint(),
             noop_repaint(),
         ));

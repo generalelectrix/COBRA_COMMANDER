@@ -248,7 +248,6 @@ impl Show {
                 Ok(GuiDirty::OSC_CLIENTS)
             }
             MetaCommand::SetOscReceivePort(bound) => {
-                self.gui_state.osc_receive_port.store(bound.port);
                 self.controller.swap_osc_socket(bound.socket);
                 Ok(GuiDirty::CLEAN)
             }
@@ -705,7 +704,6 @@ impl Show {
             vec![],
             initial_clock_status,
             None,
-            0,
             tunnels_lib::repaint::noop_repaint(),
             tunnels_lib::repaint::noop_repaint(),
         ));

@@ -1,37 +1,17 @@
 use std::net::IpAddr;
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU16, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize},
 };
 
 use arc_swap::ArcSwap;
 use midi_harness::SlotStatus;
 use tunnels::{animation::Animation, audio::AudioSnapshot, clock_server::SharedClockData};
-use tunnels_lib::{
-    notified::{AtomicValue, Notified, NotifiedAtomic},
-    repaint::RepaintSignal,
-};
+use tunnels_lib::{notified::Notified, repaint::RepaintSignal};
 
 use crate::config::FixtureGroupConfig;
 use crate::dmx::{DmxBuffer, UniverseIdx};
 use crate::osc::OscClientId;
-
-/// Local newtype over `AtomicU16` so the OSC receive port can be held in a
-/// [`NotifiedAtomic`].
-pub struct AtomicPort(AtomicU16);
-
-impl AtomicValue for AtomicPort {
-    type Value = u16;
-    fn new(value: u16) -> Self {
-        Self(AtomicU16::new(value))
-    }
-    fn load(&self) -> u16 {
-        self.0.load(Ordering::Relaxed)
-    }
-    fn store(&self, value: u16) {
-        self.0.store(value, Ordering::Relaxed);
-    }
-}
 
 /// Snapshot of animation state for the visualizer panel.
 #[derive(Default)]
@@ -106,8 +86,6 @@ pub struct GuiState {
     /// The host's primary local IP, or `None` when none can be resolved.
     /// Refreshed as network interfaces change.
     pub osc_local_ip: Notified<Option<IpAddr>>,
-    /// The UDP port OSC input is bound to.
-    pub osc_receive_port: NotifiedAtomic<AtomicPort>,
     pub osc_clients: Notified<Vec<OscClientId>>,
     /// Whether the visualizer tab is active — controls whether the Show
     /// snapshots animation state.
@@ -137,7 +115,6 @@ impl GuiState {
         midi_slots: Vec<SlotStatus>,
         clock_status: ClockStatus,
         osc_local_ip: Option<IpAddr>,
-        osc_receive_port: u16,
         repaint: RepaintSignal,
         dmx_debug_repaint: RepaintSignal,
     ) -> Self {
@@ -145,7 +122,6 @@ impl GuiState {
             midi_slots: Notified::new(midi_slots, repaint.clone()),
             clock_status: ArcSwap::from_pointee(clock_status),
             osc_local_ip: Notified::new(osc_local_ip, repaint.clone()),
-            osc_receive_port: NotifiedAtomic::new(osc_receive_port, repaint.clone()),
             osc_clients: Notified::new(Vec::new(), repaint.clone()),
             visualizer_active: AtomicBool::new(false),
             animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),
