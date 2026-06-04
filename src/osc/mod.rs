@@ -64,12 +64,6 @@ pub struct OscController {
     pending_socket: PendingSocket,
 }
 
-/// Bind a UDP socket for OSC input on the given port across all interfaces.
-pub fn try_bind(port: u16) -> Result<UdpSocket> {
-    UdpSocket::bind(("0.0.0.0", port))
-        .with_context(|| format!("failed to bind OSC receive port {port}"))
-}
-
 /// An OSC receive socket and the port it listens on. Moved across threads to
 /// hand a socket bound on one thread to the listener running on another.
 #[derive(Debug)]
@@ -81,10 +75,9 @@ pub struct BoundOsc {
 impl BoundOsc {
     /// Bind OSC input on `port` across all interfaces.
     pub fn bind(port: u16) -> Result<Self> {
-        Ok(Self {
-            socket: try_bind(port)?,
-            port,
-        })
+        let socket = UdpSocket::bind(("0.0.0.0", port))
+            .with_context(|| format!("failed to bind OSC receive port {port}"))?;
+        Ok(Self { socket, port })
     }
 }
 
@@ -443,14 +436,14 @@ pub mod prelude {
 
 #[cfg(test)]
 mod bind_tests {
-    use super::{OscController, try_bind};
+    use super::{BoundOsc, OscController};
 
     #[test]
     fn swap_socket_stages_the_socket_for_the_listener() {
         let (controller, _recv) = OscController::test_new();
         assert!(controller.pending_socket.lock().unwrap().is_none());
 
-        let socket = try_bind(0).expect("bind should succeed");
+        let socket = BoundOsc::bind(0).expect("bind should succeed").socket;
         controller.swap_socket(socket);
         assert!(
             controller.pending_socket.lock().unwrap().is_some(),
@@ -459,15 +452,17 @@ mod bind_tests {
     }
 
     #[test]
-    fn try_bind_collision_reports_port_and_error() {
-        // Bind an OS-assigned free port, then collide with it.
-        let held = try_bind(0).expect("binding an ephemeral port should succeed");
+    fn bind_collision_reports_port_and_error() {
+        // Bind an OS-assigned free port, then collide with it. `bind(0)` records
+        // the requested port, so read the actual port from the socket.
+        let held = BoundOsc::bind(0).expect("binding an ephemeral port should succeed");
         let port = held
+            .socket
             .local_addr()
             .expect("bound socket should have a local address")
             .port();
 
-        let err = try_bind(port).expect_err("binding a held port should fail");
+        let err = BoundOsc::bind(port).expect_err("binding a held port should fail");
         let msg = format!("{err:#}");
         assert!(
             msg.contains(&port.to_string()),

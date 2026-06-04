@@ -14,9 +14,8 @@ pub struct OscPanelState {
     sync_server: Option<LayoutServer>,
     /// Port the OSC receive socket is bound to.
     receive_port: u16,
-    /// Port being edited in the receive-port field, distinct from the bound
-    /// port while an edit is in flight. `None` tracks the bound port.
-    port_draft: Option<u16>,
+    /// Port shown in the editable receive-port field.
+    port_draft: u16,
 }
 
 impl OscPanelState {
@@ -24,7 +23,7 @@ impl OscPanelState {
         Self {
             sync_server: None,
             receive_port,
-            port_draft: None,
+            port_draft: receive_port,
         }
     }
 }
@@ -51,26 +50,20 @@ impl OscPanel<'_> {
         // application needs without a restart.
         ui.horizontal(|ui| {
             ui.label("Receive port:");
-            let mut port = self.state.port_draft.unwrap_or(self.state.receive_port);
-            if ui
-                .add(egui::DragValue::new(&mut port).range(1..=65535))
-                .changed()
-            {
-                self.state.port_draft = Some(port);
-            }
-            let pending = port != self.state.receive_port;
+            ui.add(egui::DragValue::new(&mut self.state.port_draft).range(1..=65535));
+            let pending = self.state.port_draft != self.state.receive_port;
             if ui
                 .add_enabled(pending, egui::Button::new("Apply"))
                 .clicked()
             {
                 // Bind here so a port conflict surfaces immediately; the show
                 // only adopts the already-bound socket.
-                match crate::osc::BoundOsc::bind(port) {
+                match crate::osc::BoundOsc::bind(self.state.port_draft) {
                     Ok(bound) => {
-                        // The bind succeeded, so this is the live port now.
                         self.state.receive_port = bound.port;
-                        self.state.port_draft = None;
-                        let _ = self.ctx.send_command(MetaCommand::SetOscReceivePort(bound));
+                        let _ = self
+                            .ctx
+                            .send_command(MetaCommand::SwapOscSocket(bound.socket));
                     }
                     Err(e) => {
                         self.ctx

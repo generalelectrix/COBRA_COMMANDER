@@ -247,8 +247,8 @@ impl Show {
                 self.controller.deregister_osc_client(client_id);
                 Ok(GuiDirty::OSC_CLIENTS)
             }
-            MetaCommand::SetOscReceivePort(bound) => {
-                self.controller.swap_osc_socket(bound.socket);
+            MetaCommand::SwapOscSocket(socket) => {
+                self.controller.swap_osc_socket(socket);
                 Ok(GuiDirty::CLEAN)
             }
             MetaCommand::SetMasterStrobeChannel(enable) => {
