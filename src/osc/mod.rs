@@ -62,8 +62,6 @@ pub struct OscController {
     client_manager: sender::OscClientManager,
     /// Handoff slot the listener polls to adopt a rebound receive socket.
     pending_socket: PendingSocket,
-    /// Port the OSC receive socket is bound to.
-    current_port: u16,
 }
 
 /// Bind a UDP socket for OSC input on the given port across all interfaces.
@@ -72,17 +70,30 @@ pub fn try_bind(port: u16) -> Result<UdpSocket> {
         .with_context(|| format!("failed to bind OSC receive port {port}"))
 }
 
+/// An OSC receive socket and the port it listens on. Moved across threads to
+/// hand a socket bound on one thread to the listener running on another.
+#[derive(Debug)]
+pub struct BoundOsc {
+    pub socket: UdpSocket,
+    pub port: u16,
+}
+
+impl BoundOsc {
+    /// Bind OSC input on `port` across all interfaces.
+    pub fn bind(port: u16) -> Result<Self> {
+        Ok(Self {
+            socket: try_bind(port)?,
+            port,
+        })
+    }
+}
+
 impl OscController {
     pub fn new(
         socket: UdpSocket,
         send_addrs: Vec<OscClientId>,
         send: Sender<ControlMessage>,
     ) -> Result<Self> {
-        let current_port = socket
-            .local_addr()
-            .context("OSC receive socket has no local address")?
-            .port();
-
         let (client_manager, initial_listener) = sender::OscClientManager::new(send_addrs);
 
         let pending_socket: PendingSocket = Arc::new(Mutex::new(None));
@@ -108,22 +119,15 @@ impl OscController {
             send: response_send,
             client_manager,
             pending_socket,
-            current_port,
         })
     }
 
-    /// Rebind OSC input to `port`. Binds eagerly so a port conflict surfaces
-    /// here as an error. Does nothing when `port` equals the bound port.
-    pub fn set_receive_port(&mut self, port: u16) -> Result<()> {
-        if port == self.current_port {
-            return Ok(());
-        }
-        let socket = try_bind(port)?;
+    /// Give the OSC listener a bound socket to receive on, replacing the one it
+    /// holds.
+    pub fn swap_socket(&self, socket: UdpSocket) {
         if let Ok(mut slot) = self.pending_socket.lock() {
             *slot = Some(socket);
         }
-        self.current_port = port;
-        Ok(())
     }
 
     /// Send an OSC message to all clients.
@@ -159,7 +163,6 @@ impl OscController {
                 send,
                 client_manager,
                 pending_socket: Arc::new(Mutex::new(None)),
-                current_port: 0,
             },
             recv,
         )
@@ -443,31 +446,15 @@ mod bind_tests {
     use super::{OscController, try_bind};
 
     #[test]
-    fn set_receive_port_stashes_socket_for_the_listener() {
-        let (mut controller, _recv) = OscController::test_new();
-        assert_eq!(controller.current_port, 0);
-
-        // Same port is a no-op: nothing is handed to the listener.
-        controller
-            .set_receive_port(0)
-            .expect("no-op rebind should succeed");
+    fn swap_socket_stages_the_socket_for_the_listener() {
+        let (controller, _recv) = OscController::test_new();
         assert!(controller.pending_socket.lock().unwrap().is_none());
 
-        // Discover a free port, then rebind onto it.
-        let probe = try_bind(0).expect("probe bind should succeed");
-        let port = probe
-            .local_addr()
-            .expect("probe has a local address")
-            .port();
-        drop(probe);
-
-        controller
-            .set_receive_port(port)
-            .expect("rebind should succeed");
-        assert_eq!(controller.current_port, port);
+        let socket = try_bind(0).expect("bind should succeed");
+        controller.swap_socket(socket);
         assert!(
             controller.pending_socket.lock().unwrap().is_some(),
-            "the rebound socket should be staged for the listener to adopt"
+            "the handed socket should be staged for the listener to adopt"
         );
     }
 

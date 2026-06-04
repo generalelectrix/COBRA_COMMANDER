@@ -60,7 +60,18 @@ impl OscPanel<'_> {
                 .add_enabled(pending, egui::Button::new("Apply"))
                 .clicked()
             {
-                let _ = self.ctx.send_command(MetaCommand::SetOscReceivePort(port));
+                // Bind here so a port conflict surfaces immediately; the show
+                // only adopts the already-bound socket.
+                match crate::osc::BoundOsc::bind(port) {
+                    Ok(bound) => {
+                        let _ = self.ctx.send_command(MetaCommand::SetOscReceivePort(bound));
+                    }
+                    Err(e) => {
+                        self.ctx
+                            .modal
+                            .show("OSC Port Unavailable", format!("{e:#}"));
+                    }
+                }
             }
         });
         // Drop the draft once the bound port catches up to it.

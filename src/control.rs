@@ -18,8 +18,8 @@ use crate::{
         MidiControlMessage, MidiController,
     },
     osc::{
-        EmitOscMessage, EmitScopedOscMessage, OscClientId, OscControlMessage, OscControlResponse,
-        OscController, ScopedControlEmitter, TalkbackMode,
+        BoundOsc, EmitOscMessage, EmitScopedOscMessage, OscClientId, OscControlMessage,
+        OscControlResponse, OscController, ScopedControlEmitter, TalkbackMode,
     },
 };
 
@@ -93,9 +93,9 @@ impl Controller {
         self.osc.deregister(client_id);
     }
 
-    /// Rebind OSC input to a new receive port.
-    pub fn set_osc_receive_port(&mut self, port: u16) -> Result<()> {
-        self.osc.set_receive_port(port)
+    /// Give the OSC listener a pre-bound receive socket.
+    pub fn swap_osc_socket(&self, socket: UdpSocket) {
+        self.osc.swap_socket(socket);
     }
 
     /// Snapshot the current OSC client list.
@@ -329,8 +329,8 @@ pub enum MetaCommand {
     SetMasterStrobeChannel(bool),
     /// Forward an audio control message to the active audio input.
     AudioControl(tunnels::audio::ControlMessage),
-    /// Rebind OSC input to a new receive port.
-    SetOscReceivePort(u16),
+    /// Replace the OSC receive socket with a pre-bound one.
+    SetOscReceivePort(BoundOsc),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -360,7 +360,7 @@ impl fmt::Debug for MetaCommand {
                 write!(f, "SetMasterStrobeChannel({enable})")
             }
             Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
-            Self::SetOscReceivePort(port) => write!(f, "SetOscReceivePort({port})"),
+            Self::SetOscReceivePort(bound) => write!(f, "SetOscReceivePort({})", bound.port),
         }
     }
 }

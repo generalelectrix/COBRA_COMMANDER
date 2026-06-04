@@ -1,4 +1,3 @@
-use std::net::UdpSocket;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -7,16 +6,9 @@ use eframe::egui;
 
 use crate::config::FixtureGroupConfig;
 use crate::fixture::Patch;
-use crate::osc;
+use crate::osc::BoundOsc;
 use crate::show_file::{self, ShowFile};
 use gui_common::MessageModal;
-
-/// An OSC receive socket and the port it listens on.
-#[derive(Debug)]
-pub(crate) struct BoundOsc {
-    pub socket: UdpSocket,
-    pub port: u16,
-}
 
 /// The result of the welcome screen interaction.
 #[derive(Debug)]
@@ -208,14 +200,10 @@ impl WelcomeApp {
         if self.pending.is_none() {
             return;
         }
-        match osc::try_bind(self.port) {
-            Ok(socket) => {
+        match BoundOsc::bind(self.port) {
+            Ok(bound) => {
                 let Some(pending) = self.pending.take() else {
                     return;
-                };
-                let bound = BoundOsc {
-                    socket,
-                    port: self.port,
                 };
                 let result = if pending.new {
                     WelcomeResult::NewShow {
