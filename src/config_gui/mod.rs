@@ -276,6 +276,7 @@ impl eframe::App for ConsoleApp {
                     },
                     state: &mut self.osc_panel,
                     listen_addr: listen_addr.as_str(),
+                    receive_port: self.gui_state.osc_receive_port.load(Ordering::Relaxed),
                     clients: &clients,
                     groups: &patch_snapshot.groups,
                     show_file_path: &self.show_file_path,

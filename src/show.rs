@@ -247,6 +247,16 @@ impl Show {
                 self.controller.deregister_osc_client(client_id);
                 Ok(GuiDirty::OSC_CLIENTS)
             }
+            MetaCommand::SetOscReceivePort(port) => {
+                self.controller.set_osc_receive_port(port)?;
+                self.gui_state
+                    .osc_receive_port
+                    .store(port, std::sync::atomic::Ordering::Relaxed);
+                self.gui_state
+                    .osc_listen_addr
+                    .store(crate::local_ip_watch::listen_addr(port));
+                Ok(GuiDirty::CLEAN)
+            }
             MetaCommand::SetMasterStrobeChannel(enable) => {
                 if enable {
                     let ch = self.resolve_strobe_channel().context(

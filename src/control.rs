@@ -93,6 +93,11 @@ impl Controller {
         self.osc.deregister(client_id);
     }
 
+    /// Rebind OSC input to a new receive port.
+    pub fn set_osc_receive_port(&mut self, port: u16) -> Result<()> {
+        self.osc.set_receive_port(port)
+    }
+
     /// Snapshot the current OSC client list.
     pub fn osc_client_ids(&self) -> Vec<OscClientId> {
         self.osc.client_ids()
@@ -324,6 +329,8 @@ pub enum MetaCommand {
     SetMasterStrobeChannel(bool),
     /// Forward an audio control message to the active audio input.
     AudioControl(tunnels::audio::ControlMessage),
+    /// Rebind OSC input to a new receive port.
+    SetOscReceivePort(u16),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -353,6 +360,7 @@ impl fmt::Debug for MetaCommand {
                 write!(f, "SetMasterStrobeChannel({enable})")
             }
             Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
+            Self::SetOscReceivePort(port) => write!(f, "SetOscReceivePort({port})"),
         }
     }
 }

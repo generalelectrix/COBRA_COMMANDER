@@ -11,11 +11,17 @@ use crate::ui_util::GuiContext;
 
 pub struct OscPanelState {
     sync_server: Option<LayoutServer>,
+    /// Port being edited in the receive-port field, distinct from the bound
+    /// port while an edit is in flight. `None` tracks the bound port.
+    port_draft: Option<u16>,
 }
 
 impl OscPanelState {
     pub fn new() -> Self {
-        Self { sync_server: None }
+        Self {
+            sync_server: None,
+            port_draft: None,
+        }
     }
 }
 
@@ -23,6 +29,7 @@ pub(crate) struct OscPanel<'a> {
     pub ctx: GuiContext<'a>,
     pub state: &'a mut OscPanelState,
     pub listen_addr: &'a str,
+    pub receive_port: u16,
     pub clients: &'a [OscClientId],
     pub groups: &'a [FixtureGroupConfig],
     pub show_file_path: &'a Path,
@@ -33,6 +40,31 @@ impl OscPanel<'_> {
         ui.heading("OSC");
         ui.separator();
         ui.label(format!("Listening on {}", self.listen_addr));
+        ui.add_space(4.0);
+
+        // Editable receive port — lets Cobra move off a port another OSC
+        // application needs without a restart.
+        ui.horizontal(|ui| {
+            ui.label("Receive port:");
+            let mut port = self.state.port_draft.unwrap_or(self.receive_port);
+            if ui
+                .add(egui::DragValue::new(&mut port).range(1..=65535))
+                .changed()
+            {
+                self.state.port_draft = Some(port);
+            }
+            let pending = port != self.receive_port;
+            if ui
+                .add_enabled(pending, egui::Button::new("Apply"))
+                .clicked()
+            {
+                let _ = self.ctx.send_command(MetaCommand::SetOscReceivePort(port));
+            }
+        });
+        // Drop the draft once the bound port catches up to it.
+        if self.state.port_draft == Some(self.receive_port) {
+            self.state.port_draft = None;
+        }
         ui.add_space(8.0);
 
         if self.clients.is_empty() {
@@ -181,6 +213,7 @@ mod tests {
                 },
                 state: &mut state,
                 listen_addr: "192.168.1.42:8000",
+                receive_port: 8000,
                 clients: &clients,
                 groups: &groups,
                 show_file_path: &show_path,
@@ -214,6 +247,7 @@ mod tests {
                 },
                 state: &mut state,
                 listen_addr: "192.168.1.42:8000",
+                receive_port: 8000,
                 clients: &clients,
                 groups: &groups,
                 show_file_path: &show_path,
