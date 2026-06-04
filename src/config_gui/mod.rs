@@ -268,15 +268,14 @@ impl eframe::App for ConsoleApp {
             Tab::Osc => {
                 let clients = self.gui_state.osc_clients.load();
                 let patch_snapshot = self.gui_state.patch_snapshot.load();
-                let listen_addr = self.gui_state.osc_listen_addr.load();
                 osc_panel::OscPanel {
                     ctx: GuiContext {
                         modal: &mut self.modal,
                         client: &self.client,
                     },
                     state: &mut self.osc_panel,
-                    listen_addr: listen_addr.as_str(),
-                    receive_port: self.gui_state.osc_receive_port.load(Ordering::Relaxed),
+                    local_ip: **self.gui_state.osc_local_ip.load(),
+                    receive_port: self.gui_state.osc_receive_port.load(),
                     clients: &clients,
                     groups: &patch_snapshot.groups,
                     show_file_path: &self.show_file_path,
@@ -363,7 +362,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
     };
 
     // Phase 2: Create infrastructure that doesn't depend on egui_ctx.
-    let osc_listen_addr = crate::local_ip_watch::listen_addr(bound_port);
+    let osc_local_ip = crate::local_ip_watch::current_ip();
 
     let (send_control_msg, recv_control_msg) = channel();
     let command_client = CommandClient::new(send_control_msg.clone());
@@ -382,7 +381,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
     // Move-once values for the eframe creator closure.
     let mut startup = Some((
         controller,
-        osc_listen_addr,
+        osc_local_ip,
         bound_port,
         initial_configs,
         log_rx,
@@ -403,7 +402,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
         Box::new(move |cc| {
             stage_theme::apply(&cc.egui_ctx);
 
-            let (controller, osc_listen_addr, osc_receive_port, initial_configs, log_rx) =
+            let (controller, osc_local_ip, osc_receive_port, initial_configs, log_rx) =
                 startup.take().expect("creator closure called once");
 
             let repaint: RepaintSignal = {
@@ -444,7 +443,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
                 ClockStatus::Internal {
                     audio_device: tunnels::audio::OFFLINE_DEVICE_NAME.into(),
                 },
-                osc_listen_addr,
+                osc_local_ip,
                 osc_receive_port,
                 repaint,
                 dmx_debug_repaint,

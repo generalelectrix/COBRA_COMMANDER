@@ -249,12 +249,7 @@ impl Show {
             }
             MetaCommand::SetOscReceivePort(port) => {
                 self.controller.set_osc_receive_port(port)?;
-                self.gui_state
-                    .osc_receive_port
-                    .store(port, std::sync::atomic::Ordering::Relaxed);
-                self.gui_state
-                    .osc_listen_addr
-                    .store(crate::local_ip_watch::listen_addr(port));
+                self.gui_state.osc_receive_port.store(port);
                 Ok(GuiDirty::CLEAN)
             }
             MetaCommand::SetMasterStrobeChannel(enable) => {
@@ -709,7 +704,7 @@ impl Show {
         let gui_state: SharedGuiState = Arc::new(crate::gui_state::GuiState::new(
             vec![],
             initial_clock_status,
-            String::new(),
+            None,
             0,
             tunnels_lib::repaint::noop_repaint(),
             tunnels_lib::repaint::noop_repaint(),

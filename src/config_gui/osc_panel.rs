@@ -1,3 +1,4 @@
+use std::net::IpAddr;
 use std::path::Path;
 
 use eframe::egui;
@@ -28,7 +29,7 @@ impl OscPanelState {
 pub(crate) struct OscPanel<'a> {
     pub ctx: GuiContext<'a>,
     pub state: &'a mut OscPanelState,
-    pub listen_addr: &'a str,
+    pub local_ip: Option<IpAddr>,
     pub receive_port: u16,
     pub clients: &'a [OscClientId],
     pub groups: &'a [FixtureGroupConfig],
@@ -39,7 +40,8 @@ impl OscPanel<'_> {
     pub fn ui(mut self, ui: &mut egui::Ui) {
         ui.heading("OSC");
         ui.separator();
-        ui.label(format!("Listening on {}", self.listen_addr));
+        let listen_addr = crate::local_ip_watch::format_addr(self.local_ip, self.receive_port);
+        ui.label(format!("Listening on {listen_addr}"));
         ui.add_space(4.0);
 
         // Editable receive port — lets Cobra move off a port another OSC
@@ -195,6 +197,7 @@ mod tests {
     use crate::control::mock::auto_respond_client;
     use egui_kittest::Harness;
     use gui_common::MessageModal;
+    use std::net::Ipv4Addr;
     use std::path::PathBuf;
 
     #[test]
@@ -212,7 +215,7 @@ mod tests {
                     client: &client,
                 },
                 state: &mut state,
-                listen_addr: "192.168.1.42:8000",
+                local_ip: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 42))),
                 receive_port: 8000,
                 clients: &clients,
                 groups: &groups,
@@ -246,7 +249,7 @@ mod tests {
                     client: &client,
                 },
                 state: &mut state,
-                listen_addr: "192.168.1.42:8000",
+                local_ip: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 42))),
                 receive_port: 8000,
                 clients: &clients,
                 groups: &groups,

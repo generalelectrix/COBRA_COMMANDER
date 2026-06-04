@@ -1,8 +1,7 @@
-//! Keep the displayed OSC listen address in sync with the host's local IP.
+//! Track the host's local IP so the displayed OSC address stays current.
 
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use local_ip_address::local_ip;
@@ -15,31 +14,29 @@ const POLL_INTERVAL: Duration = Duration::from_secs(3);
 
 /// Format an OSC listen address as `ip:port`, substituting `0.0.0.0` when no
 /// local IP is available.
-fn format_addr(ip: Option<IpAddr>, port: u16) -> String {
+pub fn format_addr(ip: Option<IpAddr>, port: u16) -> String {
     match ip {
         Some(ip) => format!("{ip}:{port}"),
         None => format!("0.0.0.0:{port}"),
     }
 }
 
-/// The current OSC listen address for the given receive port, derived from the
-/// host's primary local IP.
-pub fn listen_addr(port: u16) -> String {
-    format_addr(local_ip().ok(), port)
+/// The host's primary local IP, or `None` when none can be resolved.
+pub fn current_ip() -> Option<IpAddr> {
+    local_ip().ok()
 }
 
-/// Spawn a detached thread that refreshes the displayed OSC listen address
-/// whenever the host's primary local IP changes.
+/// Spawn a detached thread that refreshes the host's local IP whenever it
+/// changes.
 pub fn spawn(gui_state: Arc<GuiState>) {
     std::thread::spawn(move || {
-        let mut last = gui_state.osc_listen_addr.load().as_str().to_owned();
+        let mut last = **gui_state.osc_local_ip.load();
         loop {
             std::thread::sleep(POLL_INTERVAL);
-            let port = gui_state.osc_receive_port.load(Ordering::Relaxed);
-            let next = listen_addr(port);
+            let next = current_ip();
             if next != last {
-                info!("OSC listen address changed: {last} -> {next}");
-                gui_state.osc_listen_addr.store(next.clone());
+                info!("OSC local IP changed: {last:?} -> {next:?}");
+                gui_state.osc_local_ip.store(next);
                 last = next;
             }
         }

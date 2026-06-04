@@ -1,16 +1,37 @@
+use std::net::IpAddr;
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU16, AtomicUsize},
+    atomic::{AtomicBool, AtomicU16, AtomicUsize, Ordering},
 };
 
 use arc_swap::ArcSwap;
 use midi_harness::SlotStatus;
 use tunnels::{animation::Animation, audio::AudioSnapshot, clock_server::SharedClockData};
-use tunnels_lib::{notified::Notified, repaint::RepaintSignal};
+use tunnels_lib::{
+    notified::{AtomicValue, Notified, NotifiedAtomic},
+    repaint::RepaintSignal,
+};
 
 use crate::config::FixtureGroupConfig;
 use crate::dmx::{DmxBuffer, UniverseIdx};
 use crate::osc::OscClientId;
+
+/// Local newtype over `AtomicU16` so the OSC receive port can be held in a
+/// [`NotifiedAtomic`].
+pub struct AtomicPort(AtomicU16);
+
+impl AtomicValue for AtomicPort {
+    type Value = u16;
+    fn new(value: u16) -> Self {
+        Self(AtomicU16::new(value))
+    }
+    fn load(&self) -> u16 {
+        self.0.load(Ordering::Relaxed)
+    }
+    fn store(&self, value: u16) {
+        self.0.store(value, Ordering::Relaxed);
+    }
+}
 
 /// Snapshot of animation state for the visualizer panel.
 #[derive(Default)]
@@ -82,12 +103,11 @@ pub enum ClockStatus {
 pub struct GuiState {
     pub midi_slots: Notified<Vec<SlotStatus>>,
     pub clock_status: ArcSwap<ClockStatus>,
-    /// The address OSC input is listening on, as `ip:port`, for display.
-    /// Refreshed when the host's local IP or the receive port changes.
-    pub osc_listen_addr: Notified<String>,
-    /// The UDP port OSC input is bound to. Source of truth for the editable
-    /// port field and for formatting [`Self::osc_listen_addr`].
-    pub osc_receive_port: AtomicU16,
+    /// The host's primary local IP, or `None` when none can be resolved.
+    /// Refreshed as network interfaces change.
+    pub osc_local_ip: Notified<Option<IpAddr>>,
+    /// The UDP port OSC input is bound to.
+    pub osc_receive_port: NotifiedAtomic<AtomicPort>,
     pub osc_clients: Notified<Vec<OscClientId>>,
     /// Whether the visualizer tab is active — controls whether the Show
     /// snapshots animation state.
@@ -116,7 +136,7 @@ impl GuiState {
     pub fn new(
         midi_slots: Vec<SlotStatus>,
         clock_status: ClockStatus,
-        osc_listen_addr: String,
+        osc_local_ip: Option<IpAddr>,
         osc_receive_port: u16,
         repaint: RepaintSignal,
         dmx_debug_repaint: RepaintSignal,
@@ -124,8 +144,8 @@ impl GuiState {
         Self {
             midi_slots: Notified::new(midi_slots, repaint.clone()),
             clock_status: ArcSwap::from_pointee(clock_status),
-            osc_listen_addr: Notified::new(osc_listen_addr, repaint.clone()),
-            osc_receive_port: AtomicU16::new(osc_receive_port),
+            osc_local_ip: Notified::new(osc_local_ip, repaint.clone()),
+            osc_receive_port: NotifiedAtomic::new(osc_receive_port, repaint.clone()),
             osc_clients: Notified::new(Vec::new(), repaint.clone()),
             visualizer_active: AtomicBool::new(false),
             animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),
