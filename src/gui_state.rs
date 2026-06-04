@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicUsize},
+    atomic::{AtomicBool, AtomicU16, AtomicUsize},
 };
 
 use arc_swap::ArcSwap;
@@ -82,7 +82,12 @@ pub enum ClockStatus {
 pub struct GuiState {
     pub midi_slots: Notified<Vec<SlotStatus>>,
     pub clock_status: ArcSwap<ClockStatus>,
-    pub osc_listen_addr: String,
+    /// The address OSC input is listening on, as `ip:port`, for display.
+    /// Refreshed when the host's local IP or the receive port changes.
+    pub osc_listen_addr: Notified<String>,
+    /// The UDP port OSC input is bound to. Source of truth for the editable
+    /// port field and for formatting [`Self::osc_listen_addr`].
+    pub osc_receive_port: AtomicU16,
     pub osc_clients: Notified<Vec<OscClientId>>,
     /// Whether the visualizer tab is active — controls whether the Show
     /// snapshots animation state.
@@ -112,13 +117,15 @@ impl GuiState {
         midi_slots: Vec<SlotStatus>,
         clock_status: ClockStatus,
         osc_listen_addr: String,
+        osc_receive_port: u16,
         repaint: RepaintSignal,
         dmx_debug_repaint: RepaintSignal,
     ) -> Self {
         Self {
             midi_slots: Notified::new(midi_slots, repaint.clone()),
             clock_status: ArcSwap::from_pointee(clock_status),
-            osc_listen_addr,
+            osc_listen_addr: Notified::new(osc_listen_addr, repaint.clone()),
+            osc_receive_port: AtomicU16::new(osc_receive_port),
             osc_clients: Notified::new(Vec::new(), repaint.clone()),
             visualizer_active: AtomicBool::new(false),
             animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),

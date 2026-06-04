@@ -700,6 +700,7 @@ impl Show {
             vec![],
             initial_clock_status,
             String::new(),
+            0,
             tunnels_lib::repaint::noop_repaint(),
             tunnels_lib::repaint::noop_repaint(),
         ));

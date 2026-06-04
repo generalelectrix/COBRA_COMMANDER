@@ -32,7 +32,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use eframe::egui;
-use local_ip_address::local_ip;
 use log::error;
 use midi_harness::install_midi_device_change_handler;
 use tunnels::audio::EnvelopeStreams;
@@ -269,13 +268,14 @@ impl eframe::App for ConsoleApp {
             Tab::Osc => {
                 let clients = self.gui_state.osc_clients.load();
                 let patch_snapshot = self.gui_state.patch_snapshot.load();
+                let listen_addr = self.gui_state.osc_listen_addr.load();
                 osc_panel::OscPanel {
                     ctx: GuiContext {
                         modal: &mut self.modal,
                         client: &self.client,
                     },
                     state: &mut self.osc_panel,
-                    listen_addr: &self.gui_state.osc_listen_addr,
+                    listen_addr: listen_addr.as_str(),
                     clients: &clients,
                     groups: &patch_snapshot.groups,
                     show_file_path: &self.show_file_path,
@@ -357,10 +357,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
     };
 
     // Phase 2: Create infrastructure that doesn't depend on egui_ctx.
-    let osc_listen_addr = match local_ip() {
-        Ok(ip) => format!("{ip}:{osc_receive_port}"),
-        Err(_) => format!("0.0.0.0:{osc_receive_port}"),
-    };
+    let osc_listen_addr = crate::local_ip_watch::listen_addr(osc_receive_port);
 
     let (send_control_msg, recv_control_msg) = channel();
     let command_client = CommandClient::new(send_control_msg.clone());
@@ -436,9 +433,14 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
                     audio_device: tunnels::audio::OFFLINE_DEVICE_NAME.into(),
                 },
                 osc_listen_addr,
+                osc_receive_port,
                 repaint,
                 dmx_debug_repaint,
             ));
+
+            // Keep the displayed listen address current as the host's local IP
+            // changes underneath us (interface swap, VPN, DHCP renew).
+            crate::local_ip_watch::spawn(gui_state.clone());
 
             let (envelope_tx, envelope_rx) = channel::<EnvelopeStreams>();
 

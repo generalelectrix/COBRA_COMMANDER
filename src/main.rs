@@ -57,6 +57,7 @@ mod control;
 mod dmx;
 mod fixture;
 mod gui_state;
+mod local_ip_watch;
 mod master;
 mod midi;
 mod osc;
