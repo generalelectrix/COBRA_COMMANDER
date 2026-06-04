@@ -14,8 +14,8 @@ pub struct OscPanelState {
     sync_server: Option<LayoutServer>,
     /// Port the OSC receive socket is bound to.
     receive_port: u16,
-    /// Port shown in the editable receive-port field.
-    port_draft: u16,
+    /// Text shown in the editable receive-port field.
+    port_text: String,
 }
 
 impl OscPanelState {
@@ -23,7 +23,7 @@ impl OscPanelState {
         Self {
             sync_server: None,
             receive_port,
-            port_draft: receive_port,
+            port_text: receive_port.to_string(),
         }
     }
 }
@@ -50,27 +50,34 @@ impl OscPanel<'_> {
         // application needs without a restart.
         ui.horizontal(|ui| {
             ui.label("Receive port:");
-            ui.add(egui::DragValue::new(&mut self.state.port_draft).range(1..=65535));
-            let pending = self.state.port_draft != self.state.receive_port;
-            if ui
-                .add_enabled(pending, egui::Button::new("Apply"))
-                .clicked()
-            {
-                // Bind here so a port conflict surfaces immediately; the show
-                // only adopts the already-bound socket.
-                match crate::osc::BoundOsc::bind(self.state.port_draft) {
-                    Ok(bound) => {
-                        self.state.receive_port = bound.port;
-                        let _ = self
-                            .ctx
-                            .send_command(MetaCommand::SwapOscSocket(bound.socket));
-                    }
-                    Err(e) => {
-                        self.ctx
-                            .modal
-                            .show("OSC Port Unavailable", format!("{e:#}"));
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.state.port_text)
+                    .desired_width(56.0)
+                    .char_limit(5),
+            );
+            // Commit on Enter or focus loss. Binding here surfaces a port
+            // conflict immediately; the show only adopts the bound socket.
+            if resp.lost_focus() {
+                if let Ok(port) = self.state.port_text.trim().parse::<u16>()
+                    && port != 0
+                    && port != self.state.receive_port
+                {
+                    match crate::osc::BoundOsc::bind(port) {
+                        Ok(bound) => {
+                            self.state.receive_port = bound.port;
+                            let _ = self
+                                .ctx
+                                .send_command(MetaCommand::SwapOscSocket(bound.socket));
+                        }
+                        Err(e) => {
+                            self.ctx
+                                .modal
+                                .show("OSC Port Unavailable", format!("{e:#}"));
+                        }
                     }
                 }
+                // Reflect the bound port, reverting any invalid or rejected edit.
+                self.state.port_text = self.state.receive_port.to_string();
             }
         });
         ui.add_space(8.0);
