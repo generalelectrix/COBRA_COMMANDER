@@ -766,20 +766,40 @@ impl From<Hsluv> for HsluvColor {
 #[cfg(test)]
 impl Show {
     fn test_new(patch: Patch) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
-        Self::test_new_inner(patch, |_tx| Clocks::test_new())
+        let (show, send, _osc_recv) = Self::test_new_inner(patch, |_tx| Clocks::test_new());
+        (show, send)
     }
 
     fn test_new_internal(patch: Patch) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
-        Self::test_new_inner(patch, |tx| {
+        let (show, send, _osc_recv) = Self::test_new_inner(patch, |tx| {
             Clocks::internal(None, tx).expect("internal clocks should construct in test")
-        })
+        });
+        (show, send)
+    }
+
+    /// Variant of `test_new` that surfaces the OSC response receiver so the
+    /// caller can capture what the Show emits in response to incoming OSC
+    /// messages. See `tests::OscCapture` for the wrapper integration tests
+    /// use around the raw receiver.
+    pub(crate) fn test_new_with_osc_capture(
+        patch: Patch,
+    ) -> (
+        Self,
+        std::sync::mpsc::Sender<ControlMessage>,
+        std::sync::mpsc::Receiver<crate::osc::OscControlResponse>,
+    ) {
+        Self::test_new_inner(patch, |_tx| Clocks::test_new())
     }
 
     fn test_new_inner(
         patch: Patch,
         build_clocks: impl FnOnce(std::sync::mpsc::Sender<EnvelopeStreams>) -> Clocks,
-    ) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
-        let (controller, send) = Controller::test_new();
+    ) -> (
+        Self,
+        std::sync::mpsc::Sender<ControlMessage>,
+        std::sync::mpsc::Receiver<crate::osc::OscControlResponse>,
+    ) {
+        let (controller, send, osc_recv) = Controller::test_new();
         let universe_count = patch.universe_count();
         let channels = Channels::new(&patch);
         let initial_channel = channels.current_channel();
@@ -811,7 +831,21 @@ impl Show {
         };
         show.reconcile_submaster_wings().unwrap();
         show.reconcile_clock_wing().unwrap();
-        (show, send)
+        (show, send, osc_recv)
+    }
+
+    /// Read-only access to the patch, for test assertions about in-memory
+    /// state. Production code should access groups through proper OSC /
+    /// MetaCommand entry points, not by reaching around the Show.
+    #[cfg(test)]
+    pub(crate) fn patch_for_test(&self) -> &Patch {
+        &self.patch
+    }
+
+    /// Read-only access to the channel-selection state, for test assertions.
+    #[cfg(test)]
+    pub(crate) fn channels_for_test(&self) -> &Channels {
+        &self.channels
     }
 }
 
@@ -845,6 +879,103 @@ mod tests {
         let patch = Patch::patch_all(&configs).unwrap();
         let (show, _send) = Show::test_new_internal(patch);
         show
+    }
+
+    // === OSC integration test harness ===========================================
+    //
+    // The harness has three layers, each independently useful:
+    //
+    // 1. `show_with_capture_from_yaml` — builds a Show wired to in-process OSC
+    //    channels and returns it alongside an `OscCapture` that drains whatever
+    //    the Show emits in response to incoming OSC messages.
+    //
+    // 2. `OscCapture` — drains the OSC response channel and exposes ergonomic
+    //    drain/assert helpers.
+    //
+    // 3. `fire` / `fire_press` — build an `OscControlMessage` from a string
+    //    address + arg, dispatch it through `Show::handle_osc_message`, and
+    //    return the resulting `GuiDirty`.
+    //
+    // Typical flow:
+    //
+    // ```rust
+    // let (mut show, capture, _send) = show_with_capture_from_yaml(SOME_PATCH);
+    // fire(&mut show, "/Channels/Select/1/1", OscType::Float(1.0)).unwrap();
+    // capture.drain();  // discard the initial selection emit
+    // fire_press(&mut show, "/Positioner/Preset/1/3").unwrap();
+    // let emits = capture.drain_by_addr();
+    // assert_eq!(emits.get("/Positioner/Preset/1/3"), Some(&OscType::Float(1.0)));
+    // ```
+    use crate::osc::{OscClientId, OscControlResponse};
+    use rosc::{OscMessage, OscType};
+    use std::collections::HashMap;
+    use std::sync::mpsc::Receiver;
+
+    /// Wraps the OSC response receiver with drain/assert helpers tailored to
+    /// the patterns integration tests use.
+    pub(crate) struct OscCapture {
+        rx: Receiver<OscControlResponse>,
+    }
+
+    impl OscCapture {
+        fn new(rx: Receiver<OscControlResponse>) -> Self {
+            Self { rx }
+        }
+
+        /// Drain every response pending on the channel right now. Non-blocking;
+        /// returns whatever has accumulated since the last drain.
+        pub fn drain(&self) -> Vec<OscControlResponse> {
+            let mut out = Vec::new();
+            while let Ok(r) = self.rx.try_recv() {
+                out.push(r);
+            }
+            out
+        }
+
+        /// Drain and return as a HashMap keyed by full OSC address. If multiple
+        /// emits target the same address, the last one wins — which matches
+        /// TouchOSC display semantics (we care about the final visible state).
+        pub fn drain_by_addr(&self) -> HashMap<String, OscType> {
+            self.drain()
+                .into_iter()
+                .map(|r| {
+                    (
+                        r.msg.addr,
+                        r.msg.args.into_iter().next().unwrap_or(OscType::Nil),
+                    )
+                })
+                .collect()
+        }
+    }
+
+    /// Build a Show wired to in-process channels, with a paired `OscCapture`
+    /// that captures everything emitted from `Show::handle_osc_message`.
+    fn show_with_capture_from_yaml(
+        yaml: &str,
+    ) -> (Show, OscCapture, std::sync::mpsc::Sender<ControlMessage>) {
+        let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
+        let patch = Patch::patch_all(&configs).unwrap();
+        let (show, send, rx) = Show::test_new_with_osc_capture(patch);
+        (show, OscCapture::new(rx), send)
+    }
+
+    /// Build and dispatch an OSC message at `addr` carrying a single `arg`,
+    /// returning the resulting `GuiDirty`.
+    fn fire(show: &mut Show, addr: &str, arg: OscType) -> Result<GuiDirty> {
+        let msg = crate::osc::OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .expect("test address parses");
+        show.handle_osc_message(&msg)
+    }
+
+    /// Convenience for momentary button presses — fires `Float(1.0)`.
+    fn fire_press(show: &mut Show, addr: &str) -> Result<GuiDirty> {
+        fire(show, addr, OscType::Float(1.0))
     }
 
     #[test]
@@ -1207,5 +1338,342 @@ mod tests {
                 .master_strobe_fader_channel_mapped
                 .load(std::sync::atomic::Ordering::Relaxed)
         );
+    }
+
+    // === Positioner end-to-end integration tests ============================
+    //
+    // These exercise the full OSC dispatch path on Show: fire a message at
+    // `handle_osc_message`, then assert both the in-memory mutation and the
+    // OSC responses that came back out. The two-iPad binding choreography
+    // (channel-scoped tab ↔ per-group preset selector) is the canonical
+    // case — see the docstring on each test for the scenario it covers.
+    mod positioner_integration {
+        use super::*;
+        use crate::positioner::BumpStep;
+
+        /// One IWashLed group on channel 0.
+        const ONE_IWASH: &str = "\
+- fixture: IWashLed
+  patches:
+    - addr: 1
+    - addr: 13
+";
+
+        /// Two IWashLed groups: IWashFront on channel 0, IWashBack on channel 1.
+        const TWO_IWASH: &str = "\
+- fixture: IWashLed
+  group: IWashFront
+  patches:
+    - addr: 1
+    - addr: 13
+- fixture: IWashLed
+  group: IWashBack
+  patches:
+    - addr: 25
+    - addr: 37
+";
+
+        /// IWashLed on channel 0 (positionable) and Dimmer on channel 1
+        /// (non-positionable).
+        const MIXED_POSITIONABLE_AND_NOT: &str = "\
+- fixture: IWashLed
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  patches:
+    - addr: 100
+";
+
+        /// Tap `/Positioner/Preset/1/3` on the channel-scoped tab while
+        /// IWashLed is the current channel. Expect: in-memory `active`
+        /// flips to slot 2, the per-group `PositionPresetSelect/1/3` echoes
+        /// back, and both label arrays are pushed.
+        #[test]
+        fn channel_scoped_preset_tap_echoes_to_per_group_radio() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            // Discard the initial sync emits from Show::test_new construction.
+            capture.drain();
+
+            fire_press(&mut show, "/Positioner/Preset/1/3").unwrap();
+            let emits = capture.drain_by_addr();
+
+            // In-memory state: active slot is 2 (0-indexed; 3rd button).
+            let channel = show.channels_for_test().current_channel().unwrap();
+            let positioner = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .expect("IWashLed is positionable");
+            assert_eq!(positioner.active, 2);
+
+            // Channel-scoped Preset radio: slot 3 lit, others dark.
+            for i in 1..=8 {
+                let addr = format!("/Positioner/Preset/1/{i}");
+                let expected = if i == 3 {
+                    OscType::Float(1.0)
+                } else {
+                    OscType::Float(0.0)
+                };
+                assert_eq!(
+                    emits.get(&addr),
+                    Some(&expected),
+                    "/Positioner/Preset slot {i} state wrong",
+                );
+            }
+
+            // Per-group PositionPresetSelect: slot 3 lit, others dark.
+            for i in 1..=8 {
+                let addr = format!("/IWashLed/PositionPresetSelect/1/{i}");
+                let expected = if i == 3 {
+                    OscType::Float(1.0)
+                } else {
+                    OscType::Float(0.0)
+                };
+                assert_eq!(
+                    emits.get(&addr),
+                    Some(&expected),
+                    "/IWashLed/PositionPresetSelect slot {i} state wrong",
+                );
+            }
+
+            // Both label arrays emitted with the default preset names.
+            for i in 0..8 {
+                let expected = OscType::String(format!("Position {}", i + 1));
+                assert_eq!(
+                    emits.get(&format!("/Positioner/PresetLabel/{i}")),
+                    Some(&expected),
+                );
+                assert_eq!(
+                    emits.get(&format!("/IWashLed/PositionPresetLabel/{i}")),
+                    Some(&expected),
+                );
+            }
+        }
+
+        /// Tap `/IWashLed/PositionPresetSelect/1/5` (per-group dispatch)
+        /// while IWashLed is the current channel. Expect: `active` flips
+        /// to slot 4, and both the per-group radio echo AND the channel-
+        /// scoped tab refresh happen.
+        #[test]
+        fn per_group_preset_tap_on_current_channel_cross_emits() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            fire_press(&mut show, "/IWashLed/PositionPresetSelect/1/5").unwrap();
+            let emits = capture.drain_by_addr();
+
+            let channel = show.channels_for_test().current_channel().unwrap();
+            let positioner = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .unwrap();
+            assert_eq!(positioner.active, 4);
+
+            // Per-group radio echoed.
+            assert_eq!(
+                emits.get("/IWashLed/PositionPresetSelect/1/5"),
+                Some(&OscType::Float(1.0)),
+            );
+            // Channel-scoped tab refreshed (Preset radio + a label slot as proof).
+            assert_eq!(
+                emits.get("/Positioner/Preset/1/5"),
+                Some(&OscType::Float(1.0)),
+            );
+            assert_eq!(
+                emits.get("/Positioner/PresetLabel/4"),
+                Some(&OscType::String("Position 5".to_string())),
+            );
+        }
+
+        /// Tap `/IWashBack/PositionPresetSelect/1/5` while IWashFront IS the
+        /// current channel. Expect: IWashBack's state mutates, IWashFront's
+        /// doesn't, and the channel-scoped `/Positioner/...` tab is *not*
+        /// touched (operator on the iWashFront tab shouldn't see slot 5 light
+        /// up because of activity on a different group).
+        #[test]
+        fn per_group_preset_tap_on_other_channel_is_silent_on_channel_tab() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(TWO_IWASH);
+            // IWashFront is patched first and becomes the default current channel.
+            let front_id = show.channels_for_test().current_channel().unwrap();
+            capture.drain();
+
+            fire_press(&mut show, "/IWashBack/PositionPresetSelect/1/5").unwrap();
+            let emits = capture.drain_by_addr();
+
+            // IWashBack's state mutated; IWashFront's untouched.
+            let front_active = show
+                .patch_for_test()
+                .channel_group(front_id)
+                .unwrap()
+                .positioner()
+                .unwrap()
+                .active;
+            assert_eq!(front_active, 0, "IWashFront active unchanged");
+
+            // Look up IWashBack by name (it's on channel 1).
+            let back_channel = crate::fixture::patch::ChannelId::for_test(1);
+            let back_active = show
+                .patch_for_test()
+                .channel_group(back_channel)
+                .unwrap()
+                .positioner()
+                .unwrap()
+                .active;
+            assert_eq!(back_active, 4, "IWashBack active flipped");
+
+            // Per-group radio echoed on IWashBack.
+            assert_eq!(
+                emits.get("/IWashBack/PositionPresetSelect/1/5"),
+                Some(&OscType::Float(1.0)),
+            );
+            // Channel-scoped tab was NOT touched — no Preset radio echo, no
+            // label refresh. This is the key cross-binding-isolation check.
+            for i in 1..=8 {
+                let addr = format!("/Positioner/Preset/1/{i}");
+                assert!(
+                    !emits.contains_key(&addr),
+                    "unexpected channel-scoped emit at {addr}: {:?}",
+                    emits.get(&addr),
+                );
+            }
+            for i in 0..8 {
+                let addr = format!("/Positioner/PresetLabel/{i}");
+                assert!(
+                    !emits.contains_key(&addr),
+                    "unexpected channel-scoped emit at {addr}: {:?}",
+                    emits.get(&addr),
+                );
+            }
+        }
+
+        /// Switch from a positionable channel to a non-positionable one. The
+        /// channel-scoped `/Positioner/...` tab should clear: FixtureLabel
+        /// reads `"—"`, faders snap to 0, preset radio fully deselects,
+        /// preset labels go blank.
+        #[test]
+        fn channel_switch_to_non_positionable_clears_tab() {
+            let (mut show, capture, _send) =
+                show_with_capture_from_yaml(MIXED_POSITIONABLE_AND_NOT);
+            // Default current channel is the IWashLed (channel 0); switch to
+            // the Dimmer (channel 1).
+            capture.drain();
+            fire_press(&mut show, "/Show/Channel/1/2").unwrap();
+
+            let emits = capture.drain_by_addr();
+
+            // FixtureLabel cleared.
+            assert_eq!(
+                emits.get("/Positioner/FixtureLabel"),
+                Some(&OscType::String("—".to_string())),
+            );
+            // Faders zeroed.
+            assert_eq!(emits.get("/Positioner/X"), Some(&OscType::Float(0.0)));
+            assert_eq!(emits.get("/Positioner/Y"), Some(&OscType::Float(0.0)));
+            assert_eq!(emits.get("/Positioner/Focus"), Some(&OscType::Float(0.0)));
+            // Preset radio fully deselected (all 8 buttons emit 0.0).
+            for i in 1..=8 {
+                let addr = format!("/Positioner/Preset/1/{i}");
+                assert_eq!(
+                    emits.get(&addr),
+                    Some(&OscType::Float(0.0)),
+                    "preset slot {i} not cleared",
+                );
+            }
+            // Preset labels blanked (empty strings).
+            for i in 0..8 {
+                let addr = format!("/Positioner/PresetLabel/{i}");
+                assert_eq!(
+                    emits.get(&addr),
+                    Some(&OscType::String(String::new())),
+                    "preset label {i} not blanked",
+                );
+            }
+        }
+
+        /// `MetaCommand::RenamePositionerPreset` should update the active
+        /// preset's name and re-emit both label arrays (channel-scoped and
+        /// per-group). This is the desktop GUI's rename flow end-to-end.
+        #[test]
+        fn rename_emits_to_both_label_arrays() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            show.handle_meta_command(MetaCommand::RenamePositionerPreset("Bar Spots".to_string()))
+                .unwrap();
+
+            let emits = capture.drain_by_addr();
+
+            // In-memory state: slot 0 (the default active slot) was renamed.
+            let channel = show.channels_for_test().current_channel().unwrap();
+            let positioner = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .unwrap();
+            assert_eq!(positioner.presets[0].name, "Bar Spots");
+
+            // Both label-array slot 0 entries reflect the new name.
+            let expected = OscType::String("Bar Spots".to_string());
+            assert_eq!(
+                emits.get("/Positioner/PresetLabel/0"),
+                Some(&expected),
+                "channel-scoped label not updated",
+            );
+            assert_eq!(
+                emits.get("/IWashLed/PositionPresetLabel/0"),
+                Some(&expected),
+                "per-group label not updated",
+            );
+        }
+
+        /// End-to-end smoke test of the fader → in-memory state path: write
+        /// `/Positioner/X` and assert the offset stored in the active preset.
+        /// Then bump that offset via the momentary bump button and assert
+        /// the magnitude added. Covers `selected_fixture` lookup, fader-to-
+        /// offset write, and bump's modify-in-place arithmetic.
+        #[test]
+        fn fader_and_bump_persist_offset_into_in_memory_state() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            // Slide /Positioner/X to 0.5.
+            fire(&mut show, "/Positioner/X", OscType::Float(0.5)).unwrap();
+            capture.drain();
+
+            let channel = show.channels_for_test().current_channel().unwrap();
+            let x = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .unwrap()
+                .presets[0]
+                .offsets[0]
+                .x
+                .val();
+            assert!((x - 0.5).abs() < 1e-9, "X fader didn't land: x = {x}");
+
+            // Bump up — default step is Medium (0.01).
+            fire_press(&mut show, "/Positioner/XBumpUp").unwrap();
+            let x = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .unwrap()
+                .presets[0]
+                .offsets[0]
+                .x
+                .val();
+            let expected = 0.5 + BumpStep::Medium.magnitude();
+            assert!(
+                (x - expected).abs() < 1e-9,
+                "bump didn't accumulate: x = {x}, expected {expected}",
+            );
+        }
     }
 }

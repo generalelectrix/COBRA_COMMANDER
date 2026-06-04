@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn control_audio_marks_audio_dirty_only_in_internal_mode() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
 
         let mut service = Clocks::test_new();
         assert_eq!(
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn control_audio_osc_marks_audio_dirty_only_in_internal_mode() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
         let msg = audio_osc_msg("FilterCutoff", 0.5);
 
         assert_eq!(
