@@ -56,9 +56,8 @@ pub struct FixtureGroup {
     /// Current strobe flash state for this group. If the fixture cannot strobe,
     /// this will be None.
     flash_state: Option<FlashState>,
-    /// Per-group positioner state. `Some` iff this group's fixture type opts
-    /// into the positioner via [`Fixture::supports_positioner`]. Initialized
-    /// after all fixtures are patched (analogous to `use_color_organ`).
+    /// Per-group positioner state. `Some` iff this group's fixture type
+    /// supports the positioner.
     positioner: Option<Positioner>,
 }
 
@@ -130,10 +129,10 @@ impl FixtureGroup {
         self.color_organ = Some(ColorOrganHsluv::new(self.fixture_configs.len()));
     }
 
-    /// Seed a positioner for this group if its fixture type opts in via
-    /// [`Fixture::supports_positioner`]. Like `use_color_organ`, this should
-    /// only be called after patching is complete so the offset vectors are
-    /// sized correctly.
+    /// Seed a positioner for this group, sized to its current fixture count,
+    /// if the fixture type supports the positioner. No-op otherwise. Call
+    /// after all `patch` calls for the group have run, so the offset vectors
+    /// are sized correctly.
     pub fn init_positioner_if_supported(&mut self) {
         if self.fixture.supports_positioner() {
             self.positioner = Some(Positioner::default_for(self.fixture_configs.len()));
