@@ -2,8 +2,8 @@
 //!
 //! Each positionable [`crate::fixture::FixtureGroup`] owns a [`Positioner`]
 //! that stores per-fixture `(x, y, focus)` offsets across 8 named preset
-//! slots, plus the channel-scoped editing state (selected fixture, bump
-//! step) needed to drive the operator's editing UI.
+//! slots, plus the editing state (selected fixture, bump step) shown on
+//! the Positioner tab.
 
 use anyhow::{Result, bail};
 use number::BipolarFloat;
@@ -23,16 +23,17 @@ pub const N_POSITIONER_SLOTS: usize = 8;
 pub const N_POSITIONER_AXES: usize = 3;
 
 /// Per-group positioner state: preset slots, the currently-active slot, and
-/// channel-scoped editing state (selected fixture, bump granularity).
+/// the editing state (selected fixture, bump granularity) shown on the
+/// Positioner tab.
 #[derive(Debug)]
 pub struct Positioner {
     pub presets: [PositionPreset; N_POSITIONER_SLOTS],
     /// Active preset slot (`0..N_POSITIONER_SLOTS`).
     pub active: usize,
-    /// Index of the fixture being edited via the channel-scoped Positioner
-    /// tab (`0..fixture_count`).
+    /// Index of the fixture being edited via the Positioner tab
+    /// (`0..fixture_count`).
     pub selected_fixture: usize,
-    /// Step magnitude for the channel-scoped bump buttons.
+    /// Step magnitude for the Positioner tab's bump buttons.
     pub bump_step: BumpStep,
     /// Number of fixtures this positioner is sized for; always equals every
     /// preset's `offsets.len()`.
@@ -74,8 +75,8 @@ pub struct PositionerAxes<T> {
     pub focus: Option<T>,
 }
 
-/// Step magnitude for the channel-scoped bump buttons. Same step applies to
-/// X, Y, and Focus.
+/// Step magnitude for the Positioner tab's bump buttons. Same step applies
+/// to X, Y, and Focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BumpStep {
     /// ~0.05; broad, fast positioning.
@@ -162,14 +163,14 @@ fn positioner_inconsistency(code: &'static str, details: impl std::fmt::Display)
     )
 }
 
-/// What kind of state mutation a `control_osc` dispatch produced, governing
-/// which emit paths fire afterward.
-enum Mutation {
-    /// `active` changed: both per-group and channel-scoped views are stale.
-    ActiveChanged,
-    /// Some other state changed (offset, bump step, selected fixture).
-    /// Only the channel-scoped view is stale.
-    Other,
+/// Which UI views are stale after a handler mutation.
+enum Update {
+    /// Both the Positioner tab and the per-group preset selector reflect
+    /// the change.
+    PositionerAndGroup,
+    /// Only the Positioner tab reflects the change; the per-group preset
+    /// selector is unchanged.
+    PositionerOnly,
 }
 
 impl Positioner {
@@ -191,11 +192,10 @@ impl Positioner {
         Some(self.finish(result, emitter))
     }
 
-    /// Handle a channel-scoped positioner OSC message (X/Y/Focus faders and
-    /// bumps, BumpStep, Prev/Next, Preset, Reset, ResetPreset). Returns
-    /// `Err` for an unrecognized address or a recognized-but-malformed
-    /// message.
-    pub fn control_osc_channel_scoped(
+    /// Handle a Positioner-tab OSC message (X/Y/Focus faders and bumps,
+    /// BumpStep, Prev/Next, Preset, Reset, ResetPreset). Returns `Err` for
+    /// an unrecognized address or a recognized-but-malformed message.
+    pub fn control_osc_positioner_scoped(
         &mut self,
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
@@ -224,29 +224,25 @@ impl Positioner {
             addr::RESET_FIXTURE => self.handle_reset_fixture(msg),
             addr::RESET_PRESET => self.handle_reset_preset(msg),
 
-            other => bail!("unrecognized channel-scoped positioner control: {other}"),
+            other => bail!("unrecognized Positioner-tab control: {other}"),
         };
         self.finish(result, emitter)
     }
 
-    /// Fire the emit paths appropriate to `mutation` and the emitter's
-    /// channel binding. `None` means the handler produced no observable
-    /// mutation (button release, no-op tap, out-of-range index) — skip
-    /// the emit entirely.
-    fn finish(
-        &self,
-        result: Result<Option<Mutation>>,
-        emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
-        let Some(mutation) = result? else {
+    /// Fire the emit paths appropriate to the handler's `Update` and the
+    /// emitter's channel binding. `Ok(None)` means the handler produced
+    /// no observable mutation (button release, no-op tap, out-of-range
+    /// index) — skip the emit entirely.
+    fn finish(&self, result: Result<Option<Update>>, emitter: &FixtureStateEmitter) -> Result<()> {
+        let Some(update) = result? else {
             return Ok(());
         };
-        if matches!(mutation, Mutation::ActiveChanged) {
+        if matches!(update, Update::PositionerAndGroup) {
             self.emit_per_group_state(emitter);
         }
         if emitter.channel().is_current() {
-            let channel_emitter = emitter.scoped(addr::GROUP);
-            self.emit_channel_state(&channel_emitter);
+            let positioner_emitter = emitter.scoped(addr::GROUP);
+            self.emit_positioner_state(&positioner_emitter);
         }
         Ok(())
     }
@@ -283,7 +279,7 @@ impl Positioner {
             })
     }
 
-    fn handle_fader(&mut self, msg: &OscControlMessage, axis: Axis) -> Result<Option<Mutation>> {
+    fn handle_fader(&mut self, msg: &OscControlMessage, axis: Axis) -> Result<Option<Update>> {
         let val = msg.get_bipolar()?;
         let Some(offset) = self.selected_offset_mut()? else {
             return Ok(None);
@@ -293,7 +289,7 @@ impl Positioner {
             Axis::Y => offset.y = val,
             Axis::Focus => offset.focus = val,
         }
-        Ok(Some(Mutation::Other))
+        Ok(Some(Update::PositionerOnly))
     }
 
     fn handle_bump(
@@ -301,7 +297,7 @@ impl Positioner {
         msg: &OscControlMessage,
         axis: Axis,
         sign: Sign,
-    ) -> Result<Option<Mutation>> {
+    ) -> Result<Option<Update>> {
         if !msg.get_bool()? {
             return Ok(None);
         }
@@ -317,10 +313,10 @@ impl Positioner {
             Axis::Y => offset.y = BipolarFloat::new(offset.y.val() + signed_delta),
             Axis::Focus => offset.focus = BipolarFloat::new(offset.focus.val() + signed_delta),
         }
-        Ok(Some(Mutation::Other))
+        Ok(Some(Update::PositionerOnly))
     }
 
-    fn handle_bump_step_select(&mut self, msg: &OscControlMessage) -> Result<Option<Mutation>> {
+    fn handle_bump_step_select(&mut self, msg: &OscControlMessage) -> Result<Option<Update>> {
         let Some(index) = addr::BUMP_STEP_SELECT.parse_press(msg)? else {
             return Ok(None);
         };
@@ -330,14 +326,14 @@ impl Positioner {
             2 => BumpStep::Fine,
             _ => return Ok(None),
         };
-        Ok(Some(Mutation::Other))
+        Ok(Some(Update::PositionerOnly))
     }
 
     fn handle_nudge_fixture(
         &mut self,
         msg: &OscControlMessage,
         sign: Sign,
-    ) -> Result<Option<Mutation>> {
+    ) -> Result<Option<Update>> {
         if !msg.get_bool()? || self.fixture_count == 0 {
             return Ok(None);
         }
@@ -347,14 +343,14 @@ impl Positioner {
         };
         let new = (self.selected_fixture as isize + delta).rem_euclid(self.fixture_count as isize);
         self.selected_fixture = new as usize;
-        Ok(Some(Mutation::Other))
+        Ok(Some(Update::PositionerOnly))
     }
 
     fn handle_preset_select(
         &mut self,
         msg: &OscControlMessage,
         primitive: &RadioButton,
-    ) -> Result<Option<Mutation>> {
+    ) -> Result<Option<Update>> {
         let Some(index) = primitive.parse_press(msg)? else {
             return Ok(None);
         };
@@ -362,10 +358,10 @@ impl Positioner {
             return Ok(None);
         }
         self.active = index;
-        Ok(Some(Mutation::ActiveChanged))
+        Ok(Some(Update::PositionerAndGroup))
     }
 
-    fn handle_reset_fixture(&mut self, msg: &OscControlMessage) -> Result<Option<Mutation>> {
+    fn handle_reset_fixture(&mut self, msg: &OscControlMessage) -> Result<Option<Update>> {
         if !msg.get_bool()? {
             return Ok(None);
         }
@@ -373,10 +369,10 @@ impl Positioner {
             return Ok(None);
         };
         *offset = PositionOffset::default();
-        Ok(Some(Mutation::Other))
+        Ok(Some(Update::PositionerOnly))
     }
 
-    fn handle_reset_preset(&mut self, msg: &OscControlMessage) -> Result<Option<Mutation>> {
+    fn handle_reset_preset(&mut self, msg: &OscControlMessage) -> Result<Option<Update>> {
         if !msg.get_bool()? {
             return Ok(None);
         }
@@ -390,12 +386,12 @@ impl Positioner {
         for off in &mut preset.offsets {
             *off = PositionOffset::default();
         }
-        Ok(Some(Mutation::Other))
+        Ok(Some(Update::PositionerOnly))
     }
 
-    /// Push the channel-scoped Positioner tab state. The emitter should be
-    /// scoped to the [`addr::GROUP`] entity.
-    pub fn emit_channel_state<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
+    /// Push the Positioner tab state. The emitter should be scoped to the
+    /// [`addr::GROUP`] entity.
+    pub fn emit_positioner_state<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
         let label = if self.fixture_count == 0 {
             "—".to_string()
         } else {
@@ -438,25 +434,10 @@ impl Positioner {
     }
 }
 
-/// Push neutral / cleared values for every channel-scoped Positioner control.
-///
-/// Used in two cases where there is no live positioner to drive the
-/// `/Positioner/...` tab:
-///
-/// - The current channel's group has no positioner (non-positionable
-///   fixture type).
-/// - There is no current channel at all (e.g. an empty patch at cold
-///   start).
-///
-/// Without this emit, the tab would display stale state lingering from
-/// whichever positionable channel was last selected, which can mislead the
-/// operator into thinking they're still editing it. The plan specifies the
-/// FixtureLabel `"—"` as the visible cue; we also reset the faders and
-/// deselect both radios so the tab visually matches the "no live state"
-/// condition.
-///
-/// The emitter should be scoped to [`addr::GROUP`] (`"Positioner"`).
-pub fn emit_non_positionable_channel_state<E: EmitScopedOscMessage + ?Sized>(emitter: &E) {
+/// Push neutral / cleared values for every Positioner-tab control:
+/// FixtureLabel reads `"—"`, faders snap to 0, both radios fully
+/// deselect. The emitter should be scoped to [`addr::GROUP`].
+pub fn emit_cleared_positioner_state<E: EmitScopedOscMessage + ?Sized>(emitter: &E) {
     emitter.emit_osc(ScopedOscMessage {
         control: addr::FIXTURE_LABEL,
         arg: OscType::String("—".to_string()),
@@ -556,17 +537,17 @@ mod tests {
         crate::osc::FixtureStateEmitter::new(name, crate::channel::mock::no_op_emitter())
     }
 
-    /// Regression: per-group dispatch must NOT match channel-scoped
+    /// Regression: per-group dispatch must NOT match the Positioner tab's
     /// vocabulary. Otherwise a fixture's own `/MyFixture/Focus` (or
     /// `/MyFixture/Reset`, `/MyFixture/X`, etc.) would be swallowed by
     /// the positioner before reaching the fixture's own control handler.
     #[test]
-    fn control_osc_per_group_ignores_channel_scoped_and_unknown_addresses() {
+    fn control_osc_per_group_ignores_positioner_scoped_and_unknown_addresses() {
         let mut p = Positioner::default_for(4);
         let name = crate::config::GroupName("MyFixture".to_string());
         let emitter = null_fixture_emitter(&name);
 
-        // Channel-scoped controls that a real fixture might collide with.
+        // Positioner-tab controls that a real fixture might collide with.
         for ctrl in [
             "X",
             "Y",
@@ -597,14 +578,14 @@ mod tests {
     }
 
     #[test]
-    fn control_osc_channel_scoped_errors_on_unknown_address() {
+    fn control_osc_positioner_scoped_errors_on_unknown_address() {
         let mut p = Positioner::default_for(1);
         let name = crate::config::GroupName("Test".to_string());
         let emitter = null_fixture_emitter(&name);
 
         let msg = make_msg("/Positioner/NotAControl", OscType::Float(1.0));
         let err = p
-            .control_osc_channel_scoped(&msg, &emitter)
+            .control_osc_positioner_scoped(&msg, &emitter)
             .expect_err("unknown control should error");
         assert!(
             err.to_string().contains("unrecognized"),
@@ -622,7 +603,7 @@ mod tests {
         let name = crate::config::GroupName("Test".to_string());
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/XBumpUp", OscType::Float(1.0));
-        p.control_osc_channel_scoped(&msg, &emitter).unwrap();
+        p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
 
         // 0.99 + 0.05 = 1.04, clamped to 1.0 by BipolarFloat::new.
         assert_eq!(p.presets[0].offsets[0].x.val(), 1.0);
@@ -637,7 +618,7 @@ mod tests {
         let name = crate::config::GroupName("Test".to_string());
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/YBumpDown", OscType::Float(1.0));
-        p.control_osc_channel_scoped(&msg, &emitter).unwrap();
+        p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
 
         // -0.99 + -0.05 = -1.04, clamped to -1.0.
         assert_eq!(p.presets[0].offsets[0].y.val(), -1.0);
@@ -653,7 +634,7 @@ mod tests {
         let name = crate::config::GroupName("Test".to_string());
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/XBumpUp", OscType::Float(0.0));
-        p.control_osc_channel_scoped(&msg, &emitter).unwrap();
+        p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
         assert_eq!(p.presets[0].offsets[0].x.val(), 0.5);
     }
 
@@ -669,7 +650,7 @@ mod tests {
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/X", OscType::Float(0.5));
         let err = p
-            .control_osc_channel_scoped(&msg, &emitter)
+            .control_osc_positioner_scoped(&msg, &emitter)
             .expect_err("should error on out-of-range selected_fixture");
         let msg = err.to_string();
         assert!(msg.contains("PO-002"), "wanted PO-002 in: {msg}");
@@ -685,13 +666,13 @@ mod tests {
         let name = crate::config::GroupName("Test".to_string());
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/X", OscType::Float(0.5));
-        p.control_osc_channel_scoped(&msg, &emitter).unwrap();
+        p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
     }
 
     #[test]
-    fn non_positionable_emit_clears_every_channel_scoped_control() {
+    fn cleared_positioner_emit_clears_every_positioner_tab_control() {
         let emitter = crate::osc::MockEmitter::new();
-        emit_non_positionable_channel_state(&emitter);
+        emit_cleared_positioner_state(&emitter);
         let msgs = emitter.take();
 
         // Indexed lookups by control name for clarity.

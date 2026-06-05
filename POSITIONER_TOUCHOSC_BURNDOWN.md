@@ -12,8 +12,8 @@ There are two surfaces to edit:
    gets a small **"Position Preset"** region (radio + label array).
 
 The Rust dispatch will fall back to a cleared `"—"` state on the
-channel-scoped tab whenever the current channel is non-positionable or
-no channel is selected, so partial edits won't leave the iPad in a
+Positioner tab whenever the current channel is non-positionable or no
+channel is selected, so partial edits won't leave the iPad in a
 confusing state.
 
 ---
@@ -73,7 +73,7 @@ per-instance pages.
 
 | OSC address (in template) | Resolved address (after `set_group_name`) | Control type | Notes |
 |---|---|---|---|
-| `PositionPresetSelect/1/1`<br>… `PositionPresetSelect/1/8` | `/{group_name}/PositionPresetSelect/1/{1..8}` | 8-button radio (1 col × 8 rows) | Per-group preset selector. Drives the same `Positioner.active` field as the channel-scoped `/Positioner/Preset` radio. |
+| `PositionPresetSelect/1/1`<br>… `PositionPresetSelect/1/8` | `/{group_name}/PositionPresetSelect/1/{1..8}` | 8-button radio (1 col × 8 rows) | Per-group preset selector. Drives the same `Positioner.active` field as the Positioner tab's `/Positioner/Preset` radio. |
 | `PositionPresetLabel/0`<br>… `PositionPresetLabel/7` | `/{group_name}/PositionPresetLabel/{0..7}` | 8 text labels (read-only) | Preset names (`"Position 1"` through `"Position 8"` by default). Indexed 0–7 to match `LabelArray`'s zero-indexed convention. |
 
 **Total: 8-button radio + 8 labels = 16 controls.**
@@ -87,7 +87,7 @@ primitives parse them directly — same convention as the existing
 
 ## Quick sanity checklist when you wire things up
 
-- [ ] Press `/Positioner/X` fader on the channel-scoped tab while
+- [ ] Press `/Positioner/X` fader on the Positioner tab while
       iWashLed is the current channel → DMX pan moves for the selected
       fixture.
 - [ ] Press `/Positioner/Y` → tilt moves.
@@ -98,17 +98,17 @@ primitives parse them directly — same convention as the existing
       in slot 2 (1-indexed button → 0-indexed slot); per-group radio on
       the iWashLed page lights button 3.
 - [ ] Tap `/IWashFront/PositionPresetSelect/1/5` while iWashFront IS the
-      current channel → both the per-group radio AND the channel-scoped
+      current channel → both the per-group radio AND the Positioner-tab
       `/Positioner/Preset` radio light button 5; DMX snaps.
 - [ ] Tap `/IWashFront/PositionPresetSelect/1/5` while iWashBack IS the
       current channel → only iWashFront's per-group radio lights;
-      channel-scoped tab is unchanged.
+      Positioner tab is unchanged.
 - [ ] Switch channels via `/Channels/Select` → `/Positioner/...` state
       refreshes to reflect the new channel's positioner, including the 8
       `PresetLabel/{0..7}` slots; FixtureLabel reads `"—"` and the
       preset labels blank out if the new channel is non-positionable.
 - [ ] On the desktop **Positioner** tab, type a name + Enter → the active
-      preset's name updates on both the channel-scoped
+      preset's name updates on both the Positioner-tab
       `/Positioner/PresetLabel/{active}` slot and the per-group
       `/{group_name}/PositionPresetLabel/{active}` slot.
 - [ ] Set offsets in a preset, then repatch the iWashLed group with a

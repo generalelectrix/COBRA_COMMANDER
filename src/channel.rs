@@ -129,20 +129,19 @@ impl Channels {
                         emitter,
                     },
                 );
-                // Channel-scoped Positioner tab: refresh state for the new
-                // current channel. Required because channel change does not
-                // go through refresh_ui. If the new channel is non-
-                // positionable, push the cleared "—" state so the iPad
-                // doesn't keep showing stale state from the previous
-                // positionable channel.
+                // Positioner tab: refresh state for the new current channel.
+                // Required because channel change does not go through
+                // refresh_ui. If the new channel is non-positionable, push
+                // the cleared "—" state so the iPad doesn't keep showing
+                // stale state from the previous positionable channel.
                 let positioner_emitter = ScopedControlEmitter {
                     entity: crate::osc::positioner::GROUP,
                     emitter,
                 };
                 if let Some(positioner) = group.positioner() {
-                    positioner.emit_channel_state(&positioner_emitter);
+                    positioner.emit_positioner_state(&positioner_emitter);
                 } else {
-                    crate::positioner::emit_non_positionable_channel_state(&positioner_emitter);
+                    crate::positioner::emit_cleared_positioner_state(&positioner_emitter);
                 }
             }
             ControlMessage::Control { channel_id, msg } => {

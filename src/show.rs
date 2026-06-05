@@ -268,7 +268,7 @@ impl Show {
             MetaCommand::RenamePositionerPreset(name) => {
                 // Look up the current channel's group. If positionable,
                 // rename the active preset and re-emit so TouchOSC labels
-                // update on both the channel-scoped tab and the per-group
+                // update on both the Positioner tab and the per-group
                 // selector. Silent no-op if there's no current channel or
                 // the current channel has no positioner.
                 let Some(channel) = self.channels.current_channel() else {
@@ -283,7 +283,7 @@ impl Show {
                     preset.name = name;
                 }
                 let sender = self.controller.sender_with_metadata(None);
-                positioner.emit_channel_state(&ScopedControlEmitter {
+                positioner.emit_positioner_state(&ScopedControlEmitter {
                     entity: crate::osc::positioner::GROUP,
                     emitter: &sender,
                 });
@@ -468,10 +468,10 @@ impl Show {
                 Ok(GuiDirty::CLEAN)
             }
             crate::osc::positioner::GROUP => {
-                // Channel-scoped /Positioner/... dispatch. Look up the
-                // current channel's group; if it has a positioner, hand the
-                // message off with a `ChannelBinding::Current` emitter (we
-                // know we're in current-channel context by construction).
+                // /Positioner/... dispatch. Look up the current channel's
+                // group; if it has a positioner, hand the message off with
+                // a `ChannelBinding::Current` emitter (we know we're in
+                // current-channel context by construction).
                 let Some(channel) = self.channels.current_channel() else {
                     return Ok(GuiDirty::CLEAN);
                 };
@@ -487,7 +487,7 @@ impl Show {
                 if let Some(positioner) = positioner {
                     let fixture_emitter =
                         crate::osc::FixtureStateEmitter::new(name, channel_emitter);
-                    positioner.control_osc_channel_scoped(msg, &fixture_emitter)?;
+                    positioner.control_osc_positioner_scoped(msg, &fixture_emitter)?;
                 }
                 Ok(GuiDirty::CLEAN)
             }
@@ -652,9 +652,9 @@ impl Show {
                         },
                     );
                     if let Some(positioner) = group.positioner() {
-                        positioner.emit_channel_state(&positioner_emitter);
+                        positioner.emit_positioner_state(&positioner_emitter);
                     } else {
-                        crate::positioner::emit_non_positionable_channel_state(&positioner_emitter);
+                        crate::positioner::emit_cleared_positioner_state(&positioner_emitter);
                     }
                 }
                 Err(e) => error!("{e:#}"),
@@ -662,7 +662,7 @@ impl Show {
         } else {
             // No current channel at all (e.g. empty patch at cold start).
             // Same cleared state as the non-positionable case.
-            crate::positioner::emit_non_positionable_channel_state(&positioner_emitter);
+            crate::positioner::emit_cleared_positioner_state(&positioner_emitter);
         }
 
         self.clocks.emit_state(&mut self.controller);
@@ -1335,8 +1335,8 @@ mod tests {
     // These exercise the full OSC dispatch path on Show: fire a message at
     // `handle_osc_message`, then assert both the in-memory mutation and the
     // OSC responses that came back out. The two-iPad binding choreography
-    // (channel-scoped tab ↔ per-group preset selector) is the canonical
-    // case — see the docstring on each test for the scenario it covers.
+    // (Positioner tab ↔ per-group preset selector) is the canonical case —
+    // see the docstring on each test for the scenario it covers.
     mod positioner_integration {
         use super::*;
         use crate::positioner::BumpStep;
@@ -1374,12 +1374,12 @@ mod tests {
     - addr: 100
 ";
 
-        /// Tap `/Positioner/Preset/1/3` on the channel-scoped tab while
+        /// Tap `/Positioner/Preset/1/3` on the Positioner tab while
         /// IWashLed is the current channel. Expect: in-memory `active`
         /// flips to slot 2, the per-group `PositionPresetSelect/1/3` echoes
         /// back, and both label arrays are pushed.
         #[test]
-        fn channel_scoped_preset_tap_echoes_to_per_group_radio() {
+        fn positioner_preset_tap_echoes_to_per_group_radio() {
             let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
             // Discard the initial sync emits from Show::test_new construction.
             capture.drain();
@@ -1397,7 +1397,7 @@ mod tests {
                 .expect("IWashLed is positionable");
             assert_eq!(positioner.active, 2);
 
-            // Channel-scoped Preset radio: slot 3 lit, others dark.
+            // Positioner-tab Preset radio: slot 3 lit, others dark.
             for i in 1..=8 {
                 let addr = format!("/Positioner/Preset/1/{i}");
                 let expected = if i == 3 {
@@ -1467,7 +1467,7 @@ mod tests {
                 emits.get("/IWashLed/PositionPresetSelect/1/5"),
                 Some(&OscType::Float(1.0)),
             );
-            // Channel-scoped tab refreshed (Preset radio + a label slot as proof).
+            // Positioner tab refreshed (Preset radio + a label slot as proof).
             assert_eq!(
                 emits.get("/Positioner/Preset/1/5"),
                 Some(&OscType::Float(1.0)),
@@ -1480,7 +1480,7 @@ mod tests {
 
         /// Tap `/IWashBack/PositionPresetSelect/1/5` while IWashFront IS the
         /// current channel. Expect: IWashBack's state mutates, IWashFront's
-        /// doesn't, and the channel-scoped `/Positioner/...` tab is *not*
+        /// doesn't, and the Positioner tab is *not*
         /// touched (operator on the iWashFront tab shouldn't see slot 5 light
         /// up because of activity on a different group).
         #[test]
@@ -1519,13 +1519,13 @@ mod tests {
                 emits.get("/IWashBack/PositionPresetSelect/1/5"),
                 Some(&OscType::Float(1.0)),
             );
-            // Channel-scoped tab was NOT touched — no Preset radio echo, no
+            // Positioner tab was NOT touched — no Preset radio echo, no
             // label refresh. This is the key cross-binding-isolation check.
             for i in 1..=8 {
                 let addr = format!("/Positioner/Preset/1/{i}");
                 assert!(
                     !emits.contains_key(&addr),
-                    "unexpected channel-scoped emit at {addr}: {:?}",
+                    "unexpected Positioner-tab emit at {addr}: {:?}",
                     emits.get(&addr),
                 );
             }
@@ -1533,14 +1533,14 @@ mod tests {
                 let addr = format!("/Positioner/PresetLabel/{i}");
                 assert!(
                     !emits.contains_key(&addr),
-                    "unexpected channel-scoped emit at {addr}: {:?}",
+                    "unexpected Positioner-tab emit at {addr}: {:?}",
                     emits.get(&addr),
                 );
             }
         }
 
         /// Switch from a positionable channel to a non-positionable one. The
-        /// channel-scoped `/Positioner/...` tab should clear: FixtureLabel
+        /// Positioner tab should clear: FixtureLabel
         /// reads `"—"`, faders snap to 0, preset radio fully deselects,
         /// preset labels go blank.
         #[test]
@@ -1584,7 +1584,7 @@ mod tests {
         }
 
         /// `MetaCommand::RenamePositionerPreset` should update the active
-        /// preset's name and re-emit both label arrays (channel-scoped and
+        /// preset's name and re-emit both label arrays (Positioner-tab and
         /// per-group). This is the desktop GUI's rename flow end-to-end.
         #[test]
         fn rename_emits_to_both_label_arrays() {
@@ -1611,7 +1611,7 @@ mod tests {
             assert_eq!(
                 emits.get("/Positioner/PresetLabel/0"),
                 Some(&expected),
-                "channel-scoped label not updated",
+                "Positioner-tab label not updated",
             );
             assert_eq!(
                 emits.get("/IWashLed/PositionPresetLabel/0"),
