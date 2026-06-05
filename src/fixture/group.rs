@@ -192,19 +192,13 @@ impl FixtureGroup {
     }
 
     /// Mutable access to the positioner, if this group is positionable.
-    /// Currently only used by tests; production OSC dispatch goes through
-    /// [`Self::split_for_positioner_dispatch`].
     #[cfg(test)]
     pub fn positioner_mut(&mut self) -> Option<&mut crate::positioner::Positioner> {
         self.positioner.as_mut()
     }
 
-    /// Disjoint-field accessor for the positioner-dispatch path in `Show`.
-    /// Returns `(&self.name, self.positioner.as_mut())`, which is borrow-
-    /// checker-friendly thanks to split borrows on disjoint fields — the
-    /// caller would otherwise hit E0502 trying to hold both a `&self.name`
-    /// for the [`FixtureStateEmitter`] and a `&mut self.positioner` for
-    /// dispatch via the existing accessors.
+    /// The group's name and a mutable handle to its positioner, borrowed as
+    /// disjoint fields so both can be held simultaneously.
     pub fn split_for_positioner_dispatch(
         &mut self,
     ) -> (&GroupName, Option<&mut crate::positioner::Positioner>) {
