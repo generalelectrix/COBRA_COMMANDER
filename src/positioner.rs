@@ -27,14 +27,14 @@ pub const N_POSITIONER_AXES: usize = 3;
 /// Positioner tab.
 #[derive(Debug)]
 pub struct Positioner {
-    pub presets: [PositionPreset; N_POSITIONER_SLOTS],
+    presets: [PositionPreset; N_POSITIONER_SLOTS],
     /// Active preset slot (`0..N_POSITIONER_SLOTS`).
-    pub active: usize,
+    active: usize,
     /// Index of the fixture being edited via the Positioner tab
     /// (`0..fixture_count`).
-    pub selected_fixture: usize,
+    selected_fixture: usize,
     /// Step magnitude for the Positioner tab's bump buttons.
-    pub bump_step: BumpStep,
+    bump_step: BumpStep,
     /// Number of fixtures this positioner is sized for; always equals every
     /// preset's `offsets.len()`.
     fixture_count: usize,
@@ -152,6 +152,23 @@ impl Positioner {
             self.selected_fixture = new_count.saturating_sub(1);
         }
     }
+
+    /// The offset for a given fixture in the currently-active preset, or
+    /// `None` if `fixture_index` is out of range.
+    pub fn offset_for_fixture(&self, fixture_index: usize) -> Option<PositionOffset> {
+        self.presets
+            .get(self.active)
+            .and_then(|preset| preset.offsets.get(fixture_index))
+            .copied()
+    }
+
+    /// Rename the currently-active preset slot. Returns the slot index that
+    /// was renamed, or `None` if `active` is out of range.
+    pub fn rename_active_preset(&mut self, name: String) -> Option<usize> {
+        let active = self.active;
+        self.presets.get_mut(active)?.name = name;
+        Some(active)
+    }
 }
 
 /// Build an `anyhow::Error` for a violated positioner invariant. The `code`
@@ -161,16 +178,6 @@ fn positioner_inconsistency(code: &'static str, details: impl std::fmt::Display)
         "Error code: {code}. Positioner inconsistency: {details}. \
          This is a bug — please report to this application's developers."
     )
-}
-
-/// Which UI views are stale after a handler mutation.
-enum Update {
-    /// Both the Positioner tab and the per-group preset selector reflect
-    /// the change.
-    PositionerAndGroup,
-    /// Only the Positioner tab reflects the change; the per-group preset
-    /// selector is unchanged.
-    PositionerOnly,
 }
 
 impl Positioner {
@@ -183,13 +190,11 @@ impl Positioner {
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
     ) -> Option<Result<()>> {
-        let result = match msg.control() {
-            c if c == addr::POSITION_PRESET_SELECT.control => {
-                self.handle_preset_select(msg, &addr::POSITION_PRESET_SELECT)
-            }
-            _ => return None,
-        };
-        Some(self.finish(result, emitter))
+        if msg.control() == addr::POSITION_PRESET_SELECT.control {
+            Some(self.handle_preset_select(msg, &addr::POSITION_PRESET_SELECT, emitter))
+        } else {
+            None
+        }
     }
 
     /// Handle a Positioner-tab OSC message (X/Y/Focus faders and bumps,
@@ -200,51 +205,32 @@ impl Positioner {
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
     ) -> Result<()> {
-        let result = match msg.control() {
-            addr::X_FADER => self.handle_fader(msg, Axis::X),
-            addr::Y_FADER => self.handle_fader(msg, Axis::Y),
-            addr::FOCUS_FADER => self.handle_fader(msg, Axis::Focus),
+        match msg.control() {
+            addr::X_FADER => self.handle_fader(msg, Axis::X, emitter),
+            addr::Y_FADER => self.handle_fader(msg, Axis::Y, emitter),
+            addr::FOCUS_FADER => self.handle_fader(msg, Axis::Focus, emitter),
 
-            addr::X_BUMP_UP => self.handle_bump(msg, Axis::X, Sign::Plus),
-            addr::X_BUMP_DOWN => self.handle_bump(msg, Axis::X, Sign::Minus),
-            addr::Y_BUMP_UP => self.handle_bump(msg, Axis::Y, Sign::Plus),
-            addr::Y_BUMP_DOWN => self.handle_bump(msg, Axis::Y, Sign::Minus),
-            addr::FOCUS_BUMP_UP => self.handle_bump(msg, Axis::Focus, Sign::Plus),
-            addr::FOCUS_BUMP_DOWN => self.handle_bump(msg, Axis::Focus, Sign::Minus),
+            addr::X_BUMP_UP => self.handle_bump(msg, Axis::X, Sign::Plus, emitter),
+            addr::X_BUMP_DOWN => self.handle_bump(msg, Axis::X, Sign::Minus, emitter),
+            addr::Y_BUMP_UP => self.handle_bump(msg, Axis::Y, Sign::Plus, emitter),
+            addr::Y_BUMP_DOWN => self.handle_bump(msg, Axis::Y, Sign::Minus, emitter),
+            addr::FOCUS_BUMP_UP => self.handle_bump(msg, Axis::Focus, Sign::Plus, emitter),
+            addr::FOCUS_BUMP_DOWN => self.handle_bump(msg, Axis::Focus, Sign::Minus, emitter),
 
-            c if c == addr::BUMP_STEP_SELECT.control => self.handle_bump_step_select(msg),
+            c if c == addr::BUMP_STEP_SELECT.control => self.handle_bump_step_select(msg, emitter),
 
-            addr::PREV_FIXTURE => self.handle_nudge_fixture(msg, Sign::Minus),
-            addr::NEXT_FIXTURE => self.handle_nudge_fixture(msg, Sign::Plus),
+            addr::PREV_FIXTURE => self.handle_nudge_fixture(msg, Sign::Minus, emitter),
+            addr::NEXT_FIXTURE => self.handle_nudge_fixture(msg, Sign::Plus, emitter),
 
             c if c == addr::PRESET_SELECT.control => {
-                self.handle_preset_select(msg, &addr::PRESET_SELECT)
+                self.handle_preset_select(msg, &addr::PRESET_SELECT, emitter)
             }
 
-            addr::RESET_FIXTURE => self.handle_reset_fixture(msg),
-            addr::RESET_PRESET => self.handle_reset_preset(msg),
+            addr::RESET_FIXTURE => self.handle_reset_fixture(msg, emitter),
+            addr::RESET_PRESET => self.handle_reset_preset(msg, emitter),
 
             other => bail!("unrecognized Positioner-tab control: {other}"),
-        };
-        self.finish(result, emitter)
-    }
-
-    /// Fire the emit paths appropriate to the handler's `Update` and the
-    /// emitter's channel binding. `Ok(None)` means the handler produced
-    /// no observable mutation (button release, no-op tap, out-of-range
-    /// index) — skip the emit entirely.
-    fn finish(&self, result: Result<Option<Update>>, emitter: &FixtureStateEmitter) -> Result<()> {
-        let Some(update) = result? else {
-            return Ok(());
-        };
-        if matches!(update, Update::PositionerAndGroup) {
-            self.emit_per_group_state(emitter);
         }
-        if emitter.channel().is_current() {
-            let positioner_emitter = emitter.scoped(addr::GROUP);
-            self.emit_positioner_state(&positioner_emitter);
-        }
-        Ok(())
     }
 
     /// The offset for the selected fixture in the active preset. Returns
@@ -279,17 +265,23 @@ impl Positioner {
             })
     }
 
-    fn handle_fader(&mut self, msg: &OscControlMessage, axis: Axis) -> Result<Option<Update>> {
+    fn handle_fader(
+        &mut self,
+        msg: &OscControlMessage,
+        axis: Axis,
+        emitter: &FixtureStateEmitter,
+    ) -> Result<()> {
         let val = msg.get_bipolar()?;
         let Some(offset) = self.selected_offset_mut()? else {
-            return Ok(None);
+            return Ok(());
         };
         match axis {
             Axis::X => offset.x = val,
             Axis::Y => offset.y = val,
             Axis::Focus => offset.focus = val,
         }
-        Ok(Some(Update::PositionerOnly))
+        self.emit_axis(axis, &emitter.scoped(addr::GROUP));
+        Ok(())
     }
 
     fn handle_bump(
@@ -297,45 +289,53 @@ impl Positioner {
         msg: &OscControlMessage,
         axis: Axis,
         sign: Sign,
-    ) -> Result<Option<Update>> {
+        emitter: &FixtureStateEmitter,
+    ) -> Result<()> {
         if !msg.get_bool()? {
-            return Ok(None);
+            return Ok(());
         }
         let signed_delta = match sign {
             Sign::Plus => self.bump_step.magnitude(),
             Sign::Minus => -self.bump_step.magnitude(),
         };
         let Some(offset) = self.selected_offset_mut()? else {
-            return Ok(None);
+            return Ok(());
         };
         match axis {
             Axis::X => offset.x = BipolarFloat::new(offset.x.val() + signed_delta),
             Axis::Y => offset.y = BipolarFloat::new(offset.y.val() + signed_delta),
             Axis::Focus => offset.focus = BipolarFloat::new(offset.focus.val() + signed_delta),
         }
-        Ok(Some(Update::PositionerOnly))
+        self.emit_axis(axis, &emitter.scoped(addr::GROUP));
+        Ok(())
     }
 
-    fn handle_bump_step_select(&mut self, msg: &OscControlMessage) -> Result<Option<Update>> {
+    fn handle_bump_step_select(
+        &mut self,
+        msg: &OscControlMessage,
+        emitter: &FixtureStateEmitter,
+    ) -> Result<()> {
         let Some(index) = addr::BUMP_STEP_SELECT.parse_press(msg)? else {
-            return Ok(None);
+            return Ok(());
         };
         self.bump_step = match index {
             0 => BumpStep::Coarse,
             1 => BumpStep::Medium,
             2 => BumpStep::Fine,
-            _ => return Ok(None),
+            _ => return Ok(()),
         };
-        Ok(Some(Update::PositionerOnly))
+        self.emit_bump_step_radio(&emitter.scoped(addr::GROUP));
+        Ok(())
     }
 
     fn handle_nudge_fixture(
         &mut self,
         msg: &OscControlMessage,
         sign: Sign,
-    ) -> Result<Option<Update>> {
+        emitter: &FixtureStateEmitter,
+    ) -> Result<()> {
         if !msg.get_bool()? || self.fixture_count == 0 {
-            return Ok(None);
+            return Ok(());
         }
         let delta: isize = match sign {
             Sign::Plus => 1,
@@ -343,38 +343,59 @@ impl Positioner {
         };
         let new = (self.selected_fixture as isize + delta).rem_euclid(self.fixture_count as isize);
         self.selected_fixture = new as usize;
-        Ok(Some(Update::PositionerOnly))
+        let scoped = emitter.scoped(addr::GROUP);
+        self.emit_fixture_label(&scoped);
+        self.emit_selected_axes(&scoped);
+        Ok(())
     }
 
     fn handle_preset_select(
         &mut self,
         msg: &OscControlMessage,
         primitive: &RadioButton,
-    ) -> Result<Option<Update>> {
+        emitter: &FixtureStateEmitter,
+    ) -> Result<()> {
         let Some(index) = primitive.parse_press(msg)? else {
-            return Ok(None);
+            return Ok(());
         };
         if index >= N_POSITIONER_SLOTS || self.active == index {
-            return Ok(None);
+            return Ok(());
         }
         self.active = index;
-        Ok(Some(Update::PositionerAndGroup))
+        // The per-group preset radio always reflects the change (it's the
+        // surface this came from when dispatched per-group, and it tracks
+        // active state regardless when dispatched positioner-scoped).
+        self.emit_per_group_state(emitter);
+        // The Positioner tab only reflects state for the current channel.
+        if emitter.channel().is_current() {
+            self.emit_positioner_state(&emitter.scoped(addr::GROUP));
+        }
+        Ok(())
     }
 
-    fn handle_reset_fixture(&mut self, msg: &OscControlMessage) -> Result<Option<Update>> {
+    fn handle_reset_fixture(
+        &mut self,
+        msg: &OscControlMessage,
+        emitter: &FixtureStateEmitter,
+    ) -> Result<()> {
         if !msg.get_bool()? {
-            return Ok(None);
+            return Ok(());
         }
         let Some(offset) = self.selected_offset_mut()? else {
-            return Ok(None);
+            return Ok(());
         };
         *offset = PositionOffset::default();
-        Ok(Some(Update::PositionerOnly))
+        self.emit_selected_axes(&emitter.scoped(addr::GROUP));
+        Ok(())
     }
 
-    fn handle_reset_preset(&mut self, msg: &OscControlMessage) -> Result<Option<Update>> {
+    fn handle_reset_preset(
+        &mut self,
+        msg: &OscControlMessage,
+        emitter: &FixtureStateEmitter,
+    ) -> Result<()> {
         if !msg.get_bool()? {
-            return Ok(None);
+            return Ok(());
         }
         let active = self.active;
         let preset = self.presets.get_mut(active).ok_or_else(|| {
@@ -386,12 +407,53 @@ impl Positioner {
         for off in &mut preset.offsets {
             *off = PositionOffset::default();
         }
-        Ok(Some(Update::PositionerOnly))
+        self.emit_selected_axes(&emitter.scoped(addr::GROUP));
+        Ok(())
     }
 
     /// Push the Positioner tab state. The emitter should be scoped to the
     /// [`addr::GROUP`] entity.
     pub fn emit_positioner_state<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
+        self.emit_fixture_label(emitter);
+        self.emit_selected_axes(emitter);
+        addr::PRESET_SELECT.set(self.active, false, emitter);
+        addr::PRESET_LABELS.set(self.presets.iter().map(|p| p.name.clone()), emitter);
+        self.emit_bump_step_radio(emitter);
+    }
+
+    /// Push the per-group preset selector state (radio index + 8 labels).
+    /// The emitter should be scoped to the group's name (e.g. via the
+    /// [`FixtureStateEmitter`] that prefixes addresses with the group name).
+    pub fn emit_per_group_state<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
+        addr::POSITION_PRESET_SELECT.set(self.active, false, emitter);
+        addr::POSITION_PRESET_LABEL.set(self.presets.iter().map(|p| p.name.clone()), emitter);
+    }
+
+    /// Push the selected fixture's offset value along one axis.
+    fn emit_axis<E: EmitScopedOscMessage + ?Sized>(&self, axis: Axis, emitter: &E) {
+        let val = self
+            .presets
+            .get(self.active)
+            .and_then(|preset| preset.offsets.get(self.selected_fixture))
+            .map(|off| match axis {
+                Axis::X => off.x.val(),
+                Axis::Y => off.y.val(),
+                Axis::Focus => off.focus.val(),
+            })
+            .unwrap_or(0.0);
+        emitter.emit_float(axis.fader_addr(), val);
+    }
+
+    /// Push all three offset faders for the selected fixture.
+    fn emit_selected_axes<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
+        self.emit_axis(Axis::X, emitter);
+        self.emit_axis(Axis::Y, emitter);
+        self.emit_axis(Axis::Focus, emitter);
+    }
+
+    /// Push the `"{selected_fixture + 1} / {fixture_count}"` label, or
+    /// `"—"` when the group has no patched fixtures.
+    fn emit_fixture_label<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
         let label = if self.fixture_count == 0 {
             "—".to_string()
         } else {
@@ -401,22 +463,10 @@ impl Positioner {
             control: addr::FIXTURE_LABEL,
             arg: OscType::String(label),
         });
+    }
 
-        let (x, y, focus) = match self
-            .presets
-            .get(self.active)
-            .and_then(|preset| preset.offsets.get(self.selected_fixture))
-        {
-            Some(off) => (off.x.val(), off.y.val(), off.focus.val()),
-            None => (0.0, 0.0, 0.0),
-        };
-        emitter.emit_float(addr::X_FADER, x);
-        emitter.emit_float(addr::Y_FADER, y);
-        emitter.emit_float(addr::FOCUS_FADER, focus);
-
-        addr::PRESET_SELECT.set(self.active, false, emitter);
-        addr::PRESET_LABELS.set(self.presets.iter().map(|p| p.name.clone()), emitter);
-
+    /// Push the bump-step radio selection (Coarse / Medium / Fine).
+    fn emit_bump_step_radio<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
         let bump_index = match self.bump_step {
             BumpStep::Coarse => 0,
             BumpStep::Medium => 1,
@@ -424,13 +474,15 @@ impl Positioner {
         };
         addr::BUMP_STEP_SELECT.set(bump_index, false, emitter);
     }
+}
 
-    /// Push the per-group preset selector state (radio index + 8 labels).
-    /// The emitter should be scoped to the group's name (e.g. via the
-    /// [`FixtureStateEmitter`] that prefixes addresses with the group name).
-    pub fn emit_per_group_state<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
-        addr::POSITION_PRESET_SELECT.set(self.active, false, emitter);
-        addr::POSITION_PRESET_LABEL.set(self.presets.iter().map(|p| p.name.clone()), emitter);
+impl Axis {
+    fn fader_addr(self) -> &'static str {
+        match self {
+            Self::X => addr::X_FADER,
+            Self::Y => addr::Y_FADER,
+            Self::Focus => addr::FOCUS_FADER,
+        }
     }
 }
 
@@ -456,6 +508,36 @@ pub fn emit_cleared_positioner_state<E: EmitScopedOscMessage + ?Sized>(emitter: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Test-only accessors for fields that production code has no business
+    /// reading or writing. These are pub so test modules outside this file
+    /// (e.g. `show.rs` integration tests, `patch::repatch` regression tests)
+    /// can still reach into a `Positioner`.
+    impl Positioner {
+        pub fn active(&self) -> usize {
+            self.active
+        }
+
+        pub fn presets(&self) -> &[PositionPreset; N_POSITIONER_SLOTS] {
+            &self.presets
+        }
+
+        pub fn selected_fixture(&self) -> usize {
+            self.selected_fixture
+        }
+
+        pub fn presets_mut(&mut self) -> &mut [PositionPreset; N_POSITIONER_SLOTS] {
+            &mut self.presets
+        }
+
+        pub fn set_active(&mut self, active: usize) {
+            self.active = active;
+        }
+
+        pub fn set_selected_fixture(&mut self, idx: usize) {
+            self.selected_fixture = idx;
+        }
+    }
 
     #[test]
     fn default_for_seeds_named_presets_and_zero_offsets() {

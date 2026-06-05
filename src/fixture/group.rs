@@ -317,12 +317,10 @@ impl FixtureGroup {
                 continue;
             };
             let dmx_buf = &mut dmx_univ.buffer[dmx_index..dmx_index + cfg.channel_count];
-            let positioner_offset = self.positioner.as_ref().and_then(|p| {
-                p.presets
-                    .get(p.active)
-                    .and_then(|preset| preset.offsets.get(i))
-                    .copied()
-            });
+            let positioner_offset = self
+                .positioner
+                .as_ref()
+                .and_then(|p| p.offset_for_fixture(i));
             self.fixture.render(
                 phase_offset,
                 i,

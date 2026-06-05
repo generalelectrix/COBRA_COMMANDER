@@ -829,13 +829,14 @@ mod test {
             let positioner = group
                 .positioner_mut()
                 .expect("iWashLed opts into the positioner");
-            positioner.presets[0].offsets[0].x = BipolarFloat::new(0.1);
-            positioner.presets[0].offsets[1].y = BipolarFloat::new(-0.2);
-            positioner.presets[0].offsets[2].x = BipolarFloat::new(0.3);
-            positioner.presets[0].offsets[3].y = BipolarFloat::new(0.4);
-            positioner.presets[1].offsets[3].x = BipolarFloat::new(0.99);
-            positioner.active = 1;
-            positioner.selected_fixture = 3;
+            let presets = positioner.presets_mut();
+            presets[0].offsets[0].x = BipolarFloat::new(0.1);
+            presets[0].offsets[1].y = BipolarFloat::new(-0.2);
+            presets[0].offsets[2].x = BipolarFloat::new(0.3);
+            presets[0].offsets[3].y = BipolarFloat::new(0.4);
+            presets[1].offsets[3].x = BipolarFloat::new(0.99);
+            positioner.set_active(1);
+            positioner.set_selected_fixture(3);
         }
 
         // Repatch with two additional fixtures (grow 4 → 6). Preserve the
@@ -863,28 +864,30 @@ mod test {
             let group = patch.iter().next().unwrap();
             let p = group.positioner().expect("positioner survived repatch");
 
-            assert_eq!(p.active, 1, "active slot preserved");
+            assert_eq!(p.active(), 1, "active slot preserved");
             assert_eq!(
-                p.selected_fixture, 3,
+                p.selected_fixture(),
+                3,
                 "selected fixture preserved (still in range)",
             );
 
-            assert_eq!(p.presets[0].offsets.len(), 6);
-            assert_eq!(p.presets[0].offsets[0].x.val(), 0.1);
-            assert_eq!(p.presets[0].offsets[1].y.val(), -0.2);
-            assert_eq!(p.presets[0].offsets[2].x.val(), 0.3);
-            assert_eq!(p.presets[0].offsets[3].y.val(), 0.4);
-            assert_eq!(p.presets[0].offsets[4].x.val(), 0.0);
-            assert_eq!(p.presets[0].offsets[4].y.val(), 0.0);
-            assert_eq!(p.presets[0].offsets[5].x.val(), 0.0);
+            let presets = p.presets();
+            assert_eq!(presets[0].offsets.len(), 6);
+            assert_eq!(presets[0].offsets[0].x.val(), 0.1);
+            assert_eq!(presets[0].offsets[1].y.val(), -0.2);
+            assert_eq!(presets[0].offsets[2].x.val(), 0.3);
+            assert_eq!(presets[0].offsets[3].y.val(), 0.4);
+            assert_eq!(presets[0].offsets[4].x.val(), 0.0);
+            assert_eq!(presets[0].offsets[4].y.val(), 0.0);
+            assert_eq!(presets[0].offsets[5].x.val(), 0.0);
 
-            assert_eq!(p.presets[1].offsets.len(), 6);
-            assert_eq!(p.presets[1].offsets[3].x.val(), 0.99);
-            assert_eq!(p.presets[1].offsets[4].x.val(), 0.0);
+            assert_eq!(presets[1].offsets.len(), 6);
+            assert_eq!(presets[1].offsets[3].x.val(), 0.99);
+            assert_eq!(presets[1].offsets[4].x.val(), 0.0);
 
             // Untouched slot is still all zeros at the new length.
-            assert_eq!(p.presets[5].offsets.len(), 6);
-            for off in &p.presets[5].offsets {
+            assert_eq!(presets[5].offsets.len(), 6);
+            for off in &presets[5].offsets {
                 assert_eq!(off.x.val(), 0.0);
                 assert_eq!(off.y.val(), 0.0);
             }
@@ -899,14 +902,15 @@ mod test {
         {
             let group = patch.iter().next().unwrap();
             let p = group.positioner().expect("positioner survived shrink");
-            assert_eq!(p.presets[0].offsets.len(), 3);
-            assert_eq!(p.presets[0].offsets[0].x.val(), 0.1);
-            assert_eq!(p.presets[0].offsets[1].y.val(), -0.2);
-            assert_eq!(p.presets[0].offsets[2].x.val(), 0.3);
+            let presets = p.presets();
+            assert_eq!(presets[0].offsets.len(), 3);
+            assert_eq!(presets[0].offsets[0].x.val(), 0.1);
+            assert_eq!(presets[0].offsets[1].y.val(), -0.2);
+            assert_eq!(presets[0].offsets[2].x.val(), 0.3);
             // selected_fixture clamped from 3 to 2 (the new last index).
-            assert_eq!(p.selected_fixture, 2);
+            assert_eq!(p.selected_fixture(), 2);
             // active slot unchanged.
-            assert_eq!(p.active, 1);
+            assert_eq!(p.active(), 1);
         }
 
         Ok(())
