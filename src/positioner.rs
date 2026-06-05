@@ -251,7 +251,7 @@ impl Positioner {
 
     fn handle_bump(&mut self, msg: &OscControlMessage, axis: Axis, sign: Sign) -> Result<Mutation> {
         // Bump buttons are momentary; ignore the release.
-        if matches!(msg.arg, OscType::Float(v) if v == 0.0) {
+        if !msg.get_bool()? {
             return Ok(Mutation::Other);
         }
         let signed_delta = match sign {
@@ -286,7 +286,7 @@ impl Positioner {
     }
 
     fn handle_nudge_fixture(&mut self, msg: &OscControlMessage, sign: Sign) -> Result<Mutation> {
-        if matches!(msg.arg, OscType::Float(v) if v == 0.0) {
+        if !msg.get_bool()? {
             return Ok(Mutation::Other);
         }
         if self.fixture_count == 0 {
@@ -320,7 +320,7 @@ impl Positioner {
     }
 
     fn handle_reset_fixture(&mut self, msg: &OscControlMessage) -> Result<Mutation> {
-        if matches!(msg.arg, OscType::Float(v) if v == 0.0) {
+        if !msg.get_bool()? {
             return Ok(Mutation::Other);
         }
         if let Some(offset) = self
@@ -334,7 +334,7 @@ impl Positioner {
     }
 
     fn handle_reset_preset(&mut self, msg: &OscControlMessage) -> Result<Mutation> {
-        if matches!(msg.arg, OscType::Float(v) if v == 0.0) {
+        if !msg.get_bool()? {
             return Ok(Mutation::Other);
         }
         if let Some(preset) = self.presets.get_mut(self.active) {
