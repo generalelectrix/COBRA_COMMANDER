@@ -234,10 +234,8 @@ impl<'a> ChannelStateEmitter<'a> {
         &self.channel
     }
 
-    /// The underlying control message sender. Useful for building sibling
-    /// scoped emitters (e.g. a `/Positioner/`-scoped emitter from a
-    /// `/{group_name}/`-scoped one).
-    pub fn underlying(&self) -> &'a dyn EmitControlMessage {
+    /// The underlying control message sender.
+    pub fn inner(&self) -> &'a dyn EmitControlMessage {
         self.emitter
     }
 

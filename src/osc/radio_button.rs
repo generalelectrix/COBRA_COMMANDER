@@ -38,8 +38,7 @@ impl RadioButton {
     }
 
     /// Get the index from a radio button press. Returns `Ok(None)` for the
-    /// release (`0.0`) message. Useful for handlers that need to parse a
-    /// radio button outside of the standard [`GroupControlMap`] flow.
+    /// release (`0.0`) message.
     pub fn parse_press(&self, v: &OscControlMessage) -> Result<Option<usize>, OscError> {
         let (x, y) = match parse_radio_button_indices(v.addr_payload()) {
             Ok(indices) => indices,

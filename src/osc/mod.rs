@@ -192,15 +192,10 @@ impl<'a> FixtureStateEmitter<'a> {
 
     /// Build a sibling [`ScopedControlEmitter`] with a different entity
     /// scope, reusing the same underlying control message sender.
-    ///
-    /// Useful when a downstream consumer needs to emit to an OSC namespace
-    /// different from this emitter's group-name scope — e.g. the positioner
-    /// emitting to `/Positioner/...` while it was handed a
-    /// `/{group_name}/`-scoped emitter.
     pub fn scoped(&self, entity: &'a str) -> ScopedControlEmitter<'a> {
         ScopedControlEmitter {
             entity,
-            emitter: self.channel_emitter.underlying(),
+            emitter: self.channel_emitter.inner(),
         }
     }
 }
