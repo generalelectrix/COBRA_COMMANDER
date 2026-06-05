@@ -345,10 +345,10 @@ impl eframe::App for ConsoleApp {
 
 /// Single entry point for the console. Runs the welcome screen, initializes
 /// the show, and runs the main console GUI.
-pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result<()> {
+pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
     // Phase 1: Welcome screen. The OSC receive port is bound here so a port
     // conflict is recoverable via a prompt instead of crashing show init.
-    let welcome_result = welcome::run_welcome(osc_receive_port)?;
+    let welcome_result = welcome::run_welcome(crate::osc::DEFAULT_RECEIVE_PORT)?;
 
     let (show_file_path, initial_configs, osc_socket, bound_port) = match welcome_result {
         WelcomeResult::LoadShow {
@@ -401,7 +401,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
         Box::new(move |cc| {
             stage_theme::apply(&cc.egui_ctx);
 
-            let (controller, osc_local_ip, osc_receive_port, initial_configs, log_rx) =
+            let (controller, osc_local_ip, bound_port, initial_configs, log_rx) =
                 startup.take().expect("creator closure called once");
 
             let repaint: RepaintSignal = {
@@ -504,7 +504,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
                 midi_panel: MidiPanelState::new(),
                 visualizer_panel: Arc::new(Mutex::new(VisualizerPanelState::default())),
                 visualizer_detached: Arc::new(AtomicBool::new(false)),
-                osc_panel: osc_panel::OscPanelState::new(osc_receive_port),
+                osc_panel: osc_panel::OscPanelState::new(bound_port),
                 patch_panel: PatchPanelState::new(),
                 dmx_panel: DmxPortPanelState::new(),
                 dmx_debug_open: Arc::new(AtomicBool::new(false)),

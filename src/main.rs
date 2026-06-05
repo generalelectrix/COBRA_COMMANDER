@@ -87,5 +87,5 @@ fn main() -> Result<()> {
     #[cfg(target_os = "macos")]
     install_terminate_override();
 
-    config_gui::run_console(args.osc_receive_port, log_rx)
+    config_gui::run_console(log_rx)
 }

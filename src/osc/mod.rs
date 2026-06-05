@@ -64,6 +64,9 @@ pub struct OscController {
     pending_socket: PendingSocket,
 }
 
+/// The OSC receive port tried at startup.
+pub const DEFAULT_RECEIVE_PORT: u16 = 8000;
+
 /// An OSC receive socket and the port it listens on. Moved across threads to
 /// hand a socket bound on one thread to the listener running on another.
 #[derive(Debug)]
