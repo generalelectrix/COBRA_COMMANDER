@@ -153,6 +153,15 @@ impl Positioner {
     }
 }
 
+/// Build an `anyhow::Error` for a violated positioner invariant. The `code`
+/// (of the form `"PO-NNN"`) makes the originating site grep-able.
+fn positioner_inconsistency(code: &'static str, details: impl std::fmt::Display) -> anyhow::Error {
+    anyhow::anyhow!(
+        "Error code: {code}. Positioner inconsistency: {details}. \
+         This is a bug — please report to this application's developers."
+    )
+}
+
 /// What kind of state mutation a `control_osc` dispatch produced, governing
 /// which emit paths fire afterward.
 enum Mutation {
@@ -242,18 +251,47 @@ impl Positioner {
         Ok(())
     }
 
+    /// The offset for the selected fixture in the active preset. Returns
+    /// `Ok(None)` when there are no patched fixtures (legitimate no-op).
+    /// Returns `Err` for an out-of-range `active` or `selected_fixture`,
+    /// both of which are invariant violations.
+    fn selected_offset_mut(&mut self) -> Result<Option<&mut PositionOffset>> {
+        if self.fixture_count == 0 {
+            return Ok(None);
+        }
+        let active = self.active;
+        let selected_fixture = self.selected_fixture;
+        let preset = self.presets.get_mut(active).ok_or_else(|| {
+            positioner_inconsistency(
+                "PO-001",
+                format!("active preset slot {active} out of range (max {N_POSITIONER_SLOTS})"),
+            )
+        })?;
+        let fixture_count = preset.offsets.len();
+        preset
+            .offsets
+            .get_mut(selected_fixture)
+            .map(Some)
+            .ok_or_else(|| {
+                positioner_inconsistency(
+                    "PO-002",
+                    format!(
+                        "selected fixture index {selected_fixture} out of range \
+                     (fixture_count {fixture_count})",
+                    ),
+                )
+            })
+    }
+
     fn handle_fader(&mut self, msg: &OscControlMessage, axis: Axis) -> Result<Option<Mutation>> {
         let val = msg.get_bipolar()?;
-        if let Some(offset) = self
-            .presets
-            .get_mut(self.active)
-            .and_then(|preset| preset.offsets.get_mut(self.selected_fixture))
-        {
-            match axis {
-                Axis::X => offset.x = val,
-                Axis::Y => offset.y = val,
-                Axis::Focus => offset.focus = val,
-            }
+        let Some(offset) = self.selected_offset_mut()? else {
+            return Ok(None);
+        };
+        match axis {
+            Axis::X => offset.x = val,
+            Axis::Y => offset.y = val,
+            Axis::Focus => offset.focus = val,
         }
         Ok(Some(Mutation::Other))
     }
@@ -271,16 +309,13 @@ impl Positioner {
             Sign::Plus => self.bump_step.magnitude(),
             Sign::Minus => -self.bump_step.magnitude(),
         };
-        if let Some(offset) = self
-            .presets
-            .get_mut(self.active)
-            .and_then(|preset| preset.offsets.get_mut(self.selected_fixture))
-        {
-            match axis {
-                Axis::X => offset.x = BipolarFloat::new(offset.x.val() + signed_delta),
-                Axis::Y => offset.y = BipolarFloat::new(offset.y.val() + signed_delta),
-                Axis::Focus => offset.focus = BipolarFloat::new(offset.focus.val() + signed_delta),
-            }
+        let Some(offset) = self.selected_offset_mut()? else {
+            return Ok(None);
+        };
+        match axis {
+            Axis::X => offset.x = BipolarFloat::new(offset.x.val() + signed_delta),
+            Axis::Y => offset.y = BipolarFloat::new(offset.y.val() + signed_delta),
+            Axis::Focus => offset.focus = BipolarFloat::new(offset.focus.val() + signed_delta),
         }
         Ok(Some(Mutation::Other))
     }
@@ -334,13 +369,10 @@ impl Positioner {
         if !msg.get_bool()? {
             return Ok(None);
         }
-        if let Some(offset) = self
-            .presets
-            .get_mut(self.active)
-            .and_then(|preset| preset.offsets.get_mut(self.selected_fixture))
-        {
-            *offset = PositionOffset::default();
-        }
+        let Some(offset) = self.selected_offset_mut()? else {
+            return Ok(None);
+        };
+        *offset = PositionOffset::default();
         Ok(Some(Mutation::Other))
     }
 
@@ -348,10 +380,15 @@ impl Positioner {
         if !msg.get_bool()? {
             return Ok(None);
         }
-        if let Some(preset) = self.presets.get_mut(self.active) {
-            for off in &mut preset.offsets {
-                *off = PositionOffset::default();
-            }
+        let active = self.active;
+        let preset = self.presets.get_mut(active).ok_or_else(|| {
+            positioner_inconsistency(
+                "PO-001",
+                format!("active preset slot {active} out of range (max {N_POSITIONER_SLOTS})"),
+            )
+        })?;
+        for off in &mut preset.offsets {
+            *off = PositionOffset::default();
         }
         Ok(Some(Mutation::Other))
     }
@@ -618,6 +655,37 @@ mod tests {
         let msg = make_msg("/Positioner/XBumpUp", OscType::Float(0.0));
         p.control_osc_channel_scoped(&msg, &emitter).unwrap();
         assert_eq!(p.presets[0].offsets[0].x.val(), 0.5);
+    }
+
+    /// A press handler with `selected_fixture` out of range relative to
+    /// `fixture_count` should surface a `PO-002` inconsistency rather than
+    /// silently swallow the operator's input.
+    #[test]
+    fn fader_with_corrupted_selected_fixture_errors() {
+        let mut p = Positioner::default_for(2);
+        p.selected_fixture = 99; // Violate the invariant.
+
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+        let msg = make_msg("/Positioner/X", OscType::Float(0.5));
+        let err = p
+            .control_osc_channel_scoped(&msg, &emitter)
+            .expect_err("should error on out-of-range selected_fixture");
+        let msg = err.to_string();
+        assert!(msg.contains("PO-002"), "wanted PO-002 in: {msg}");
+        assert!(msg.contains("99"), "wanted bad index in: {msg}");
+    }
+
+    #[test]
+    fn fader_on_empty_group_is_silent_noop() {
+        // fixture_count == 0 is legitimate (group patched with no fixtures);
+        // a fader write should silently do nothing and NOT error.
+        let mut p = Positioner::default_for(0);
+
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+        let msg = make_msg("/Positioner/X", OscType::Float(0.5));
+        p.control_osc_channel_scoped(&msg, &emitter).unwrap();
     }
 
     #[test]
