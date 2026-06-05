@@ -173,13 +173,13 @@ impl Positioner {
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
     ) -> Option<Result<()>> {
-        let mutation = match msg.control() {
+        let result = match msg.control() {
             c if c == addr::POSITION_PRESET_SELECT.control => {
                 self.handle_preset_select(msg, &addr::POSITION_PRESET_SELECT)
             }
             _ => return None,
         };
-        Some(mutation.and_then(|m| self.finish_mutation(m, emitter)))
+        Some(self.finish(result, emitter))
     }
 
     /// Handle a channel-scoped positioner OSC message (X/Y/Focus faders and
@@ -191,7 +191,7 @@ impl Positioner {
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
     ) -> Result<()> {
-        let mutation = match msg.control() {
+        let result = match msg.control() {
             addr::X_FADER => self.handle_fader(msg, Axis::X),
             addr::Y_FADER => self.handle_fader(msg, Axis::Y),
             addr::FOCUS_FADER => self.handle_fader(msg, Axis::Focus),
@@ -216,13 +216,22 @@ impl Positioner {
             addr::RESET_PRESET => self.handle_reset_preset(msg),
 
             other => bail!("unrecognized channel-scoped positioner control: {other}"),
-        }?;
-        self.finish_mutation(mutation, emitter)
+        };
+        self.finish(result, emitter)
     }
 
     /// Fire the emit paths appropriate to `mutation` and the emitter's
-    /// channel binding.
-    fn finish_mutation(&self, mutation: Mutation, emitter: &FixtureStateEmitter) -> Result<()> {
+    /// channel binding. `None` means the handler produced no observable
+    /// mutation (button release, no-op tap, out-of-range index) — skip
+    /// the emit entirely.
+    fn finish(
+        &self,
+        result: Result<Option<Mutation>>,
+        emitter: &FixtureStateEmitter,
+    ) -> Result<()> {
+        let Some(mutation) = result? else {
+            return Ok(());
+        };
         if matches!(mutation, Mutation::ActiveChanged) {
             self.emit_per_group_state(emitter);
         }
@@ -233,7 +242,7 @@ impl Positioner {
         Ok(())
     }
 
-    fn handle_fader(&mut self, msg: &OscControlMessage, axis: Axis) -> Result<Mutation> {
+    fn handle_fader(&mut self, msg: &OscControlMessage, axis: Axis) -> Result<Option<Mutation>> {
         let val = msg.get_bipolar()?;
         if let Some(offset) = self
             .presets
@@ -246,13 +255,17 @@ impl Positioner {
                 Axis::Focus => offset.focus = val,
             }
         }
-        Ok(Mutation::Other)
+        Ok(Some(Mutation::Other))
     }
 
-    fn handle_bump(&mut self, msg: &OscControlMessage, axis: Axis, sign: Sign) -> Result<Mutation> {
-        // Bump buttons are momentary; ignore the release.
+    fn handle_bump(
+        &mut self,
+        msg: &OscControlMessage,
+        axis: Axis,
+        sign: Sign,
+    ) -> Result<Option<Mutation>> {
         if !msg.get_bool()? {
-            return Ok(Mutation::Other);
+            return Ok(None);
         }
         let signed_delta = match sign {
             Sign::Plus => self.bump_step.magnitude(),
@@ -269,28 +282,29 @@ impl Positioner {
                 Axis::Focus => offset.focus = BipolarFloat::new(offset.focus.val() + signed_delta),
             }
         }
-        Ok(Mutation::Other)
+        Ok(Some(Mutation::Other))
     }
 
-    fn handle_bump_step_select(&mut self, msg: &OscControlMessage) -> Result<Mutation> {
+    fn handle_bump_step_select(&mut self, msg: &OscControlMessage) -> Result<Option<Mutation>> {
         let Some(index) = addr::BUMP_STEP_SELECT.parse_press(msg)? else {
-            return Ok(Mutation::Other); // Button release; ignore.
+            return Ok(None);
         };
         self.bump_step = match index {
             0 => BumpStep::Coarse,
             1 => BumpStep::Medium,
             2 => BumpStep::Fine,
-            _ => return Ok(Mutation::Other),
+            _ => return Ok(None),
         };
-        Ok(Mutation::Other)
+        Ok(Some(Mutation::Other))
     }
 
-    fn handle_nudge_fixture(&mut self, msg: &OscControlMessage, sign: Sign) -> Result<Mutation> {
-        if !msg.get_bool()? {
-            return Ok(Mutation::Other);
-        }
-        if self.fixture_count == 0 {
-            return Ok(Mutation::Other);
+    fn handle_nudge_fixture(
+        &mut self,
+        msg: &OscControlMessage,
+        sign: Sign,
+    ) -> Result<Option<Mutation>> {
+        if !msg.get_bool()? || self.fixture_count == 0 {
+            return Ok(None);
         }
         let delta: isize = match sign {
             Sign::Plus => 1,
@@ -298,30 +312,27 @@ impl Positioner {
         };
         let new = (self.selected_fixture as isize + delta).rem_euclid(self.fixture_count as isize);
         self.selected_fixture = new as usize;
-        Ok(Mutation::Other)
+        Ok(Some(Mutation::Other))
     }
 
     fn handle_preset_select(
         &mut self,
         msg: &OscControlMessage,
         primitive: &RadioButton,
-    ) -> Result<Mutation> {
+    ) -> Result<Option<Mutation>> {
         let Some(index) = primitive.parse_press(msg)? else {
-            return Ok(Mutation::Other);
+            return Ok(None);
         };
-        if index >= N_POSITIONER_SLOTS {
-            return Ok(Mutation::Other);
-        }
-        if self.active == index {
-            return Ok(Mutation::Other);
+        if index >= N_POSITIONER_SLOTS || self.active == index {
+            return Ok(None);
         }
         self.active = index;
-        Ok(Mutation::ActiveChanged)
+        Ok(Some(Mutation::ActiveChanged))
     }
 
-    fn handle_reset_fixture(&mut self, msg: &OscControlMessage) -> Result<Mutation> {
+    fn handle_reset_fixture(&mut self, msg: &OscControlMessage) -> Result<Option<Mutation>> {
         if !msg.get_bool()? {
-            return Ok(Mutation::Other);
+            return Ok(None);
         }
         if let Some(offset) = self
             .presets
@@ -330,19 +341,19 @@ impl Positioner {
         {
             *offset = PositionOffset::default();
         }
-        Ok(Mutation::Other)
+        Ok(Some(Mutation::Other))
     }
 
-    fn handle_reset_preset(&mut self, msg: &OscControlMessage) -> Result<Mutation> {
+    fn handle_reset_preset(&mut self, msg: &OscControlMessage) -> Result<Option<Mutation>> {
         if !msg.get_bool()? {
-            return Ok(Mutation::Other);
+            return Ok(None);
         }
         if let Some(preset) = self.presets.get_mut(self.active) {
             for off in &mut preset.offsets {
                 *off = PositionOffset::default();
             }
         }
-        Ok(Mutation::Other)
+        Ok(Some(Mutation::Other))
     }
 
     /// Push the channel-scoped Positioner tab state. The emitter should be
