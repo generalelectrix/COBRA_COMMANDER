@@ -183,12 +183,6 @@ pub fn strobe_control_channel(channel_count: usize) -> usize {
 
 /// The relationship between the channel an emitter is addressing and the
 /// currently-selected channel.
-///
-/// Carried by [`ChannelStateEmitter`] so downstream code (e.g. the positioner)
-/// can answer "should I update channel-scoped UI tabs?" without separately
-/// threading current-channel state. Mirrors how a `channel_id` baked into the
-/// emitter routes MIDI knob updates to the right hardware: the emitter's type
-/// encodes the binding context.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChannelBinding {
     /// The addressed group IS the currently-selected channel.

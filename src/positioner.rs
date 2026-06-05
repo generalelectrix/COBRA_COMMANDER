@@ -2,15 +2,8 @@
 //!
 //! Each positionable [`crate::fixture::FixtureGroup`] owns a [`Positioner`]
 //! that stores per-fixture `(x, y, focus)` offsets across 8 named preset
-//! slots. The render pipeline reads these offsets and contributes them as
-//! additional animation values via the
-//! [`crate::fixture::animation_target::TargetedAnimationValues::chain`]
-//! combinator, so the existing animation summing in `val_with_anim` handles
-//! "ride along with animations" semantics for free.
-//!
-//! See the design plan for the full picture. This module currently exposes
-//! only the data model and construction/reconciliation helpers; OSC dispatch
-//! and emit logic land in a follow-up.
+//! slots, plus the channel-scoped editing state (selected fixture, bump
+//! step) needed to drive the operator's editing UI.
 
 use anyhow::Result;
 use number::BipolarFloat;
@@ -168,16 +161,13 @@ enum Mutation {
 impl Positioner {
     /// Handle any positioner OSC message — both `/Positioner/...`
     /// (channel-scoped) and the per-group `/{group_name}/PositionPreset*`
-    /// controls. Returns `None` for messages matching no positioner control,
-    /// so the caller can fall through to other handlers (e.g. the fixture's
-    /// own). Returns `Some(Ok(()))` on a successful handle, `Some(Err(_))`
-    /// for a recognized-but-malformed message.
+    /// controls. Returns `None` for an address matching no positioner
+    /// control (signaling fall-through), `Some(Ok(()))` on a successful
+    /// handle, `Some(Err(_))` for a recognized-but-malformed message.
     ///
-    /// On mutation, emits `per_group_state` if `active` changed (the
-    /// per-group selector reflects the active slot for the owning group
-    /// regardless of which channel is current). Additionally emits
-    /// `channel_state` if the emitter's [`crate::channel::ChannelBinding`]
-    /// is `Current`.
+    /// On mutation, emits `per_group_state` if `active` changed, and
+    /// additionally emits `channel_state` if the emitter's
+    /// [`crate::channel::ChannelBinding`] is `Current`.
     pub fn control_osc(
         &mut self,
         msg: &OscControlMessage,
@@ -525,11 +515,7 @@ mod tests {
         .unwrap()
     }
 
-    /// Build a FixtureStateEmitter that drops anything emitted through it.
-    /// `control_osc` only invokes the emitter when a message matched a
-    /// positioner control, so for the "no-match returns None" test the
-    /// emitter is never actually used. For the bump-clamp tests we just
-    /// want to exercise the mutation path; we don't need to inspect emits.
+    /// A `FixtureStateEmitter` that drops everything emitted through it.
     fn null_fixture_emitter<'a>(
         name: &'a crate::config::GroupName,
     ) -> crate::osc::FixtureStateEmitter<'a> {

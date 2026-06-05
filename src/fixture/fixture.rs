@@ -182,13 +182,7 @@ pub trait Fixture: Update + EmitState + Control + DescribeOscControls {
     /// Reset all of the animations associated with this fixture.
     fn reset_animations(&mut self);
 
-    /// Whether this fixture type supports the positioner. Type-erased
-    /// counterpart of [`AnimatedFixture::positioner_axes`]; used by
-    /// `FixtureGroup` construction to decide whether to seed a
-    /// [`crate::positioner::Positioner`].
-    ///
-    /// Default `false`; the `FixtureWithAnimations<F>` impl overrides to
-    /// `F::positioner_axes().is_some()`.
+    /// Whether this fixture type supports the positioner. Default `false`.
     fn supports_positioner(&self) -> bool {
         false
     }
