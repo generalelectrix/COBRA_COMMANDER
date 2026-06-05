@@ -1,3 +1,4 @@
+use std::net::IpAddr;
 use std::path::Path;
 
 use eframe::egui;
@@ -11,18 +12,26 @@ use crate::ui_util::GuiContext;
 
 pub struct OscPanelState {
     sync_server: Option<LayoutServer>,
+    /// Port the OSC receive socket is bound to.
+    receive_port: u16,
+    /// Text shown in the editable receive-port field.
+    port_text: String,
 }
 
 impl OscPanelState {
-    pub fn new() -> Self {
-        Self { sync_server: None }
+    pub fn new(receive_port: u16) -> Self {
+        Self {
+            sync_server: None,
+            receive_port,
+            port_text: receive_port.to_string(),
+        }
     }
 }
 
 pub(crate) struct OscPanel<'a> {
     pub ctx: GuiContext<'a>,
     pub state: &'a mut OscPanelState,
-    pub listen_addr: &'a str,
+    pub local_ip: Option<IpAddr>,
     pub clients: &'a [OscClientId],
     pub groups: &'a [FixtureGroupConfig],
     pub show_file_path: &'a Path,
@@ -32,7 +41,45 @@ impl OscPanel<'_> {
     pub fn ui(mut self, ui: &mut egui::Ui) {
         ui.heading("OSC");
         ui.separator();
-        ui.label(format!("Listening on {}", self.listen_addr));
+        let listen_addr =
+            crate::local_ip_watch::format_addr(self.local_ip, self.state.receive_port);
+        ui.label(format!("Listening on {listen_addr}"));
+        ui.add_space(4.0);
+
+        // Editable receive port — lets Cobra move off a port another OSC
+        // application needs without a restart.
+        ui.horizontal(|ui| {
+            ui.label("Receive port:");
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.state.port_text)
+                    .desired_width(56.0)
+                    .char_limit(5),
+            );
+            // Commit on Enter or focus loss. Binding here surfaces a port
+            // conflict immediately; the show only adopts the bound socket.
+            if resp.lost_focus() {
+                if let Ok(port) = self.state.port_text.trim().parse::<u16>()
+                    && port != 0
+                    && port != self.state.receive_port
+                {
+                    match crate::osc::BoundOsc::bind(port) {
+                        Ok(bound) => {
+                            self.state.receive_port = bound.port;
+                            let _ = self
+                                .ctx
+                                .send_command(MetaCommand::SwapOscSocket(bound.socket));
+                        }
+                        Err(e) => {
+                            self.ctx
+                                .modal
+                                .show("OSC Port Unavailable", format!("{e:#}"));
+                        }
+                    }
+                }
+                // Reflect the bound port, reverting any invalid or rejected edit.
+                self.state.port_text = self.state.receive_port.to_string();
+            }
+        });
         ui.add_space(8.0);
 
         if self.clients.is_empty() {
@@ -163,6 +210,7 @@ mod tests {
     use crate::control::mock::auto_respond_client;
     use egui_kittest::Harness;
     use gui_common::MessageModal;
+    use std::net::Ipv4Addr;
     use std::path::PathBuf;
 
     #[test]
@@ -170,7 +218,7 @@ mod tests {
         let client = auto_respond_client();
         let mut modal = MessageModal::default();
         let clients: Vec<OscClientId> = vec![];
-        let mut state = OscPanelState::new();
+        let mut state = OscPanelState::new(8000);
         let groups: Vec<FixtureGroupConfig> = vec![];
         let show_path = PathBuf::from("/tmp/test_show.cobra");
         let mut harness = Harness::new_ui(|ui| {
@@ -180,7 +228,7 @@ mod tests {
                     client: &client,
                 },
                 state: &mut state,
-                listen_addr: "192.168.1.42:8000",
+                local_ip: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 42))),
                 clients: &clients,
                 groups: &groups,
                 show_file_path: &show_path,
@@ -203,7 +251,7 @@ mod tests {
             OscClientId::from_addr(SocketAddr::from_str("192.168.1.20:9000").unwrap()),
             OscClientId::from_addr(SocketAddr::from_str("10.0.0.5:8001").unwrap()),
         ];
-        let mut state = OscPanelState::new();
+        let mut state = OscPanelState::new(8000);
         let groups: Vec<FixtureGroupConfig> = vec![];
         let show_path = PathBuf::from("/tmp/test_show.cobra");
         let mut harness = Harness::new_ui(|ui| {
@@ -213,7 +261,7 @@ mod tests {
                     client: &client,
                 },
                 state: &mut state,
-                listen_addr: "192.168.1.42:8000",
+                local_ip: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 42))),
                 clients: &clients,
                 groups: &groups,
                 show_file_path: &show_path,

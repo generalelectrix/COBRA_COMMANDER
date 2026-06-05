@@ -2,6 +2,7 @@
 
 use std::{
     fmt,
+    net::UdpSocket,
     sync::mpsc::{Receiver, RecvTimeoutError, Sender},
     time::Duration,
 };
@@ -49,14 +50,14 @@ pub struct Controller {
 
 impl Controller {
     pub fn new(
-        receive_port: u16,
+        osc_socket: UdpSocket,
         osc_controllers: Vec<OscClientId>,
         midi_devices: Vec<DeviceSpec<Device>>,
         send: Sender<ControlMessage>,
         recv: Receiver<ControlMessage>,
     ) -> Result<Self> {
         Ok(Self {
-            osc: OscController::new(receive_port, osc_controllers, send.clone())?,
+            osc: OscController::new(osc_socket, osc_controllers, send.clone())?,
             midi: MidiController::new(midi_devices, send)?,
             recv,
         })
@@ -90,6 +91,11 @@ impl Controller {
     /// Deregister an OSC client.
     pub fn deregister_osc_client(&mut self, client_id: OscClientId) {
         self.osc.deregister(client_id);
+    }
+
+    /// Give the OSC listener a pre-bound receive socket.
+    pub fn swap_osc_socket(&self, socket: UdpSocket) {
+        self.osc.swap_socket(socket);
     }
 
     /// Snapshot the current OSC client list.
@@ -323,6 +329,8 @@ pub enum MetaCommand {
     SetMasterStrobeChannel(bool),
     /// Forward an audio control message to the active audio input.
     AudioControl(tunnels::audio::ControlMessage),
+    /// Give the OSC listener a pre-bound receive socket.
+    SwapOscSocket(UdpSocket),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -352,6 +360,7 @@ impl fmt::Debug for MetaCommand {
                 write!(f, "SetMasterStrobeChannel({enable})")
             }
             Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
+            Self::SwapOscSocket(_) => write!(f, "SwapOscSocket"),
         }
     }
 }

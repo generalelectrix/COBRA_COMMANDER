@@ -162,7 +162,7 @@ mod test {
             ClockStatus::Internal {
                 audio_device: String::new(),
             },
-            String::new(),
+            None,
             noop_repaint(),
             noop_repaint(),
         ));

@@ -57,6 +57,7 @@ mod control;
 mod dmx;
 mod fixture;
 mod gui_state;
+mod local_ip_watch;
 mod master;
 mod midi;
 mod osc;
@@ -86,5 +87,5 @@ fn main() -> Result<()> {
     #[cfg(target_os = "macos")]
     install_terminate_override();
 
-    config_gui::run_console(args.osc_receive_port, log_rx)
+    config_gui::run_console(log_rx)
 }

@@ -3,7 +3,7 @@ use crate::config::GroupName;
 use crate::control::ControlMessage;
 use crate::control::EmitControlMessage;
 use crate::midi::{EmitMidiAnimationMessage, EmitMidiMasterMessage};
-use crate::osc::listener::OscListener;
+use crate::osc::listener::{OscListener, PendingSocket};
 use crate::osc::sender::OscSender;
 use anyhow::Result;
 use anyhow::{Context, bail};
@@ -14,9 +14,11 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::Display;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, UdpSocket};
+#[cfg(test)]
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use thiserror::Error;
 
@@ -58,20 +60,45 @@ pub trait EmitOscMessage {
 pub struct OscController {
     send: Sender<OscControlResponse>,
     client_manager: sender::OscClientManager,
+    /// Handoff slot the listener polls to adopt a rebound receive socket.
+    pending_socket: PendingSocket,
+}
+
+/// The OSC receive port tried at startup.
+pub const DEFAULT_RECEIVE_PORT: u16 = 8000;
+
+/// An OSC receive socket and the port it listens on. Moved across threads to
+/// hand a socket bound on one thread to the listener running on another.
+#[derive(Debug)]
+pub struct BoundOsc {
+    pub socket: UdpSocket,
+    pub port: u16,
+}
+
+impl BoundOsc {
+    /// Bind OSC input on `port` across all interfaces.
+    pub fn bind(port: u16) -> Result<Self> {
+        let socket = UdpSocket::bind(("0.0.0.0", port))
+            .with_context(|| format!("failed to bind OSC receive port {port}"))?;
+        Ok(Self { socket, port })
+    }
 }
 
 impl OscController {
     pub fn new(
-        receive_port: u16,
+        socket: UdpSocket,
         send_addrs: Vec<OscClientId>,
         send: Sender<ControlMessage>,
     ) -> Result<Self> {
-        let recv_addr = SocketAddr::from_str(&format!("0.0.0.0:{receive_port}"))?;
-
         let (client_manager, initial_listener) = sender::OscClientManager::new(send_addrs);
 
-        let mut listener = OscListener::new(client_manager.listener(), recv_addr, send)
-            .context("failed to start OSC listener")?;
+        let pending_socket: PendingSocket = Arc::new(Mutex::new(None));
+        let mut listener = OscListener::from_socket(
+            client_manager.listener(),
+            socket,
+            pending_socket.clone(),
+            send,
+        );
 
         thread::spawn(move || {
             listener.run();
@@ -87,7 +114,16 @@ impl OscController {
         Ok(Self {
             send: response_send,
             client_manager,
+            pending_socket,
         })
+    }
+
+    /// Give the OSC listener a bound socket to receive on, replacing the one it
+    /// holds.
+    pub fn swap_socket(&self, socket: UdpSocket) {
+        if let Ok(mut slot) = self.pending_socket.lock() {
+            *slot = Some(socket);
+        }
     }
 
     /// Send an OSC message to all clients.
@@ -122,6 +158,7 @@ impl OscController {
             Self {
                 send,
                 client_manager,
+                pending_socket: Arc::new(Mutex::new(None)),
             },
             recv,
         )
@@ -398,4 +435,41 @@ pub mod prelude {
     pub use super::unipolar_array::{UnipolarArray, unipolar_array};
     pub use super::{GroupControlMap, OscControlMessage};
     pub use crate::util::*;
+}
+
+#[cfg(test)]
+mod bind_tests {
+    use super::{BoundOsc, OscController};
+
+    #[test]
+    fn swap_socket_stages_the_socket_for_the_listener() {
+        let (controller, _recv) = OscController::test_new();
+        assert!(controller.pending_socket.lock().unwrap().is_none());
+
+        let socket = BoundOsc::bind(0).expect("bind should succeed").socket;
+        controller.swap_socket(socket);
+        assert!(
+            controller.pending_socket.lock().unwrap().is_some(),
+            "the handed socket should be staged for the listener to adopt"
+        );
+    }
+
+    #[test]
+    fn bind_collision_reports_port_and_error() {
+        // Bind an OS-assigned free port, then collide with it. `bind(0)` records
+        // the requested port, so read the actual port from the socket.
+        let held = BoundOsc::bind(0).expect("binding an ephemeral port should succeed");
+        let port = held
+            .socket
+            .local_addr()
+            .expect("bound socket should have a local address")
+            .port();
+
+        let err = BoundOsc::bind(port).expect_err("binding a held port should fail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&port.to_string()),
+            "error should name the conflicting port {port}: {msg}"
+        );
+    }
 }

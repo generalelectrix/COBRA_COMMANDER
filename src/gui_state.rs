@@ -1,3 +1,4 @@
+use std::net::IpAddr;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize},
@@ -82,7 +83,9 @@ pub enum ClockStatus {
 pub struct GuiState {
     pub midi_slots: Notified<Vec<SlotStatus>>,
     pub clock_status: ArcSwap<ClockStatus>,
-    pub osc_listen_addr: String,
+    /// The host's primary local IP, or `None` when none can be resolved.
+    /// Refreshed as network interfaces change.
+    pub osc_local_ip: Notified<Option<IpAddr>>,
     pub osc_clients: Notified<Vec<OscClientId>>,
     /// Whether the visualizer tab is active — controls whether the Show
     /// snapshots animation state.
@@ -111,14 +114,14 @@ impl GuiState {
     pub fn new(
         midi_slots: Vec<SlotStatus>,
         clock_status: ClockStatus,
-        osc_listen_addr: String,
+        osc_local_ip: Option<IpAddr>,
         repaint: RepaintSignal,
         dmx_debug_repaint: RepaintSignal,
     ) -> Self {
         Self {
             midi_slots: Notified::new(midi_slots, repaint.clone()),
             clock_status: ArcSwap::from_pointee(clock_status),
-            osc_listen_addr,
+            osc_local_ip: Notified::new(osc_local_ip, repaint.clone()),
             osc_clients: Notified::new(Vec::new(), repaint.clone()),
             visualizer_active: AtomicBool::new(false),
             animation_state: ArcSwap::from_pointee(AnimationSnapshot::default()),

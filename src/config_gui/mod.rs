@@ -32,7 +32,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use eframe::egui;
-use local_ip_address::local_ip;
 use log::error;
 use midi_harness::install_midi_device_change_handler;
 use tunnels::audio::EnvelopeStreams;
@@ -275,7 +274,7 @@ impl eframe::App for ConsoleApp {
                         client: &self.client,
                     },
                     state: &mut self.osc_panel,
-                    listen_addr: &self.gui_state.osc_listen_addr,
+                    local_ip: **self.gui_state.osc_local_ip.load(),
                     clients: &clients,
                     groups: &patch_snapshot.groups,
                     show_file_path: &self.show_file_path,
@@ -346,21 +345,23 @@ impl eframe::App for ConsoleApp {
 
 /// Single entry point for the console. Runs the welcome screen, initializes
 /// the show, and runs the main console GUI.
-pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result<()> {
-    // Phase 1: Welcome screen.
-    let welcome_result = welcome::run_welcome()?;
+pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
+    // Phase 1: Welcome screen. The OSC receive port is bound here so a port
+    // conflict is recoverable via a prompt instead of crashing show init.
+    let welcome_result = welcome::run_welcome(crate::osc::DEFAULT_RECEIVE_PORT)?;
 
-    let (show_file_path, initial_configs) = match welcome_result {
-        WelcomeResult::LoadShow { path, configs } => (path, configs),
-        WelcomeResult::NewShow { path } => (path, vec![]),
+    let (show_file_path, initial_configs, osc_socket, bound_port) = match welcome_result {
+        WelcomeResult::LoadShow {
+            path,
+            configs,
+            bound,
+        } => (path, configs, bound.socket, bound.port),
+        WelcomeResult::NewShow { path, bound } => (path, vec![], bound.socket, bound.port),
         WelcomeResult::Quit => return Ok(()),
     };
 
     // Phase 2: Create infrastructure that doesn't depend on egui_ctx.
-    let osc_listen_addr = match local_ip() {
-        Ok(ip) => format!("{ip}:{osc_receive_port}"),
-        Err(_) => format!("0.0.0.0:{osc_receive_port}"),
-    };
+    let osc_local_ip = crate::local_ip_watch::current_ip();
 
     let (send_control_msg, recv_control_msg) = channel();
     let command_client = CommandClient::new(send_control_msg.clone());
@@ -369,7 +370,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
     install_midi_device_change_handler(ControlHandler(send_control_msg.clone()))?;
 
     let controller = Controller::new(
-        osc_receive_port,
+        osc_socket,
         vec![],
         vec![],
         send_control_msg,
@@ -377,7 +378,13 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
     )?;
 
     // Move-once values for the eframe creator closure.
-    let mut startup = Some((controller, osc_listen_addr, initial_configs, log_rx));
+    let mut startup = Some((
+        controller,
+        osc_local_ip,
+        bound_port,
+        initial_configs,
+        log_rx,
+    ));
 
     // Phase 3: Run the console GUI. GuiState construction (which needs a
     // RepaintSignal built from cc.egui_ctx) and the show-thread spawn live
@@ -394,7 +401,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
         Box::new(move |cc| {
             stage_theme::apply(&cc.egui_ctx);
 
-            let (controller, osc_listen_addr, initial_configs, log_rx) =
+            let (controller, osc_local_ip, bound_port, initial_configs, log_rx) =
                 startup.take().expect("creator closure called once");
 
             let repaint: RepaintSignal = {
@@ -435,10 +442,14 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
                 ClockStatus::Internal {
                     audio_device: tunnels::audio::OFFLINE_DEVICE_NAME.into(),
                 },
-                osc_listen_addr,
+                osc_local_ip,
                 repaint,
                 dmx_debug_repaint,
             ));
+
+            // Keep the displayed listen address current as the host's local IP
+            // changes underneath us (interface swap, VPN, DHCP renew).
+            crate::local_ip_watch::spawn(gui_state.clone());
 
             let (envelope_tx, envelope_rx) = channel::<EnvelopeStreams>();
 
@@ -493,7 +504,7 @@ pub fn run_console(osc_receive_port: u16, log_rx: Receiver<LogRecord>) -> Result
                 midi_panel: MidiPanelState::new(),
                 visualizer_panel: Arc::new(Mutex::new(VisualizerPanelState::default())),
                 visualizer_detached: Arc::new(AtomicBool::new(false)),
-                osc_panel: osc_panel::OscPanelState::new(),
+                osc_panel: osc_panel::OscPanelState::new(bound_port),
                 patch_panel: PatchPanelState::new(),
                 dmx_panel: DmxPortPanelState::new(),
                 dmx_debug_open: Arc::new(AtomicBool::new(false)),

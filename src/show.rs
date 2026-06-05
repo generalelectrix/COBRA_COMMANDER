@@ -247,6 +247,10 @@ impl Show {
                 self.controller.deregister_osc_client(client_id);
                 Ok(GuiDirty::OSC_CLIENTS)
             }
+            MetaCommand::SwapOscSocket(socket) => {
+                self.controller.swap_osc_socket(socket);
+                Ok(GuiDirty::CLEAN)
+            }
             MetaCommand::SetMasterStrobeChannel(enable) => {
                 if enable {
                     let ch = self.resolve_strobe_channel().context(
@@ -699,7 +703,7 @@ impl Show {
         let gui_state: SharedGuiState = Arc::new(crate::gui_state::GuiState::new(
             vec![],
             initial_clock_status,
-            String::new(),
+            None,
             tunnels_lib::repaint::noop_repaint(),
             tunnels_lib::repaint::noop_repaint(),
         ));
