@@ -492,11 +492,7 @@ impl Show {
                 if let Some(positioner) = positioner {
                     let fixture_emitter =
                         crate::osc::FixtureStateEmitter::new(name, channel_emitter);
-                    if let Some(result) =
-                        positioner.control_osc(msg, fixture_count, &fixture_emitter)
-                    {
-                        result?;
-                    }
+                    positioner.control_osc_channel_scoped(msg, fixture_count, &fixture_emitter)?;
                 }
                 Ok(GuiDirty::CLEAN)
             }
