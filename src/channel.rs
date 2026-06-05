@@ -140,8 +140,7 @@ impl Channels {
                     emitter,
                 };
                 if let Some(positioner) = group.positioner() {
-                    positioner
-                        .emit_channel_state(group.fixture_configs().len(), &positioner_emitter);
+                    positioner.emit_channel_state(&positioner_emitter);
                 } else {
                     crate::positioner::emit_non_positionable_channel_state(&positioner_emitter);
                 }

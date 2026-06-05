@@ -275,7 +275,6 @@ impl Show {
                     return Ok(GuiDirty::CLEAN);
                 };
                 let group = self.patch.channel_group_mut(channel)?;
-                let fixture_count = group.fixture_configs().len();
                 let (group_name, positioner) = group.split_for_positioner_dispatch();
                 let Some(positioner) = positioner else {
                     return Ok(GuiDirty::CLEAN);
@@ -284,13 +283,10 @@ impl Show {
                     preset.name = name;
                 }
                 let sender = self.controller.sender_with_metadata(None);
-                positioner.emit_channel_state(
-                    fixture_count,
-                    &ScopedControlEmitter {
-                        entity: crate::osc::positioner::GROUP,
-                        emitter: &sender,
-                    },
-                );
+                positioner.emit_channel_state(&ScopedControlEmitter {
+                    entity: crate::osc::positioner::GROUP,
+                    emitter: &sender,
+                });
                 positioner.emit_per_group_state(&crate::osc::FixtureStateEmitter::new(
                     group_name,
                     ChannelStateEmitter::new(
@@ -480,7 +476,6 @@ impl Show {
                     return Ok(GuiDirty::CLEAN);
                 };
                 let group = self.patch.channel_group_mut(channel)?;
-                let fixture_count = group.fixture_configs().len();
                 let channel_emitter = ChannelStateEmitter::new(
                     crate::channel::ChannelBinding::Current(channel),
                     &sender,
@@ -492,7 +487,7 @@ impl Show {
                 if let Some(positioner) = positioner {
                     let fixture_emitter =
                         crate::osc::FixtureStateEmitter::new(name, channel_emitter);
-                    positioner.control_osc_channel_scoped(msg, fixture_count, &fixture_emitter)?;
+                    positioner.control_osc_channel_scoped(msg, &fixture_emitter)?;
                 }
                 Ok(GuiDirty::CLEAN)
             }
@@ -657,8 +652,7 @@ impl Show {
                         },
                     );
                     if let Some(positioner) = group.positioner() {
-                        positioner
-                            .emit_channel_state(group.fixture_configs().len(), &positioner_emitter);
+                        positioner.emit_channel_state(&positioner_emitter);
                     } else {
                         crate::positioner::emit_non_positionable_channel_state(&positioner_emitter);
                     }

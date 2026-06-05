@@ -34,6 +34,9 @@ pub struct Positioner {
     pub selected_fixture: usize,
     /// Step magnitude for the channel-scoped bump buttons.
     pub bump_step: BumpStep,
+    /// Number of fixtures this positioner is sized for; always equals every
+    /// preset's `offsets.len()`.
+    fixture_count: usize,
 }
 
 /// One preset slot's data: a name and a per-fixture offset vector.
@@ -125,6 +128,7 @@ impl Positioner {
             active: 0,
             selected_fixture: 0,
             bump_step: BumpStep::Medium,
+            fixture_count,
         }
     }
 
@@ -141,6 +145,7 @@ impl Positioner {
                 .offsets
                 .resize_with(new_count, PositionOffset::default);
         }
+        self.fixture_count = new_count;
         // If a shrink dropped the previously-selected fixture, clamp.
         if self.selected_fixture >= new_count {
             self.selected_fixture = new_count.saturating_sub(1);
@@ -166,7 +171,6 @@ impl Positioner {
     pub fn control_osc_per_group(
         &mut self,
         msg: &OscControlMessage,
-        fixture_count: usize,
         emitter: &FixtureStateEmitter,
     ) -> Option<Result<()>> {
         let mutation = match msg.control() {
@@ -175,7 +179,7 @@ impl Positioner {
             }
             _ => return None,
         };
-        Some(mutation.and_then(|m| self.finish_mutation(m, fixture_count, emitter)))
+        Some(mutation.and_then(|m| self.finish_mutation(m, emitter)))
     }
 
     /// Handle a channel-scoped positioner OSC message (X/Y/Focus faders and
@@ -185,7 +189,6 @@ impl Positioner {
     pub fn control_osc_channel_scoped(
         &mut self,
         msg: &OscControlMessage,
-        fixture_count: usize,
         emitter: &FixtureStateEmitter,
     ) -> Result<()> {
         let mutation = match msg.control() {
@@ -202,8 +205,8 @@ impl Positioner {
 
             c if c == addr::BUMP_STEP_SELECT.control => self.handle_bump_step_select(msg),
 
-            addr::PREV_FIXTURE => self.handle_nudge_fixture(msg, Sign::Minus, fixture_count),
-            addr::NEXT_FIXTURE => self.handle_nudge_fixture(msg, Sign::Plus, fixture_count),
+            addr::PREV_FIXTURE => self.handle_nudge_fixture(msg, Sign::Minus),
+            addr::NEXT_FIXTURE => self.handle_nudge_fixture(msg, Sign::Plus),
 
             c if c == addr::PRESET_SELECT.control => {
                 self.handle_preset_select(msg, &addr::PRESET_SELECT)
@@ -214,23 +217,18 @@ impl Positioner {
 
             other => bail!("unrecognized channel-scoped positioner control: {other}"),
         }?;
-        self.finish_mutation(mutation, fixture_count, emitter)
+        self.finish_mutation(mutation, emitter)
     }
 
     /// Fire the emit paths appropriate to `mutation` and the emitter's
     /// channel binding.
-    fn finish_mutation(
-        &self,
-        mutation: Mutation,
-        fixture_count: usize,
-        emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    fn finish_mutation(&self, mutation: Mutation, emitter: &FixtureStateEmitter) -> Result<()> {
         if matches!(mutation, Mutation::ActiveChanged) {
             self.emit_per_group_state(emitter);
         }
         if emitter.channel().is_current() {
             let channel_emitter = emitter.scoped(addr::GROUP);
-            self.emit_channel_state(fixture_count, &channel_emitter);
+            self.emit_channel_state(&channel_emitter);
         }
         Ok(())
     }
@@ -287,23 +285,18 @@ impl Positioner {
         Ok(Mutation::Other)
     }
 
-    fn handle_nudge_fixture(
-        &mut self,
-        msg: &OscControlMessage,
-        sign: Sign,
-        fixture_count: usize,
-    ) -> Result<Mutation> {
+    fn handle_nudge_fixture(&mut self, msg: &OscControlMessage, sign: Sign) -> Result<Mutation> {
         if matches!(msg.arg, OscType::Float(v) if v == 0.0) {
             return Ok(Mutation::Other);
         }
-        if fixture_count == 0 {
+        if self.fixture_count == 0 {
             return Ok(Mutation::Other);
         }
         let delta: isize = match sign {
             Sign::Plus => 1,
             Sign::Minus => -1,
         };
-        let new = (self.selected_fixture as isize + delta).rem_euclid(fixture_count as isize);
+        let new = (self.selected_fixture as isize + delta).rem_euclid(self.fixture_count as isize);
         self.selected_fixture = new as usize;
         Ok(Mutation::Other)
     }
@@ -354,15 +347,11 @@ impl Positioner {
 
     /// Push the channel-scoped Positioner tab state. The emitter should be
     /// scoped to the [`addr::GROUP`] entity.
-    pub fn emit_channel_state<E: EmitScopedOscMessage + ?Sized>(
-        &self,
-        fixture_count: usize,
-        emitter: &E,
-    ) {
-        let label = if fixture_count == 0 {
+    pub fn emit_channel_state<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
+        let label = if self.fixture_count == 0 {
             "—".to_string()
         } else {
-            format!("{} / {}", self.selected_fixture + 1, fixture_count)
+            format!("{} / {}", self.selected_fixture + 1, self.fixture_count)
         };
         emitter.emit_osc(ScopedOscMessage {
             control: addr::FIXTURE_LABEL,
@@ -544,7 +533,7 @@ mod tests {
             "FocusBumpDown",
         ] {
             let msg = make_msg(&format!("/MyFixture/{ctrl}"), OscType::Float(1.0));
-            let result = p.control_osc_per_group(&msg, 4, &emitter);
+            let result = p.control_osc_per_group(&msg, &emitter);
             assert!(
                 result.is_none(),
                 "/{name}/{ctrl} must fall through to the fixture, but per-group dispatch matched it: {result:?}",
@@ -555,7 +544,7 @@ mod tests {
         // Arbitrary fixture-specific controls.
         for ctrl in ["Hue", "Sat", "Pan", "Tilt", "SomethingElse"] {
             let msg = make_msg(&format!("/MyFixture/{ctrl}"), OscType::Float(1.0));
-            assert!(p.control_osc_per_group(&msg, 4, &emitter).is_none());
+            assert!(p.control_osc_per_group(&msg, &emitter).is_none());
         }
     }
 
@@ -567,7 +556,7 @@ mod tests {
 
         let msg = make_msg("/Positioner/NotAControl", OscType::Float(1.0));
         let err = p
-            .control_osc_channel_scoped(&msg, 1, &emitter)
+            .control_osc_channel_scoped(&msg, &emitter)
             .expect_err("unknown control should error");
         assert!(
             err.to_string().contains("unrecognized"),
@@ -585,7 +574,7 @@ mod tests {
         let name = crate::config::GroupName("Test".to_string());
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/XBumpUp", OscType::Float(1.0));
-        p.control_osc_channel_scoped(&msg, 1, &emitter).unwrap();
+        p.control_osc_channel_scoped(&msg, &emitter).unwrap();
 
         // 0.99 + 0.05 = 1.04, clamped to 1.0 by BipolarFloat::new.
         assert_eq!(p.presets[0].offsets[0].x.val(), 1.0);
@@ -600,7 +589,7 @@ mod tests {
         let name = crate::config::GroupName("Test".to_string());
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/YBumpDown", OscType::Float(1.0));
-        p.control_osc_channel_scoped(&msg, 1, &emitter).unwrap();
+        p.control_osc_channel_scoped(&msg, &emitter).unwrap();
 
         // -0.99 + -0.05 = -1.04, clamped to -1.0.
         assert_eq!(p.presets[0].offsets[0].y.val(), -1.0);
@@ -616,7 +605,7 @@ mod tests {
         let name = crate::config::GroupName("Test".to_string());
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/XBumpUp", OscType::Float(0.0));
-        p.control_osc_channel_scoped(&msg, 1, &emitter).unwrap();
+        p.control_osc_channel_scoped(&msg, &emitter).unwrap();
         assert_eq!(p.presets[0].offsets[0].x.val(), 0.5);
     }
 
