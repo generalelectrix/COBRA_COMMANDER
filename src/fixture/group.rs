@@ -139,6 +139,23 @@ impl FixtureGroup {
         }
     }
 
+    /// Whether this group's fixture type supports the positioner.
+    pub fn supports_positioner(&self) -> bool {
+        self.fixture.supports_positioner()
+    }
+
+    /// Install loaded preset slots on this group's positioner. Caller is
+    /// responsible for checking [`Self::supports_positioner`] first;
+    /// passing presets to a non-positionable group silently drops them.
+    pub(crate) fn install_positioner_presets(
+        &mut self,
+        presets: crate::positioner::PositionerPresets,
+    ) {
+        if let Some(positioner) = &mut self.positioner {
+            positioner.install_presets(presets);
+        }
+    }
+
     /// Get a mutable reference to the group's color organ, if in use.
     pub fn color_organ_mut(&mut self) -> Option<&mut ColorOrganHsluv> {
         self.color_organ.as_mut()

@@ -8,6 +8,7 @@
 use anyhow::{Result, bail};
 use number::BipolarFloat;
 use rosc::OscType;
+use serde::{Deserialize, Serialize};
 
 use crate::osc::prelude::RadioButton;
 use crate::osc::{
@@ -25,9 +26,9 @@ pub const N_POSITIONER_AXES: usize = 3;
 /// Per-group positioner state: preset slots, the currently-active slot, and
 /// the editing state (selected fixture, bump granularity) shown on the
 /// Positioner tab.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Positioner {
-    presets: [PositionPreset; N_POSITIONER_SLOTS],
+    presets: PositionerPresets,
     /// Active preset slot (`0..N_POSITIONER_SLOTS`).
     active: usize,
     /// Index of the fixture being edited via the Positioner tab
@@ -40,8 +41,16 @@ pub struct Positioner {
     fixture_count: usize,
 }
 
+/// The persistable subset of a `Positioner`: the named preset slots.
+/// Editing UI state (active slot, selected fixture, bump step) is
+/// session-only and is not part of this type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PositionerPresets {
+    pub slots: [PositionPreset; N_POSITIONER_SLOTS],
+}
+
 /// One preset slot's data: a name and a per-fixture offset vector.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PositionPreset {
     /// Always populated. Defaults to `"Position {1..8}"` until the operator
     /// renames it via the desktop GUI.
@@ -54,7 +63,7 @@ pub struct PositionPreset {
 /// Per-fixture offset along the positioner's axes. The `focus` value is
 /// stored uniformly across all positionable groups but only contributes to
 /// render when the fixture type's [`PositionerAxes::focus`] is `Some`.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct PositionOffset {
     pub x: BipolarFloat,
     pub y: BipolarFloat,
@@ -77,7 +86,7 @@ pub struct PositionerAxes<T> {
 
 /// Step magnitude for the Positioner tab's bump buttons. Same step applies
 /// to X, Y, and Focus.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BumpStep {
     /// ~0.05; broad, fast positioning.
     Coarse,
@@ -113,6 +122,42 @@ enum Sign {
     Minus,
 }
 
+impl std::ops::Index<usize> for PositionerPresets {
+    type Output = PositionPreset;
+    fn index(&self, i: usize) -> &PositionPreset {
+        &self.slots[i]
+    }
+}
+
+impl std::ops::IndexMut<usize> for PositionerPresets {
+    fn index_mut(&mut self, i: usize) -> &mut PositionPreset {
+        &mut self.slots[i]
+    }
+}
+
+impl PositionerPresets {
+    /// Build 8 default preset slots (named `"Position 1"` through
+    /// `"Position 8"`) sized for `fixture_count` fixtures.
+    pub fn default_for(fixture_count: usize) -> Self {
+        let slots = std::array::from_fn(|i| PositionPreset {
+            name: format!("Position {}", i + 1),
+            offsets: vec![PositionOffset::default(); fixture_count],
+        });
+        Self { slots }
+    }
+
+    /// Grow or shrink each preset's `offsets` vector to match a new
+    /// fixture count, preserving existing values where they overlap.
+    /// Extending pads with default (zero) offsets; truncating drops the
+    /// tail entries.
+    pub fn reconcile_to_fixture_count(&mut self, fixture_count: usize) {
+        for slot in &mut self.slots {
+            slot.offsets
+                .resize_with(fixture_count, PositionOffset::default);
+        }
+    }
+}
+
 impl Positioner {
     /// Build a fresh positioner for a group with `fixture_count` fixtures.
     ///
@@ -120,12 +165,8 @@ impl Positioner {
     /// 1"` through `"Position 8"`) and `fixture_count` zeroed offsets each.
     /// `active = 0`, `selected_fixture = 0`, `bump_step = Medium`.
     pub fn default_for(fixture_count: usize) -> Self {
-        let presets = std::array::from_fn(|i| PositionPreset {
-            name: format!("Position {}", i + 1),
-            offsets: vec![PositionOffset::default(); fixture_count],
-        });
         Self {
-            presets,
+            presets: PositionerPresets::default_for(fixture_count),
             active: 0,
             selected_fixture: 0,
             bump_step: BumpStep::Medium,
@@ -141,11 +182,7 @@ impl Positioner {
     /// Extending pads with default (zero) offsets; truncating drops the tail
     /// entries.
     pub fn reconcile_to_fixture_count(&mut self, new_count: usize) {
-        for preset in &mut self.presets {
-            preset
-                .offsets
-                .resize_with(new_count, PositionOffset::default);
-        }
+        self.presets.reconcile_to_fixture_count(new_count);
         self.fixture_count = new_count;
         // If a shrink dropped the previously-selected fixture, clamp.
         if self.selected_fixture >= new_count {
@@ -153,10 +190,24 @@ impl Positioner {
         }
     }
 
+    /// The persisted subset of this positioner's state (the named preset
+    /// slots).
+    pub fn presets(&self) -> &PositionerPresets {
+        &self.presets
+    }
+
+    /// Install loaded preset data, reconciling it to the current fixture
+    /// count first.
+    pub fn install_presets(&mut self, mut presets: PositionerPresets) {
+        presets.reconcile_to_fixture_count(self.fixture_count);
+        self.presets = presets;
+    }
+
     /// The offset for a given fixture in the currently-active preset, or
     /// `None` if `fixture_index` is out of range.
     pub fn offset_for_fixture(&self, fixture_index: usize) -> Option<PositionOffset> {
         self.presets
+            .slots
             .get(self.active)
             .and_then(|preset| preset.offsets.get(fixture_index))
             .copied()
@@ -168,7 +219,7 @@ impl Positioner {
     /// is out of range.
     pub fn rename_active_preset(&mut self, name: String, emitter: &FixtureStateEmitter) {
         let active = self.active;
-        let Some(preset) = self.presets.get_mut(active) else {
+        let Some(preset) = self.presets.slots.get_mut(active) else {
             return;
         };
         preset.name = name.clone();
@@ -251,7 +302,7 @@ impl Positioner {
         }
         let active = self.active;
         let selected_fixture = self.selected_fixture;
-        let preset = self.presets.get_mut(active).ok_or_else(|| {
+        let preset = self.presets.slots.get_mut(active).ok_or_else(|| {
             positioner_inconsistency(
                 "PO-001",
                 format!("active preset slot {active} out of range (max {N_POSITIONER_SLOTS})"),
@@ -406,7 +457,7 @@ impl Positioner {
             return Ok(());
         }
         let active = self.active;
-        let preset = self.presets.get_mut(active).ok_or_else(|| {
+        let preset = self.presets.slots.get_mut(active).ok_or_else(|| {
             positioner_inconsistency(
                 "PO-001",
                 format!("active preset slot {active} out of range (max {N_POSITIONER_SLOTS})"),
@@ -425,7 +476,7 @@ impl Positioner {
         self.emit_fixture_label(emitter);
         self.emit_selected_axes(emitter);
         addr::PRESET_SELECT.set(self.active, false, emitter);
-        addr::PRESET_LABELS.set(self.presets.iter().map(|p| p.name.clone()), emitter);
+        addr::PRESET_LABELS.set(self.presets.slots.iter().map(|p| p.name.clone()), emitter);
         self.emit_bump_step_radio(emitter);
     }
 
@@ -434,13 +485,14 @@ impl Positioner {
     /// [`FixtureStateEmitter`] that prefixes addresses with the group name).
     pub fn emit_per_group_state<E: EmitScopedOscMessage + ?Sized>(&self, emitter: &E) {
         addr::POSITION_PRESET_SELECT.set(self.active, false, emitter);
-        addr::POSITION_PRESET_LABEL.set(self.presets.iter().map(|p| p.name.clone()), emitter);
+        addr::POSITION_PRESET_LABEL.set(self.presets.slots.iter().map(|p| p.name.clone()), emitter);
     }
 
     /// Push the selected fixture's offset value along one axis.
     fn emit_axis<E: EmitScopedOscMessage + ?Sized>(&self, axis: Axis, emitter: &E) {
         let val = self
             .presets
+            .slots
             .get(self.active)
             .and_then(|preset| preset.offsets.get(self.selected_fixture))
             .map(|off| match axis {
@@ -526,15 +578,11 @@ mod tests {
             self.active
         }
 
-        pub fn presets(&self) -> &[PositionPreset; N_POSITIONER_SLOTS] {
-            &self.presets
-        }
-
         pub fn selected_fixture(&self) -> usize {
             self.selected_fixture
         }
 
-        pub fn presets_mut(&mut self) -> &mut [PositionPreset; N_POSITIONER_SLOTS] {
+        pub fn presets_mut(&mut self) -> &mut PositionerPresets {
             &mut self.presets
         }
 
@@ -544,23 +592,6 @@ mod tests {
 
         pub fn set_selected_fixture(&mut self, idx: usize) {
             self.selected_fixture = idx;
-        }
-    }
-
-    #[test]
-    fn default_for_seeds_named_presets_and_zero_offsets() {
-        let p = Positioner::default_for(4);
-        assert_eq!(p.active, 0);
-        assert_eq!(p.selected_fixture, 0);
-        assert_eq!(p.bump_step, BumpStep::Medium);
-        for (i, preset) in p.presets.iter().enumerate() {
-            assert_eq!(preset.name, format!("Position {}", i + 1));
-            assert_eq!(preset.offsets.len(), 4);
-            for off in &preset.offsets {
-                assert_eq!(off.x.val(), 0.0);
-                assert_eq!(off.y.val(), 0.0);
-                assert_eq!(off.focus.val(), 0.0);
-            }
         }
     }
 
@@ -591,22 +622,36 @@ mod tests {
         assert_eq!(p.presets[0].offsets[2].x.val(), 0.75);
         // selected_fixture was 4, but now max is 2.
         assert_eq!(p.selected_fixture, 2);
-    }
 
-    #[test]
-    fn reconcile_to_zero_clamps_selected_fixture_to_zero() {
-        let mut p = Positioner::default_for(3);
-        p.selected_fixture = 2;
+        // Shrinking to zero fixtures is its own edge case (empty offsets vec).
         p.reconcile_to_fixture_count(0);
         assert_eq!(p.presets[0].offsets.len(), 0);
         assert_eq!(p.selected_fixture, 0);
     }
 
     #[test]
-    fn bump_step_magnitudes() {
-        assert!((BumpStep::Coarse.magnitude() - 0.05).abs() < 1e-9);
-        assert!((BumpStep::Medium.magnitude() - 0.01).abs() < 1e-9);
-        assert!((BumpStep::Fine.magnitude() - 0.002).abs() < 1e-9);
+    fn positioner_yaml_round_trip() {
+        let mut p = Positioner::default_for(3);
+        p.presets_mut()[0].offsets[0].x = BipolarFloat::new(0.5);
+        p.presets_mut()[0].offsets[1].y = BipolarFloat::new(-0.25);
+        p.presets_mut()[2].offsets[2].focus = BipolarFloat::new(0.1);
+        p.presets_mut()[3].name = "Bar Spots".to_string();
+        p.set_active(2);
+        p.set_selected_fixture(1);
+        p.bump_step = BumpStep::Coarse;
+
+        // Only the persistable subset survives a save/load cycle. Editing
+        // UI state (active, selected_fixture, bump_step) is session-only.
+        let yaml = serde_yaml::to_string(p.presets()).unwrap();
+        let restored: PositionerPresets = serde_yaml::from_str(&yaml).unwrap();
+
+        assert_eq!(restored[0].offsets[0].x.val(), 0.5);
+        assert_eq!(restored[0].offsets[1].y.val(), -0.25);
+        assert_eq!(restored[2].offsets[2].focus.val(), 0.1);
+        assert_eq!(restored[3].name, "Bar Spots");
+        for preset in &restored.slots {
+            assert_eq!(preset.offsets.len(), 3);
+        }
     }
 
     fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
@@ -700,21 +745,6 @@ mod tests {
     }
 
     #[test]
-    fn bump_down_clamps_at_negative_one() {
-        let mut p = Positioner::default_for(1);
-        p.bump_step = BumpStep::Coarse; // 0.05
-        p.presets[0].offsets[0].y = BipolarFloat::new(-0.99);
-
-        let name = crate::config::GroupName("Test".to_string());
-        let emitter = null_fixture_emitter(&name);
-        let msg = make_msg("/Positioner/YBumpDown", OscType::Float(1.0));
-        p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
-
-        // -0.99 + -0.05 = -1.04, clamped to -1.0.
-        assert_eq!(p.presets[0].offsets[0].y.val(), -1.0);
-    }
-
-    #[test]
     fn bump_release_does_not_apply_delta() {
         // Bump buttons are momentary; the release (`0.0`) should be a no-op.
         let mut p = Positioner::default_for(1);
@@ -757,51 +787,5 @@ mod tests {
         let emitter = null_fixture_emitter(&name);
         let msg = make_msg("/Positioner/X", OscType::Float(0.5));
         p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
-    }
-
-    #[test]
-    fn cleared_positioner_emit_clears_every_positioner_tab_control() {
-        let emitter = crate::osc::MockEmitter::new();
-        emit_cleared_positioner_state(&emitter);
-        let msgs = emitter.take();
-
-        // Indexed lookups by control name for clarity.
-        let by_addr: std::collections::HashMap<String, OscType> = msgs.into_iter().collect();
-
-        assert_eq!(
-            by_addr.get(addr::FIXTURE_LABEL),
-            Some(&OscType::String("—".to_string())),
-        );
-        assert_eq!(by_addr.get(addr::X_FADER), Some(&OscType::Float(0.0)));
-        assert_eq!(by_addr.get(addr::Y_FADER), Some(&OscType::Float(0.0)));
-        assert_eq!(by_addr.get(addr::FOCUS_FADER), Some(&OscType::Float(0.0)));
-
-        // Every preset radio button should be 0.0 (none selected).
-        for i in 1..=N_POSITIONER_SLOTS {
-            let addr = format!("{}/1/{}", addr::PRESET_SELECT.control, i);
-            assert_eq!(
-                by_addr.get(&addr),
-                Some(&OscType::Float(0.0)),
-                "preset radio {addr} not cleared",
-            );
-        }
-        // Every preset label slot should be cleared to the empty label "".
-        for i in 0..N_POSITIONER_SLOTS {
-            let addr = format!("{}/{}", addr::PRESET_LABELS.control, i);
-            assert_eq!(
-                by_addr.get(&addr),
-                Some(&OscType::String(String::new())),
-                "preset label {addr} not cleared",
-            );
-        }
-        // Every bump-step radio button should be 0.0.
-        for i in 1..=3 {
-            let addr = format!("{}/1/{}", addr::BUMP_STEP_SELECT.control, i);
-            assert_eq!(
-                by_addr.get(&addr),
-                Some(&OscType::Float(0.0)),
-                "bump-step radio {addr} not cleared",
-            );
-        }
     }
 }

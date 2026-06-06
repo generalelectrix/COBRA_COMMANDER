@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -5,7 +6,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::config::FixtureGroupConfig;
+use crate::config::{FixtureGroupConfig, GroupId};
+use crate::positioner::PositionerPresets;
 
 /// File extension for show files (without the leading dot).
 pub const EXTENSION: &str = "cobra";
@@ -50,11 +52,11 @@ impl std::ops::Deref for ShowPath {
 pub type ShowPatchConfigs = Arc<[FixtureGroupConfig]>;
 
 /// On-disk format for a Cobra Commander show file (`.cobra`).
-///
-/// Wraps the patch data so we can add sibling fields in the future.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ShowFile {
     pub patch: ShowPatchConfigs,
+    #[serde(default)]
+    pub positioners: HashMap<GroupId, PositionerPresets>,
 }
 
 /// Load a show file from disk.

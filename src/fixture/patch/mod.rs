@@ -12,6 +12,7 @@ use super::group::FixtureGroup;
 use crate::config::{FixtureGroupConfig, GroupId, GroupName};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
+use crate::positioner::PositionerPresets;
 use crate::show_file::ShowPatchConfigs;
 
 mod option;
@@ -197,6 +198,42 @@ impl Patch {
     /// A cheap-clone handle to the configs that built this patch.
     pub fn configs_arc(&self) -> ShowPatchConfigs {
         Arc::clone(&self.configs)
+    }
+
+    /// Build a patch from a loaded show file, applying its positioner state
+    /// to the patched groups.
+    pub fn from_show_file(show_file: crate::show_file::ShowFile) -> Result<Self> {
+        let mut patch = Self::patch_all(show_file.patch)?;
+        patch.apply_loaded_positioners(show_file.positioners);
+        Ok(patch)
+    }
+
+    /// Install loaded positioner presets on the patched groups. Each entry
+    /// is reconciled to the group's current fixture count before
+    /// installation. Entries for unknown or non-positionable groups are
+    /// logged and dropped.
+    fn apply_loaded_positioners(&mut self, positioners: HashMap<GroupId, PositionerPresets>) {
+        for (id, presets) in positioners {
+            let Some(location) = self.by_id.get(&id).copied() else {
+                log::warn!("Loaded positioner for unknown group {id:?}; dropping");
+                continue;
+            };
+            let group = match location {
+                GroupLocation::Channel(c) => self.channels.get_mut(c.inner()),
+                GroupLocation::NonChannel(i) => self.non_channel.get_mut(i),
+            };
+            let Some(group) = group else {
+                log::error!(
+                    "internal: by_id pointed at missing slot for group {id:?}; dropping positioner"
+                );
+                continue;
+            };
+            if !group.supports_positioner() {
+                log::warn!("Loaded positioner for non-positionable group {id:?}; dropping");
+                continue;
+            }
+            group.install_positioner_presets(presets);
+        }
     }
 
     /// Patch a single fixture group config.

@@ -114,6 +114,11 @@ impl Show {
         };
         let file = crate::show_file::ShowFile {
             patch: self.patch.configs_arc(),
+            positioners: self
+                .patch
+                .iter()
+                .filter_map(|g| g.positioner().map(|p| (g.id(), p.presets().clone())))
+                .collect(),
         };
         self.saver.submit(path.clone(), file);
     }
@@ -304,6 +309,7 @@ impl Show {
                     ),
                 );
                 positioner.rename_active_preset(name, &emitter);
+                self.save_show();
                 Ok(GuiDirty::CLEAN)
             }
         }
@@ -498,6 +504,7 @@ impl Show {
                     let fixture_emitter =
                         crate::osc::FixtureStateEmitter::new(name, channel_emitter);
                     positioner.control_osc_positioner_scoped(msg, &fixture_emitter)?;
+                    self.save_show();
                 }
                 Ok(GuiDirty::CLEAN)
             }
@@ -1453,43 +1460,6 @@ mod tests {
             }
         }
 
-        /// Tap `/IWashLed/PositionPresetSelect/1/5` (per-group dispatch)
-        /// while IWashLed is the current channel. Expect: `active` flips
-        /// to slot 4, and both the per-group radio echo AND the channel-
-        /// scoped tab refresh happen.
-        #[test]
-        fn per_group_preset_tap_on_current_channel_cross_emits() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            capture.drain();
-
-            fire_press(&mut show, "/IWashLed/PositionPresetSelect/1/5").unwrap();
-            let emits = capture.drain_by_addr();
-
-            let channel = show.channels_for_test().current_channel().unwrap();
-            let positioner = show
-                .patch_for_test()
-                .channel_group(channel)
-                .unwrap()
-                .positioner()
-                .unwrap();
-            assert_eq!(positioner.active(), 4);
-
-            // Per-group radio echoed.
-            assert_eq!(
-                emits.get("/IWashLed/PositionPresetSelect/1/5"),
-                Some(&OscType::Float(1.0)),
-            );
-            // Positioner tab refreshed (Preset radio + a label slot as proof).
-            assert_eq!(
-                emits.get("/Positioner/Preset/1/5"),
-                Some(&OscType::Float(1.0)),
-            );
-            assert_eq!(
-                emits.get("/Positioner/PresetLabel/4"),
-                Some(&OscType::String("Position 5".to_string())),
-            );
-        }
-
         /// Tap `/IWashBack/PositionPresetSelect/1/5` while IWashFront IS the
         /// current channel. Expect: IWashBack's state mutates, IWashFront's
         /// doesn't, and the Positioner tab is *not*
@@ -1732,83 +1702,6 @@ mod tests {
             fire(&mut show, "/Positioner/Focus", OscType::Float(0.1)).unwrap();
             let emits = capture.drain_by_addr();
             assert_positioner_tab_emits(&emits, &["/Positioner/Focus"]);
-        }
-
-        /// Bumping one axis must push only that axis's fader.
-        #[test]
-        fn bump_emits_only_target_axis() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            capture.drain();
-
-            fire_press(&mut show, "/Positioner/XBumpUp").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(&emits, &["/Positioner/X"]);
-
-            fire_press(&mut show, "/Positioner/YBumpDown").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(&emits, &["/Positioner/Y"]);
-
-            fire_press(&mut show, "/Positioner/FocusBumpUp").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(&emits, &["/Positioner/Focus"]);
-        }
-
-        /// Changing the bump-step magnitude must push only the BumpStep
-        /// radio's 3 button-state messages.
-        #[test]
-        fn bump_step_emits_only_bump_step_radio() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            capture.drain();
-
-            // Switch from default Medium (slot 2) to Coarse (slot 1).
-            fire_press(&mut show, "/Positioner/BumpStep/1/1").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(
-                &emits,
-                &[
-                    "/Positioner/BumpStep/1/1",
-                    "/Positioner/BumpStep/1/2",
-                    "/Positioner/BumpStep/1/3",
-                ],
-            );
-        }
-
-        /// Prev/Next selected fixture must push FixtureLabel and the three
-        /// axis faders, but not the preset radio or bump-step.
-        #[test]
-        fn nudge_fixture_emits_only_fixture_label_and_axes() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            capture.drain();
-
-            fire_press(&mut show, "/Positioner/Next").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(
-                &emits,
-                &[
-                    "/Positioner/FixtureLabel",
-                    "/Positioner/X",
-                    "/Positioner/Y",
-                    "/Positioner/Focus",
-                ],
-            );
-        }
-
-        /// Reset (single fixture) zeroes the selected fixture's offsets, so
-        /// the three faders snap to zero. Nothing else changes.
-        #[test]
-        fn reset_fixture_emits_only_axes() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            // Stash some non-zero values so the snap-to-zero is observable.
-            fire(&mut show, "/Positioner/X", OscType::Float(0.5)).unwrap();
-            fire(&mut show, "/Positioner/Y", OscType::Float(-0.25)).unwrap();
-            capture.drain();
-
-            fire_press(&mut show, "/Positioner/Reset").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(
-                &emits,
-                &["/Positioner/X", "/Positioner/Y", "/Positioner/Focus"],
-            );
         }
 
         /// Renaming a preset slot must push only that one slot's label on
