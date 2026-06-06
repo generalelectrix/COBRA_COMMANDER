@@ -250,20 +250,26 @@ impl Positioner {
         emitter: &FixtureStateEmitter,
     ) -> Option<Result<()>> {
         if msg.control() == addr::POSITION_PRESET_SELECT.control {
-            Some(self.handle_preset_select(msg, &addr::POSITION_PRESET_SELECT, emitter))
+            Some(
+                self.handle_preset_select(msg, &addr::POSITION_PRESET_SELECT, emitter)
+                    .map(|_| ()),
+            )
         } else {
             None
         }
     }
 
     /// Handle a Positioner-tab OSC message (X/Y/Focus faders and bumps,
-    /// BumpStep, Prev/Next, Preset, Reset, ResetPreset). Returns `Err` for
-    /// an unrecognized address or a recognized-but-malformed message.
+    /// BumpStep, Prev/Next, Preset, Reset, ResetPreset). Returns `Ok(true)`
+    /// when the message mutated persistable content (a preset's offsets),
+    /// `Ok(false)` for editing-only mutations (selection, bump step) and
+    /// no-op releases. Returns `Err` for an unrecognized address or a
+    /// recognized-but-malformed message.
     pub fn control_osc_positioner_scoped(
         &mut self,
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         match msg.control() {
             addr::X_FADER => self.handle_fader(msg, Axis::X, emitter),
             addr::Y_FADER => self.handle_fader(msg, Axis::Y, emitter),
@@ -329,10 +335,10 @@ impl Positioner {
         msg: &OscControlMessage,
         axis: Axis,
         emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let val = msg.get_bipolar()?;
         let Some(offset) = self.selected_offset_mut()? else {
-            return Ok(());
+            return Ok(false);
         };
         match axis {
             Axis::X => offset.x = val,
@@ -340,7 +346,7 @@ impl Positioner {
             Axis::Focus => offset.focus = val,
         }
         self.emit_axis(axis, &emitter.scoped(addr::GROUP));
-        Ok(())
+        Ok(true)
     }
 
     fn handle_bump(
@@ -349,16 +355,16 @@ impl Positioner {
         axis: Axis,
         sign: Sign,
         emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if !msg.get_bool()? {
-            return Ok(());
+            return Ok(false);
         }
         let signed_delta = match sign {
             Sign::Plus => self.bump_step.magnitude(),
             Sign::Minus => -self.bump_step.magnitude(),
         };
         let Some(offset) = self.selected_offset_mut()? else {
-            return Ok(());
+            return Ok(false);
         };
         match axis {
             Axis::X => offset.x = BipolarFloat::new(offset.x.val() + signed_delta),
@@ -366,25 +372,25 @@ impl Positioner {
             Axis::Focus => offset.focus = BipolarFloat::new(offset.focus.val() + signed_delta),
         }
         self.emit_axis(axis, &emitter.scoped(addr::GROUP));
-        Ok(())
+        Ok(true)
     }
 
     fn handle_bump_step_select(
         &mut self,
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let Some(index) = addr::BUMP_STEP_SELECT.parse_press(msg)? else {
-            return Ok(());
+            return Ok(false);
         };
         self.bump_step = match index {
             0 => BumpStep::Coarse,
             1 => BumpStep::Medium,
             2 => BumpStep::Fine,
-            _ => return Ok(()),
+            _ => return Ok(false),
         };
         self.emit_bump_step_radio(&emitter.scoped(addr::GROUP));
-        Ok(())
+        Ok(false)
     }
 
     fn handle_nudge_fixture(
@@ -392,9 +398,9 @@ impl Positioner {
         msg: &OscControlMessage,
         sign: Sign,
         emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if !msg.get_bool()? || self.fixture_count == 0 {
-            return Ok(());
+            return Ok(false);
         }
         let delta: isize = match sign {
             Sign::Plus => 1,
@@ -405,7 +411,7 @@ impl Positioner {
         let scoped = emitter.scoped(addr::GROUP);
         self.emit_fixture_label(&scoped);
         self.emit_selected_axes(&scoped);
-        Ok(())
+        Ok(false)
     }
 
     fn handle_preset_select(
@@ -413,12 +419,12 @@ impl Positioner {
         msg: &OscControlMessage,
         primitive: &RadioButton,
         emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let Some(index) = primitive.parse_press(msg)? else {
-            return Ok(());
+            return Ok(false);
         };
         if index >= N_POSITIONER_SLOTS || self.active == index {
-            return Ok(());
+            return Ok(false);
         }
         self.active = index;
         // The per-group preset radio always reflects the change (it's the
@@ -429,32 +435,32 @@ impl Positioner {
         if emitter.channel().is_current() {
             self.emit_positioner_state(&emitter.scoped(addr::GROUP));
         }
-        Ok(())
+        Ok(false)
     }
 
     fn handle_reset_fixture(
         &mut self,
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if !msg.get_bool()? {
-            return Ok(());
+            return Ok(false);
         }
         let Some(offset) = self.selected_offset_mut()? else {
-            return Ok(());
+            return Ok(false);
         };
         *offset = PositionOffset::default();
         self.emit_selected_axes(&emitter.scoped(addr::GROUP));
-        Ok(())
+        Ok(true)
     }
 
     fn handle_reset_preset(
         &mut self,
         msg: &OscControlMessage,
         emitter: &FixtureStateEmitter,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if !msg.get_bool()? {
-            return Ok(());
+            return Ok(false);
         }
         let active = self.active;
         let preset = self.presets.slots.get_mut(active).ok_or_else(|| {
@@ -467,7 +473,7 @@ impl Positioner {
             *off = PositionOffset::default();
         }
         self.emit_selected_axes(&emitter.scoped(addr::GROUP));
-        Ok(())
+        Ok(true)
     }
 
     /// Push the Positioner tab state. The emitter should be scoped to the

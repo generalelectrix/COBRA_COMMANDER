@@ -60,15 +60,24 @@ pub struct DmxDebugSnapshot {
 }
 
 bitflags::bitflags! {
-    /// GUI state domains that may need re-snapshotting after a control event.
+    /// Domains of show state that may have diverged from their downstream
+    /// representations (GUI snapshots, on-disk show file) and need to be
+    /// reconciled after a control event.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct GuiDirty: u8 {
+    pub struct StateDirty: u8 {
         const CLEAN       = 0b0000_0000;
         const MIDI_SLOTS  = 0b0000_0001;
         const CLOCK_STATE = 0b0000_0010;
         const DMX_PORTS   = 0b0000_0100;
         const AUDIO       = 0b0000_1000;
         const OSC_CLIENTS = 0b0001_0000;
+        const SHOW_FILE   = 0b0010_0000;
+        /// All GUI snapshot domains — every flag except [`Self::SHOW_FILE`].
+        const GUI_ALL = Self::MIDI_SLOTS.bits()
+            | Self::CLOCK_STATE.bits()
+            | Self::DMX_PORTS.bits()
+            | Self::AUDIO.bits()
+            | Self::OSC_CLIENTS.bits();
     }
 }
 
