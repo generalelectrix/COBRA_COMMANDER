@@ -186,17 +186,8 @@ impl Patch {
         Ok(())
     }
 
-    /// The configs that built this patch.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "slice view; pending callers in later pieces")
-    )]
-    pub fn configs(&self) -> &[FixtureGroupConfig] {
-        &self.configs
-    }
-
     /// A cheap-clone handle to the configs that built this patch.
-    pub fn configs_arc(&self) -> ShowPatchConfigs {
+    pub fn configs(&self) -> ShowPatchConfigs {
         Arc::clone(&self.configs)
     }
 

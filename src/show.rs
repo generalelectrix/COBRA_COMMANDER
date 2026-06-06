@@ -78,7 +78,7 @@ impl Show {
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
-        let initial_groups = patch.configs_arc();
+        let initial_groups = patch.configs();
         let mut show = Self {
             controller,
             dmx,
@@ -99,6 +99,10 @@ impl Show {
         show.reconcile_clock_wing()?;
         show.refresh_ui();
         show.snapshot_state(StateDirty::GUI_ALL);
+        // Initial save: surfaces a bad path early and normalizes the
+        // on-disk file to the current schema if the load reconciled
+        // anything.
+        show.save_show();
         show.gui_state.patch_snapshot.store(Arc::new(PatchSnapshot {
             groups: initial_groups,
         }));
@@ -112,7 +116,7 @@ impl Show {
             return;
         };
         let file = crate::show_file::ShowFile {
-            patch: self.patch.configs_arc(),
+            patch: self.patch.configs(),
             positioners: self
                 .patch
                 .iter()

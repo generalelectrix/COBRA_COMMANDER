@@ -157,10 +157,7 @@ impl WelcomeApp {
             return;
         };
 
-        let show_file = ShowFile {
-            patch: Default::default(),
-            positioners: Default::default(),
-        };
+        let show_file = ShowFile::default();
         if let Err(e) = show_file::save(&path, &show_file) {
             self.modal.show("Failed to Create Show", format!("{e:#}"));
             return;

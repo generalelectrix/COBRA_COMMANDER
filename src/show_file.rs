@@ -52,7 +52,7 @@ impl std::ops::Deref for ShowPath {
 pub type ShowPatchConfigs = Arc<[FixtureGroupConfig]>;
 
 /// On-disk format for a Cobra Commander show file (`.cobra`).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ShowFile {
     pub patch: ShowPatchConfigs,
     #[serde(default)]
