@@ -153,19 +153,9 @@ pub(crate) struct PatchPanel<'a> {
     pub state: &'a mut PatchPanelState,
     pub snapshot: &'a PatchSnapshot,
     pub patchers: &'a [Patcher],
-    pub show_file_path: &'a std::path::Path,
 }
 
 impl PatchPanel<'_> {
-    fn autosave(&mut self, configs: &[FixtureGroupConfig]) {
-        let show_file = crate::show_file::ShowFile {
-            patch: configs.to_vec(),
-        };
-        if let Err(e) = crate::show_file::save(self.show_file_path, &show_file) {
-            self.ctx.modal.show("Autosave Failed", format!("{e:#}"));
-        }
-    }
-
     pub fn ui(mut self, ui: &mut egui::Ui) {
         if self.state.working_copy.is_none() {
             self.state.working_copy = Some(PatchWorkingCopy::from_snapshot(
@@ -189,12 +179,7 @@ impl PatchPanel<'_> {
                                 return;
                             };
                             let configs = wc.configs();
-                            if self
-                                .ctx
-                                .send_command(MetaCommand::Repatch(configs.clone()))
-                                .is_ok()
-                            {
-                                self.autosave(&configs);
+                            if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
                                 self.state.working_copy = None;
                                 self.state.add_fixture_form = None;
                                 self.state.add_fixture_group = None;
@@ -1124,7 +1109,9 @@ mod test {
     // -----------------------------------------------------------------------
 
     fn test_snapshot_empty() -> PatchSnapshot {
-        PatchSnapshot { groups: vec![] }
+        PatchSnapshot {
+            groups: Default::default(),
+        }
     }
 
     fn simple_block(addr: usize) -> PatchBlock {
@@ -1195,7 +1182,8 @@ mod test {
             groups: vec![
                 simple_group(None, &[1]),
                 simple_group(Some("BackSimple"), &[10, 11]),
-            ],
+            ]
+            .into(),
         }
     }
 
@@ -1208,7 +1196,8 @@ mod test {
                 ),
                 group_opts_group(Some("Effects")),
                 simple_group(None, &[50]),
-            ],
+            ]
+            .into(),
         }
     }
 
@@ -1248,7 +1237,8 @@ mod test {
                 color_organ: false,
                 patches: vec![simple_block(1)],
                 options: Options::default(),
-            }],
+            }]
+            .into(),
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         assert_eq!(wc.groups[0].channel_counts, vec![0]);
@@ -1376,7 +1366,7 @@ mod test {
     #[test]
     fn address_map_detects_collision() {
         let snapshot = PatchSnapshot {
-            groups: vec![simple_group(Some("A"), &[1]), simple_group(Some("B"), &[1])],
+            groups: vec![simple_group(Some("A"), &[1]), simple_group(Some("B"), &[1])].into(),
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         let map = AddressMap::from_working_copy(&wc);
@@ -1405,7 +1395,8 @@ mod test {
                     }],
                     options: Options::default(),
                 },
-            ],
+            ]
+            .into(),
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         let map = AddressMap::from_working_copy(&wc);
@@ -1416,7 +1407,7 @@ mod test {
     #[test]
     fn address_map_multi_channel_fixture() {
         let snapshot = PatchSnapshot {
-            groups: vec![patch_opts_group(None, vec![patch_opts_block(10, "Wide")])],
+            groups: vec![patch_opts_group(None, vec![patch_opts_block(10, "Wide")])].into(),
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         let map = AddressMap::from_working_copy(&wc);
@@ -1442,7 +1433,7 @@ mod test {
     #[test]
     fn find_available_wraps_around() {
         let snapshot = PatchSnapshot {
-            groups: vec![simple_group(None, &(500..=512).collect::<Vec<_>>())],
+            groups: vec![simple_group(None, &(500..=512).collect::<Vec<_>>())].into(),
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         let map = AddressMap::from_working_copy(&wc);
@@ -1452,7 +1443,7 @@ mod test {
     #[test]
     fn find_available_returns_none_when_full() {
         let snapshot = PatchSnapshot {
-            groups: vec![simple_group(None, &(1..=512).collect::<Vec<_>>())],
+            groups: vec![simple_group(None, &(1..=512).collect::<Vec<_>>())].into(),
         };
         let wc = PatchWorkingCopy::from_snapshot(&snapshot, &test_patchers());
         let map = AddressMap::from_working_copy(&wc);
@@ -1499,7 +1490,6 @@ mod test {
                 state,
                 snapshot,
                 patchers,
-                show_file_path: std::path::Path::new(""),
             }
             .ui(ui);
         });
@@ -1535,7 +1525,9 @@ mod test {
         let groups: Vec<_> = (0..10)
             .map(|i| simple_group(Some(&format!("Group{i}")), &[i * 10 + 1]))
             .collect();
-        let snapshot = PatchSnapshot { groups };
+        let snapshot = PatchSnapshot {
+            groups: groups.into(),
+        };
         let mut state = PatchPanelState::new();
         state.selected_group = Some(0);
         snapshot_panel(
@@ -1681,7 +1673,6 @@ mod test {
                 state: &mut state,
                 snapshot: &snapshot,
                 patchers: &patchers,
-                show_file_path: std::path::Path::new(""),
             }
             .ui(ui);
         });
@@ -1721,7 +1712,7 @@ mod test {
     fn commit_add_fixture_non_dmx() {
         let patchers = test_patchers();
         let snapshot = PatchSnapshot {
-            groups: vec![non_dmx_group(Some("MyNonDmx"))],
+            groups: vec![non_dmx_group(Some("MyNonDmx"))].into(),
         };
         let mut state = PatchPanelState::new();
         setup_add_fixture(&snapshot, &patchers, 0, &mut state);
@@ -1747,7 +1738,6 @@ mod test {
             state: &mut state,
             snapshot: &snapshot,
             patchers: &patchers,
-            show_file_path: std::path::Path::new(""),
         };
         panel.commit_add_fixture(0);
 
@@ -1775,7 +1765,6 @@ mod test {
             state: &mut state,
             snapshot: &snapshot,
             patchers: &patchers,
-            show_file_path: std::path::Path::new(""),
         };
         panel.commit_add_fixture(0);
 

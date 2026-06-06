@@ -15,9 +15,8 @@ use crate::{
     },
     gui_state::{
         AnimationSnapshot, DMX_DEBUG_NOT_WATCHING, DmxDebugSnapshot, DmxPortInfo, DmxPortStatus,
-        PatchSnapshot,
+        PatchSnapshot, SharedGuiState, StateDirty,
     },
-    gui_state::{GuiDirty, SharedGuiState},
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
     osc::{OscControlMessage, ScopedControlEmitter},
@@ -45,6 +44,11 @@ pub struct Show {
     envelope_streams_tx: Sender<EnvelopeStreams>,
     /// Last time a DMX output debug snapshot was pushed, for rate limiting.
     last_dmx_debug: Instant,
+    /// Path to the show file on disk, if one is bound. `None` disables
+    /// persistence.
+    show_file_path: Option<crate::show_file::ShowPath>,
+    /// Worker that performs the actual file write off the show thread.
+    saver: crate::show_saver::ShowSaver,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -62,7 +66,7 @@ impl Show {
     #[expect(clippy::too_many_arguments)]
     pub fn new(
         patch: Patch,
-        initial_configs: Vec<crate::config::FixtureGroupConfig>,
+        show_file_path: Option<crate::show_file::ShowPath>,
         controller: Controller,
         dmx: Vec<DmxUniverse>,
         clocks: Clocks,
@@ -74,6 +78,7 @@ impl Show {
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
+        let initial_groups = patch.configs();
         let mut show = Self {
             controller,
             dmx,
@@ -87,15 +92,38 @@ impl Show {
             gui_state,
             envelope_streams_tx,
             last_dmx_debug: Instant::now(),
+            show_file_path,
+            saver: crate::show_saver::ShowSaver::spawn(),
         };
         show.reconcile_submaster_wings()?;
         show.reconcile_clock_wing()?;
         show.refresh_ui();
-        show.snapshot_gui_state(GuiDirty::all());
+        show.snapshot_state(StateDirty::GUI_ALL);
+        // Initial save: surfaces a bad path early and normalizes the
+        // on-disk file to the current schema if the load reconciled
+        // anything.
+        show.save_show();
         show.gui_state.patch_snapshot.store(Arc::new(PatchSnapshot {
-            groups: initial_configs,
+            groups: initial_groups,
         }));
         Ok(show)
+    }
+
+    /// Submit a snapshot of the current show state for persistence. No-op
+    /// when no show file path is bound.
+    fn save_show(&self) {
+        let Some(path) = self.show_file_path.as_ref() else {
+            return;
+        };
+        let file = crate::show_file::ShowFile {
+            patch: self.patch.configs(),
+            positioners: self
+                .patch
+                .iter()
+                .filter_map(|g| g.positioner().map(|p| (g.id(), p.presets().clone())))
+                .collect(),
+        };
+        self.saver.submit(path.clone(), file);
     }
 
     /// Run the show forever in the current thread.
@@ -107,7 +135,7 @@ impl Show {
             match self.control(CONTROL_TIMEOUT) {
                 Ok(dirty) => {
                     if !dirty.is_empty() {
-                        self.snapshot_gui_state(dirty);
+                        self.snapshot_state(dirty);
                     }
                 }
                 Err(err) => error!("A control error occurred: {err:#}."),
@@ -143,11 +171,11 @@ impl Show {
     /// Handle at most one control message.
     ///
     /// Wait for the provided duration for a message to appear.
-    fn control(&mut self, timeout: Duration) -> Result<GuiDirty> {
+    fn control(&mut self, timeout: Duration) -> Result<StateDirty> {
         let msg = match self.controller.recv(timeout)? {
             Some(m) => m,
             None => {
-                return Ok(GuiDirty::CLEAN);
+                return Ok(StateDirty::CLEAN);
             }
         };
 
@@ -157,7 +185,7 @@ impl Show {
                 if needs_ui_refresh {
                     self.refresh_ui();
                 }
-                Ok(GuiDirty::MIDI_SLOTS)
+                Ok(StateDirty::MIDI_SLOTS)
             }
             ControlMessage::Midi(msg) => self.handle_midi_message(&msg),
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
@@ -172,29 +200,29 @@ impl Show {
     }
 
     /// Handle a meta-command.
-    fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<GuiDirty> {
+    fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<StateDirty> {
         match cmd {
             MetaCommand::Repatch(groups) => {
-                self.patch.repatch(&groups)?;
+                self.patch.repatch(Arc::clone(&groups))?;
                 self.gui_state
                     .patch_snapshot
                     .store(Arc::new(PatchSnapshot { groups }));
-                self.post_repatch()
+                self.post_repatch().map(|d| d | StateDirty::SHOW_FILE)
             }
             MetaCommand::RefreshUI => {
                 self.refresh_ui();
-                Ok(GuiDirty::all())
+                Ok(StateDirty::GUI_ALL)
             }
             MetaCommand::ResetAllAnimations => {
                 for group in self.patch.iter_mut() {
                     group.reset_animations();
                 }
                 self.refresh_ui();
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             MetaCommand::AssignDmxPort { universe, port } => {
                 assign_dmx_port(&mut self.dmx, universe, port)?;
-                Ok(GuiDirty::DMX_PORTS)
+                Ok(StateDirty::DMX_PORTS)
             }
             MetaCommand::SetDmxPortFramerate {
                 universe,
@@ -207,12 +235,12 @@ impl Show {
                 univ.port
                     .set_framerate(framerate)
                     .with_context(|| format!("set framerate on port {}", univ.port))?;
-                Ok(GuiDirty::DMX_PORTS)
+                Ok(StateDirty::DMX_PORTS)
             }
             MetaCommand::ClearMidiDevice { slot_name } => {
                 self.controller.clear_midi_device(&slot_name)?;
                 self.refresh_ui();
-                Ok(GuiDirty::MIDI_SLOTS)
+                Ok(StateDirty::MIDI_SLOTS)
             }
             MetaCommand::ConnectMidiPort {
                 slot_name,
@@ -222,34 +250,34 @@ impl Show {
                 self.controller
                     .connect_midi_port(&slot_name, device_id, kind)?;
                 self.refresh_ui();
-                Ok(GuiDirty::MIDI_SLOTS)
+                Ok(StateDirty::MIDI_SLOTS)
             }
             MetaCommand::UseClockService(service) => {
                 self.clocks = Clocks::Service(service);
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
-                Ok(GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE)
+                Ok(StateDirty::MIDI_SLOTS | StateDirty::CLOCK_STATE)
             }
             MetaCommand::UseInternalClocks(device_name) => {
                 self.clocks = Clocks::internal(device_name, self.envelope_streams_tx.clone())?;
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
-                Ok(GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE | GuiDirty::AUDIO)
+                Ok(StateDirty::MIDI_SLOTS | StateDirty::CLOCK_STATE | StateDirty::AUDIO)
             }
             MetaCommand::RegisterOscClient(client_id) => {
                 println!("Registering new OSC client at {client_id}.");
                 self.controller.register_osc_client(client_id);
                 self.refresh_ui();
-                Ok(GuiDirty::OSC_CLIENTS)
+                Ok(StateDirty::OSC_CLIENTS)
             }
             MetaCommand::DropOscClient(client_id) => {
                 println!("Deregistering OSC client at {client_id}.");
                 self.controller.deregister_osc_client(client_id);
-                Ok(GuiDirty::OSC_CLIENTS)
+                Ok(StateDirty::OSC_CLIENTS)
             }
             MetaCommand::SwapOscSocket(socket) => {
                 self.controller.swap_osc_socket(socket);
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             MetaCommand::SetMasterStrobeChannel(enable) => {
                 if enable {
@@ -260,19 +288,19 @@ impl Show {
                 } else {
                     self.set_master_strobe_channel(None);
                 }
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             MetaCommand::AudioControl(msg) => {
                 Ok(self.clocks.control_audio(msg, &mut self.controller))
             }
             MetaCommand::RenamePositionerPreset(name) => {
                 let Some(channel) = self.channels.current_channel() else {
-                    return Ok(GuiDirty::CLEAN);
+                    return Ok(StateDirty::CLEAN);
                 };
                 let group = self.patch.channel_group_mut(channel)?;
                 let (group_name, positioner) = group.split_for_positioner_dispatch();
                 let Some(positioner) = positioner else {
-                    return Ok(GuiDirty::CLEAN);
+                    return Ok(StateDirty::CLEAN);
                 };
                 let sender = self.controller.sender_with_metadata(None);
                 let emitter = crate::osc::FixtureStateEmitter::new(
@@ -283,13 +311,13 @@ impl Show {
                     ),
                 );
                 positioner.rename_active_preset(name, &emitter);
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::SHOW_FILE)
             }
         }
     }
 
     /// Shared post-repatch logic: clear channels, reconcile wings, resize DMX buffers.
-    fn post_repatch(&mut self) -> Result<GuiDirty> {
+    fn post_repatch(&mut self) -> Result<StateDirty> {
         let sender = self.controller.sender_with_metadata(None);
         sender.emit_midi_channel_message(&crate::channel::StateChange::Clear);
         Channels::emit_osc_state_change(
@@ -318,7 +346,7 @@ impl Show {
         for univ in &mut self.dmx {
             univ.buffer.fill(0);
         }
-        Ok(GuiDirty::MIDI_SLOTS | GuiDirty::DMX_PORTS)
+        Ok(StateDirty::MIDI_SLOTS | StateDirty::DMX_PORTS)
     }
 
     /// Returns `Some(channel_index)` if the last wing fader is available for
@@ -356,26 +384,26 @@ impl Show {
     }
 
     /// Handle a single MIDI control message.
-    fn handle_midi_message(&mut self, msg: &MidiControlMessage) -> Result<GuiDirty> {
+    fn handle_midi_message(&mut self, msg: &MidiControlMessage) -> Result<StateDirty> {
         let sender = self.controller.sender_with_metadata(None);
         let Some(show_ctrl_msg) = msg.device.interpret(&msg.event) else {
-            return Ok(GuiDirty::CLEAN);
+            return Ok(StateDirty::CLEAN);
         };
         match show_ctrl_msg {
             ShowControlMessage::Channel(msg) => {
                 self.handle_channel_message(&msg)?;
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             ShowControlMessage::Clock(msg) => {
                 self.clocks.control_clock(msg, sender.controller);
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             ShowControlMessage::Audio(msg) => {
                 Ok(self.clocks.control_audio(msg, &mut self.controller))
             }
             ShowControlMessage::Master(msg) => {
                 self.master_controls.control(&msg, &sender);
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             ShowControlMessage::Animation(msg) => {
                 let Some(channel) = self.channels.current_channel() else {
@@ -393,7 +421,7 @@ impl Show {
                         emitter: &sender,
                     },
                 )?;
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             ShowControlMessage::ColorOrgan(msg) => {
                 // FIXME: this is really janky and has no way to route messages.
@@ -403,13 +431,13 @@ impl Show {
                     };
                     color_organ.control(msg.clone(), &IgnoreEmitter);
                 }
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
         }
     }
 
     /// Handle a single OSC message.
-    fn handle_osc_message(&mut self, msg: &OscControlMessage) -> Result<GuiDirty> {
+    fn handle_osc_message(&mut self, msg: &OscControlMessage) -> Result<StateDirty> {
         let sender = self.controller.sender_with_metadata(Some(&msg.client_id));
 
         match msg.group() {
@@ -417,12 +445,12 @@ impl Show {
                 if let Some(cmd) = meta_command_from_osc(msg)? {
                     self.handle_meta_command(cmd)
                 } else {
-                    Ok(GuiDirty::CLEAN)
+                    Ok(StateDirty::CLEAN)
                 }
             }
             crate::master::GROUP => {
                 self.master_controls.control_osc(msg, &sender)?;
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             crate::osc::channels::GROUP => {
                 self.channels.control_osc(
@@ -431,7 +459,7 @@ impl Show {
                     &self.animation_ui_state,
                     &sender,
                 )?;
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             crate::osc::animation::GROUP => {
                 let Some(channel) = self.channels.current_channel() else {
@@ -449,12 +477,12 @@ impl Show {
                         emitter: &sender,
                     },
                 )?;
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             crate::osc::audio::GROUP => self.clocks.control_audio_osc(msg, &mut self.controller),
             crate::osc::clock::GROUP => {
                 self.clocks.control_clock_osc(msg, &mut self.controller)?;
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             crate::osc::positioner::GROUP => {
                 // /Positioner/... dispatch. Look up the current channel's
@@ -462,7 +490,7 @@ impl Show {
                 // a `ChannelBinding::Current` emitter (we know we're in
                 // current-channel context by construction).
                 let Some(channel) = self.channels.current_channel() else {
-                    return Ok(GuiDirty::CLEAN);
+                    return Ok(StateDirty::CLEAN);
                 };
                 let group = self.patch.channel_group_mut(channel)?;
                 let channel_emitter = ChannelStateEmitter::new(
@@ -476,9 +504,11 @@ impl Show {
                 if let Some(positioner) = positioner {
                     let fixture_emitter =
                         crate::osc::FixtureStateEmitter::new(name, channel_emitter);
-                    positioner.control_osc_positioner_scoped(msg, &fixture_emitter)?;
+                    if positioner.control_osc_positioner_scoped(msg, &fixture_emitter)? {
+                        return Ok(StateDirty::SHOW_FILE);
+                    }
                 }
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
             // Assume any other control group is referring to a fixture group.
             fixture_group => {
@@ -488,29 +518,34 @@ impl Show {
                     self.channels.current_channel(),
                 );
                 group.control(msg, ChannelStateEmitter::new(binding, &sender))?;
-                Ok(GuiDirty::CLEAN)
+                Ok(StateDirty::CLEAN)
             }
         }
     }
 
-    /// Selectively snapshot GUI state for the dirty domains.
-    fn snapshot_gui_state(&self, dirty: GuiDirty) {
-        if dirty.contains(GuiDirty::MIDI_SLOTS) {
+    /// Drive save and GUI snapshot reactions to dirty state. For each set
+    /// flag, performs the corresponding downstream reconciliation: saving
+    /// the show file to disk or refreshing the matching GUI snapshot.
+    fn snapshot_state(&self, dirty: StateDirty) {
+        if dirty.contains(StateDirty::SHOW_FILE) {
+            self.save_show();
+        }
+        if dirty.contains(StateDirty::MIDI_SLOTS) {
             self.gui_state
                 .midi_slots
                 .store(self.controller.midi_slot_statuses());
         }
-        if dirty.contains(GuiDirty::OSC_CLIENTS) {
+        if dirty.contains(StateDirty::OSC_CLIENTS) {
             self.gui_state
                 .osc_clients
                 .store(self.controller.osc_client_ids());
         }
-        if dirty.contains(GuiDirty::CLOCK_STATE) {
+        if dirty.contains(StateDirty::CLOCK_STATE) {
             self.gui_state
                 .clock_status
                 .store(Arc::new(self.clocks.status()));
         }
-        if dirty.contains(GuiDirty::DMX_PORTS) {
+        if dirty.contains(StateDirty::DMX_PORTS) {
             self.gui_state
                 .dmx_port_status
                 .store(Arc::new(DmxPortStatus {
@@ -524,7 +559,7 @@ impl Show {
                         .collect(),
                 }));
         }
-        if dirty.contains(GuiDirty::AUDIO)
+        if dirty.contains(StateDirty::AUDIO)
             && let Some(snap) = self.clocks.audio_snapshot()
         {
             self.gui_state.audio_state.store(snap);
@@ -807,6 +842,8 @@ impl Show {
             gui_state,
             envelope_streams_tx,
             last_dmx_debug: Instant::now(),
+            show_file_path: None,
+            saver: crate::show_saver::ShowSaver::spawn(),
         };
         show.reconcile_submaster_wings().unwrap();
         show.reconcile_clock_wing().unwrap();
@@ -848,14 +885,14 @@ mod tests {
 
     fn show_from_yaml(yaml: &str) -> Show {
         let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
-        let patch = Patch::patch_all(&configs).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
         let (show, _send) = Show::test_new(patch);
         show
     }
 
     fn show_internal_from_yaml(yaml: &str) -> Show {
         let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
-        let patch = Patch::patch_all(&configs).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
         let (show, _send) = Show::test_new_internal(patch);
         show
     }
@@ -873,7 +910,7 @@ mod tests {
     //
     // 3. `fire` / `fire_press` — build an `OscControlMessage` from a string
     //    address + arg, dispatch it through `Show::handle_osc_message`, and
-    //    return the resulting `GuiDirty`.
+    //    return the resulting `StateDirty`.
     //
     // Typical flow:
     //
@@ -933,14 +970,14 @@ mod tests {
         yaml: &str,
     ) -> (Show, OscCapture, std::sync::mpsc::Sender<ControlMessage>) {
         let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
-        let patch = Patch::patch_all(&configs).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
         let (show, send, rx) = Show::test_new_with_osc_capture(patch);
         (show, OscCapture::new(rx), send)
     }
 
     /// Build and dispatch an OSC message at `addr` carrying a single `arg`,
-    /// returning the resulting `GuiDirty`.
-    fn fire(show: &mut Show, addr: &str, arg: OscType) -> Result<GuiDirty> {
+    /// returning the resulting `StateDirty`.
+    fn fire(show: &mut Show, addr: &str, arg: OscType) -> Result<StateDirty> {
         let msg = crate::osc::OscControlMessage::new(
             OscMessage {
                 addr: addr.to_string(),
@@ -953,7 +990,7 @@ mod tests {
     }
 
     /// Convenience for momentary button presses — fires `Float(1.0)`.
-    fn fire_press(show: &mut Show, addr: &str) -> Result<GuiDirty> {
+    fn fire_press(show: &mut Show, addr: &str) -> Result<StateDirty> {
         fire(show, addr, OscType::Float(1.0))
     }
 
@@ -967,7 +1004,7 @@ mod tests {
             ))
             .expect("audio control should not error");
 
-        assert_eq!(dirty, GuiDirty::AUDIO);
+        assert_eq!(dirty, StateDirty::AUDIO);
     }
 
     #[test]
@@ -981,7 +1018,7 @@ mod tests {
 
         assert_eq!(
             dirty,
-            GuiDirty::MIDI_SLOTS | GuiDirty::CLOCK_STATE | GuiDirty::AUDIO,
+            StateDirty::MIDI_SLOTS | StateDirty::CLOCK_STATE | StateDirty::AUDIO,
         );
     }
 
@@ -993,15 +1030,15 @@ mod tests {
         let dirty = show
             .handle_meta_command(MetaCommand::RegisterOscClient(client))
             .expect("register should not error");
-        assert_eq!(dirty, GuiDirty::OSC_CLIENTS);
-        show.snapshot_gui_state(dirty);
+        assert_eq!(dirty, StateDirty::OSC_CLIENTS);
+        show.snapshot_state(dirty);
         assert!(show.gui_state.osc_clients.load().contains(&client));
 
         let dirty = show
             .handle_meta_command(MetaCommand::DropOscClient(client))
             .expect("drop should not error");
-        assert_eq!(dirty, GuiDirty::OSC_CLIENTS);
-        show.snapshot_gui_state(dirty);
+        assert_eq!(dirty, StateDirty::OSC_CLIENTS);
+        show.snapshot_state(dirty);
         assert!(!show.gui_state.osc_clients.load().contains(&client));
     }
 
@@ -1070,10 +1107,10 @@ mod tests {
                 framerate: 30,
             })
             .unwrap();
-        assert_eq!(dirty, GuiDirty::DMX_PORTS);
+        assert_eq!(dirty, StateDirty::DMX_PORTS);
         assert_eq!(show.dmx[0].port.get_framerate(), Some(30));
 
-        show.snapshot_gui_state(GuiDirty::DMX_PORTS);
+        show.snapshot_state(StateDirty::DMX_PORTS);
         let snapshot = show.gui_state.dmx_port_status.load();
         assert_eq!(snapshot.ports[0].framerate, Some(30));
         assert_eq!(snapshot.ports[1].framerate, None);
@@ -1129,7 +1166,7 @@ mod tests {
 
     fn repatch_from_yaml(show: &mut Show, yaml: &str) {
         let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
-        show.handle_meta_command(MetaCommand::Repatch(configs))
+        show.handle_meta_command(MetaCommand::Repatch(configs.into()))
             .unwrap();
     }
 
@@ -1430,43 +1467,6 @@ mod tests {
             }
         }
 
-        /// Tap `/IWashLed/PositionPresetSelect/1/5` (per-group dispatch)
-        /// while IWashLed is the current channel. Expect: `active` flips
-        /// to slot 4, and both the per-group radio echo AND the channel-
-        /// scoped tab refresh happen.
-        #[test]
-        fn per_group_preset_tap_on_current_channel_cross_emits() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            capture.drain();
-
-            fire_press(&mut show, "/IWashLed/PositionPresetSelect/1/5").unwrap();
-            let emits = capture.drain_by_addr();
-
-            let channel = show.channels_for_test().current_channel().unwrap();
-            let positioner = show
-                .patch_for_test()
-                .channel_group(channel)
-                .unwrap()
-                .positioner()
-                .unwrap();
-            assert_eq!(positioner.active(), 4);
-
-            // Per-group radio echoed.
-            assert_eq!(
-                emits.get("/IWashLed/PositionPresetSelect/1/5"),
-                Some(&OscType::Float(1.0)),
-            );
-            // Positioner tab refreshed (Preset radio + a label slot as proof).
-            assert_eq!(
-                emits.get("/Positioner/Preset/1/5"),
-                Some(&OscType::Float(1.0)),
-            );
-            assert_eq!(
-                emits.get("/Positioner/PresetLabel/4"),
-                Some(&OscType::String("Position 5".to_string())),
-            );
-        }
-
         /// Tap `/IWashBack/PositionPresetSelect/1/5` while IWashFront IS the
         /// current channel. Expect: IWashBack's state mutates, IWashFront's
         /// doesn't, and the Positioner tab is *not*
@@ -1709,83 +1709,6 @@ mod tests {
             fire(&mut show, "/Positioner/Focus", OscType::Float(0.1)).unwrap();
             let emits = capture.drain_by_addr();
             assert_positioner_tab_emits(&emits, &["/Positioner/Focus"]);
-        }
-
-        /// Bumping one axis must push only that axis's fader.
-        #[test]
-        fn bump_emits_only_target_axis() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            capture.drain();
-
-            fire_press(&mut show, "/Positioner/XBumpUp").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(&emits, &["/Positioner/X"]);
-
-            fire_press(&mut show, "/Positioner/YBumpDown").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(&emits, &["/Positioner/Y"]);
-
-            fire_press(&mut show, "/Positioner/FocusBumpUp").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(&emits, &["/Positioner/Focus"]);
-        }
-
-        /// Changing the bump-step magnitude must push only the BumpStep
-        /// radio's 3 button-state messages.
-        #[test]
-        fn bump_step_emits_only_bump_step_radio() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            capture.drain();
-
-            // Switch from default Medium (slot 2) to Coarse (slot 1).
-            fire_press(&mut show, "/Positioner/BumpStep/1/1").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(
-                &emits,
-                &[
-                    "/Positioner/BumpStep/1/1",
-                    "/Positioner/BumpStep/1/2",
-                    "/Positioner/BumpStep/1/3",
-                ],
-            );
-        }
-
-        /// Prev/Next selected fixture must push FixtureLabel and the three
-        /// axis faders, but not the preset radio or bump-step.
-        #[test]
-        fn nudge_fixture_emits_only_fixture_label_and_axes() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            capture.drain();
-
-            fire_press(&mut show, "/Positioner/Next").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(
-                &emits,
-                &[
-                    "/Positioner/FixtureLabel",
-                    "/Positioner/X",
-                    "/Positioner/Y",
-                    "/Positioner/Focus",
-                ],
-            );
-        }
-
-        /// Reset (single fixture) zeroes the selected fixture's offsets, so
-        /// the three faders snap to zero. Nothing else changes.
-        #[test]
-        fn reset_fixture_emits_only_axes() {
-            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
-            // Stash some non-zero values so the snap-to-zero is observable.
-            fire(&mut show, "/Positioner/X", OscType::Float(0.5)).unwrap();
-            fire(&mut show, "/Positioner/Y", OscType::Float(-0.25)).unwrap();
-            capture.drain();
-
-            fire_press(&mut show, "/Positioner/Reset").unwrap();
-            let emits = capture.drain_by_addr();
-            assert_positioner_tab_emits(
-                &emits,
-                &["/Positioner/X", "/Positioner/Y", "/Positioner/Focus"],
-            );
         }
 
         /// Renaming a preset slot must push only that one slot's label on

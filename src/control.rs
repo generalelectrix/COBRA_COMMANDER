@@ -329,8 +329,8 @@ pub enum MetaCommand {
     UseInternalClocks(Option<String>),
     RegisterOscClient(OscClientId),
     DropOscClient(OscClientId),
-    /// Apply a new patch configuration from the GUI editor.
-    Repatch(Vec<crate::config::FixtureGroupConfig>),
+    /// Replace the patch configuration.
+    Repatch(crate::show_file::ShowPatchConfigs),
     /// Enable or disable the master strobe fader channel.
     SetMasterStrobeChannel(bool),
     /// Forward an audio control message to the active audio input.

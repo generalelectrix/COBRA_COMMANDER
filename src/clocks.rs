@@ -11,7 +11,7 @@ use tunnels::{
 use crate::{
     clock_service::ClockService,
     control::Controller,
-    gui_state::{ClockStatus, GuiDirty},
+    gui_state::{ClockStatus, StateDirty},
     osc::{GroupControlMap, OscControlMessage},
 };
 
@@ -132,20 +132,20 @@ impl Clocks {
         &mut self,
         msg: &OscControlMessage,
         emitter: &mut Controller,
-    ) -> Result<GuiDirty> {
+    ) -> Result<StateDirty> {
         let Self::Internal {
             audio_input,
             audio_controls,
             ..
         } = self
         else {
-            return Ok(GuiDirty::CLEAN);
+            return Ok(StateDirty::CLEAN);
         };
         let Some((msg, _talkback)) = audio_controls.handle(msg)? else {
-            return Ok(GuiDirty::CLEAN);
+            return Ok(StateDirty::CLEAN);
         };
         audio_input.control(msg, emitter);
-        Ok(GuiDirty::AUDIO)
+        Ok(StateDirty::AUDIO)
     }
 
     /// Handle an audio control message.
@@ -153,12 +153,12 @@ impl Clocks {
         &mut self,
         msg: tunnels::audio::ControlMessage,
         emitter: &mut Controller,
-    ) -> GuiDirty {
+    ) -> StateDirty {
         let Self::Internal { audio_input, .. } = self else {
-            return GuiDirty::CLEAN;
+            return StateDirty::CLEAN;
         };
         audio_input.control(msg, emitter);
-        GuiDirty::AUDIO
+        StateDirty::AUDIO
     }
 
     /// Emit all current audio and clock state.
@@ -223,7 +223,7 @@ mod tests {
                 tunnels::audio::ControlMessage::ResetParameters,
                 &mut controller,
             ),
-            GuiDirty::CLEAN,
+            StateDirty::CLEAN,
         );
 
         let mut internal = internal_clocks();
@@ -232,7 +232,7 @@ mod tests {
                 tunnels::audio::ControlMessage::ResetParameters,
                 &mut controller,
             ),
-            GuiDirty::AUDIO,
+            StateDirty::AUDIO,
         );
     }
 
@@ -245,14 +245,14 @@ mod tests {
             Clocks::test_new()
                 .control_audio_osc(&msg, &mut controller)
                 .expect("recognized msg should not error"),
-            GuiDirty::CLEAN,
+            StateDirty::CLEAN,
         );
 
         assert_eq!(
             internal_clocks()
                 .control_audio_osc(&msg, &mut controller)
                 .expect("recognized msg should not error"),
-            GuiDirty::AUDIO,
+            StateDirty::AUDIO,
         );
     }
 

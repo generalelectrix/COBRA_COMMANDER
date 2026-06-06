@@ -5,12 +5,15 @@ use log::info;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::sync::Arc;
 
 use super::fixture::FixtureType;
 use super::group::FixtureGroup;
 use crate::config::{FixtureGroupConfig, GroupId, GroupName};
 use crate::dmx::UniverseIdx;
 use crate::fixture::group::GroupFixtureConfig;
+use crate::positioner::PositionerPresets;
+use crate::show_file::ShowPatchConfigs;
 
 mod option;
 mod patcher;
@@ -89,8 +92,10 @@ pub struct Patch {
     by_id: HashMap<GroupId, GroupLocation>,
     /// O(1) lookup from group name to physical location.
     by_name: HashMap<GroupName, GroupLocation>,
-    /// Which DMX addrs already have a fixture patched in them.
+    /// DMX address allocations, indexed by `(universe, dmx_index)`.
     used_addrs: UsedAddrs,
+    /// The configs that built this patch.
+    configs: ShowPatchConfigs,
 }
 
 impl Patch {
@@ -119,6 +124,7 @@ impl Patch {
             by_id: HashMap::new(),
             by_name: HashMap::new(),
             used_addrs: Default::default(),
+            configs: ShowPatchConfigs::default(),
         }
     }
 
@@ -131,9 +137,9 @@ impl Patch {
     }
 
     /// Initialize a patch from a collection of groups.
-    pub fn patch_all(groups: &[FixtureGroupConfig]) -> Result<Self> {
+    pub fn patch_all(groups: ShowPatchConfigs) -> Result<Self> {
         let mut patch = Self::new();
-        for group in groups {
+        for group in groups.iter() {
             patch.patch(group).with_context(|| {
                 format!(
                     "patching {}{}",
@@ -146,6 +152,7 @@ impl Patch {
                 )
             })?;
         }
+        patch.configs = groups;
         Ok(patch)
     }
 
@@ -161,8 +168,8 @@ impl Patch {
     /// TODO: this approach will become problematic if we add control for any
     /// fixtures that require exclusive control of an external resource such as
     /// binding a socket.
-    pub fn repatch(&mut self, groups: &[FixtureGroupConfig]) -> Result<()> {
-        let mut new_patch = Self::patch_all(groups)?;
+    pub fn repatch(&mut self, groups: ShowPatchConfigs) -> Result<()> {
+        let mut new_patch = Self::patch_all(Arc::clone(&groups))?;
         // Drain old groups into an id-keyed map for O(1) reconciliation lookup.
         let mut old_by_id: HashMap<GroupId, FixtureGroup> = std::mem::take(&mut self.channels)
             .into_iter()
@@ -174,8 +181,48 @@ impl Patch {
                 group.reconfigure_from(old);
             }
         }
+        new_patch.configs = groups;
         *self = new_patch;
         Ok(())
+    }
+
+    /// A cheap-clone handle to the configs that built this patch.
+    pub fn configs(&self) -> ShowPatchConfigs {
+        Arc::clone(&self.configs)
+    }
+
+    /// Build a patch from a loaded show file, applying its positioner state
+    /// to the patched groups.
+    pub fn from_show_file(show_file: crate::show_file::ShowFile) -> Result<Self> {
+        let mut patch = Self::patch_all(show_file.patch)?;
+        patch.apply_loaded_positioners(show_file.positioners);
+        Ok(patch)
+    }
+
+    /// Install loaded positioner presets on the patched groups. Each entry
+    /// is reconciled to the group's current fixture count before
+    /// installation. Entries for unknown or non-positionable groups are
+    /// logged and dropped.
+    fn apply_loaded_positioners(&mut self, positioners: HashMap<GroupId, PositionerPresets>) {
+        for (id, presets) in positioners {
+            let Some(location) = self.by_id.get(&id).copied() else {
+                log::warn!("Loaded positioner for unknown group {id:?}; dropping");
+                continue;
+            };
+            let group = match location {
+                GroupLocation::Channel(c) => self.channels.get_mut(c.inner()),
+                GroupLocation::NonChannel(i) => self.non_channel.get_mut(i),
+            };
+            let Some(group) = group else {
+                log::error!(
+                    "internal: by_id pointed at missing slot for group {id:?}; dropping positioner"
+                );
+                continue;
+            };
+            if let Err(e) = group.install_positioner_presets(presets) {
+                log::warn!("Loaded positioner for group {id:?}: {e:#}; dropping");
+            }
+        }
     }
 
     /// Patch a single fixture group config.
@@ -587,7 +634,7 @@ mod test {
         ",
         )?;
         assert_eq!(2, cfg.len());
-        let p = Patch::patch_all(&cfg)?;
+        let p = Patch::patch_all(cfg.into())?;
         let channel_pairs: Vec<_> = p.channels_with_ids().collect();
         assert_eq!(channel_pairs.len(), 1);
         assert_eq!("Color", channel_pairs[0].1.qualified_name().to_string());
@@ -647,8 +694,9 @@ mod test {
 
     fn assert_fail_patch(patch_yaml: &str, snippet: &str) {
         let Err(err) = Patch::patch_all(
-            &serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml)
-                .expect("invalid patch format"),
+            serde_yaml::from_str::<Vec<FixtureGroupConfig>>(patch_yaml)
+                .expect("invalid patch format")
+                .into(),
         ) else {
             panic!("patch didn't fail")
         };
@@ -819,7 +867,7 @@ mod test {
     - addr: 37
 ",
         )?;
-        let mut patch = Patch::patch_all(&cfg)?;
+        let mut patch = Patch::patch_all(cfg.clone().into())?;
 
         // Set distinct offsets in slot 0 so we can verify they survive the
         // repatch. Use the second slot too to make sure reconciliation
@@ -855,7 +903,7 @@ mod test {
 ",
         )?;
         grown_cfg[0].id = stable_id;
-        patch.repatch(&grown_cfg)?;
+        patch.repatch(grown_cfg.clone().into())?;
         let mut cfg = grown_cfg;
 
         // Existing offsets survived, new fixtures landed at zero, every
@@ -897,7 +945,7 @@ mod test {
         // selected_fixture (which was 3, now out of range) clamps to the
         // new max (2).
         cfg[0].patches.truncate(3);
-        patch.repatch(&cfg)?;
+        patch.repatch(cfg.clone().into())?;
 
         {
             let group = patch.iter().next().unwrap();
@@ -916,20 +964,57 @@ mod test {
         Ok(())
     }
 
+    /// `Patch::configs` returns the configs the patch was built from, and is
+    /// updated in lockstep with `repatch`.
+    #[test]
+    fn patch_retains_configs_across_repatch() -> Result<()> {
+        let initial = parse(
+            "
+- fixture: Dimmer
+  patches:
+    - addr: 1
+",
+        )?;
+        let mut patch = Patch::patch_all(initial.clone().into())?;
+        let initial_ids: Vec<GroupId> = patch.configs().iter().map(|c| c.id).collect();
+        let expected_initial_ids: Vec<GroupId> = initial.iter().map(|c| c.id).collect();
+        assert_eq!(initial_ids, expected_initial_ids);
+        assert_eq!(patch.configs().len(), initial.len());
+
+        let updated = parse(
+            "
+- fixture: Color
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  group: Spare
+  patches:
+    - addr: 10
+",
+        )?;
+        patch.repatch(updated.clone().into())?;
+        let updated_ids: Vec<GroupId> = patch.configs().iter().map(|c| c.id).collect();
+        let expected_updated_ids: Vec<GroupId> = updated.iter().map(|c| c.id).collect();
+        assert_eq!(updated_ids, expected_updated_ids);
+        assert_eq!(patch.configs().len(), updated.len());
+        Ok(())
+    }
+
     /// Test that we can patch an instance of WLED.
     #[test]
     fn test_wled() {
         Patch::patch_all(
-            &parse(
+            parse(
                 "
 - fixture: Wled
   url: http://foo.bar.baz
   preset_count: 1
   patches:
-    - 
+    -
 ",
             )
-            .unwrap(),
+            .unwrap()
+            .into(),
         )
         .unwrap();
     }
@@ -956,7 +1041,7 @@ mod test {
     - addr: 12
         ",
         )?;
-        let mut patch = Patch::patch_all(&cfg)?;
+        let mut patch = Patch::patch_all(cfg.clone().into())?;
 
         let initial = render(&patch);
         // Should be all zeros, since everything is down.
@@ -974,7 +1059,7 @@ mod test {
 
         // Repatching with the same config should result in so fixture models
         // being updated.
-        patch.repatch(&cfg)?;
+        patch.repatch(cfg.clone().into())?;
 
         assert_eq!(render(&patch), twiddled);
 
@@ -983,7 +1068,7 @@ mod test {
         // controller knows it's the same group.
         cfg[0].group = Some(GroupName("NewColor".to_string()));
 
-        patch.repatch(&cfg)?;
+        patch.repatch(cfg.clone().into())?;
         let new_bufs = render(&patch);
         assert_eq!(2, new_bufs.len());
         assert_eq!(
@@ -994,7 +1079,7 @@ mod test {
 
         // Repatching with different patches should not force a new model.
         cfg[0].patches.truncate(1);
-        patch.repatch(&cfg)?;
+        patch.repatch(cfg.into())?;
 
         let new_bufs = render(&patch);
         // Should have different output since we have a different number of patches.

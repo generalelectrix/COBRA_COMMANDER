@@ -1,6 +1,6 @@
 //! Define groups of fixtures, sharing a common fixture
 
-use anyhow::{Context, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
 use log::error;
@@ -137,6 +137,19 @@ impl FixtureGroup {
         if self.fixture.supports_positioner() {
             self.positioner = Some(Positioner::default_for(self.fixture_configs.len()));
         }
+    }
+
+    /// Install loaded preset slots on this group's positioner. Errors if
+    /// this group's fixture type doesn't support the positioner.
+    pub(crate) fn install_positioner_presets(
+        &mut self,
+        presets: crate::positioner::PositionerPresets,
+    ) -> Result<()> {
+        let Some(positioner) = &mut self.positioner else {
+            bail!("fixture type does not support the positioner");
+        };
+        positioner.install_presets(presets);
+        Ok(())
     }
 
     /// Get a mutable reference to the group's color organ, if in use.

@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use eframe::egui;
 
-use crate::config::FixtureGroupConfig;
 use crate::fixture::Patch;
 use crate::osc::BoundOsc;
 use crate::show_file::{self, ShowFile};
@@ -13,14 +12,12 @@ use gui_common::MessageModal;
 /// The result of the welcome screen interaction.
 #[derive(Debug)]
 pub(crate) enum WelcomeResult {
-    /// User chose to load an existing show file (validated).
-    LoadShow {
+    /// User chose a show file (loaded or freshly-created), validated.
+    Show {
         path: PathBuf,
-        configs: Vec<FixtureGroupConfig>,
+        show_file: ShowFile,
         bound: BoundOsc,
     },
-    /// User chose to create a new, empty show.
-    NewShow { path: PathBuf, bound: BoundOsc },
     /// User closed the welcome window without choosing.
     Quit,
 }
@@ -28,10 +25,7 @@ pub(crate) enum WelcomeResult {
 /// A validated show selection held while the OSC port prompt is open.
 struct PendingShow {
     path: PathBuf,
-    /// Fixture configs for a loaded show; empty for a new show.
-    configs: Vec<FixtureGroupConfig>,
-    /// Whether this selection creates a new, empty show.
-    new: bool,
+    show_file: ShowFile,
 }
 
 struct WelcomeApp {
@@ -146,19 +140,12 @@ impl WelcomeApp {
         };
 
         // Validate the patch by building it (discards the result — Patch isn't Send).
-        if let Err(e) = Patch::patch_all(&show_file.patch) {
+        if let Err(e) = Patch::patch_all(show_file.patch.clone()) {
             self.modal.show("Invalid Show File", format!("{e:#}"));
             return;
         }
 
-        self.choose(
-            ctx,
-            PendingShow {
-                path,
-                configs: show_file.patch,
-                new: false,
-            },
-        );
+        self.choose(ctx, PendingShow { path, show_file });
     }
 
     fn handle_new(&mut self, ctx: &egui::Context) {
@@ -170,20 +157,13 @@ impl WelcomeApp {
             return;
         };
 
-        let empty = ShowFile { patch: vec![] };
-        if let Err(e) = show_file::save(&path, &empty) {
+        let show_file = ShowFile::default();
+        if let Err(e) = show_file::save(&path, &show_file) {
             self.modal.show("Failed to Create Show", format!("{e:#}"));
             return;
         }
 
-        self.choose(
-            ctx,
-            PendingShow {
-                path,
-                configs: vec![],
-                new: true,
-            },
-        );
+        self.choose(ctx, PendingShow { path, show_file });
     }
 
     /// Record a chosen show and attempt to bind the OSC port, finalizing on
@@ -205,17 +185,10 @@ impl WelcomeApp {
                 let Some(pending) = self.pending.take() else {
                     return;
                 };
-                let result = if pending.new {
-                    WelcomeResult::NewShow {
-                        path: pending.path,
-                        bound,
-                    }
-                } else {
-                    WelcomeResult::LoadShow {
-                        path: pending.path,
-                        configs: pending.configs,
-                        bound,
-                    }
+                let result = WelcomeResult::Show {
+                    path: pending.path,
+                    show_file: pending.show_file,
+                    bound,
                 };
                 *self.result.lock().expect("welcome result mutex poisoned") = Some(result);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
