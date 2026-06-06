@@ -266,11 +266,6 @@ impl Show {
                 Ok(self.clocks.control_audio(msg, &mut self.controller))
             }
             MetaCommand::RenamePositionerPreset(name) => {
-                // Look up the current channel's group. If positionable,
-                // rename the active preset and re-emit only the one renamed
-                // slot's label on both the Positioner tab and the per-group
-                // selector. Silent no-op if there's no current channel or
-                // the current channel has no positioner.
                 let Some(channel) = self.channels.current_channel() else {
                     return Ok(GuiDirty::CLEAN);
                 };
@@ -279,29 +274,15 @@ impl Show {
                 let Some(positioner) = positioner else {
                     return Ok(GuiDirty::CLEAN);
                 };
-                let Some(active) = positioner.rename_active_preset(name.clone()) else {
-                    return Ok(GuiDirty::CLEAN);
-                };
                 let sender = self.controller.sender_with_metadata(None);
-                crate::osc::positioner::PRESET_LABELS.set_one(
-                    active,
-                    name.clone(),
-                    &ScopedControlEmitter {
-                        entity: crate::osc::positioner::GROUP,
-                        emitter: &sender,
-                    },
-                );
-                crate::osc::positioner::POSITION_PRESET_LABEL.set_one(
-                    active,
-                    name,
-                    &crate::osc::FixtureStateEmitter::new(
-                        group_name,
-                        ChannelStateEmitter::new(
-                            crate::channel::ChannelBinding::Current(channel),
-                            &sender,
-                        ),
+                let emitter = crate::osc::FixtureStateEmitter::new(
+                    group_name,
+                    ChannelStateEmitter::new(
+                        crate::channel::ChannelBinding::Current(channel),
+                        &sender,
                     ),
                 );
+                positioner.rename_active_preset(name, &emitter);
                 Ok(GuiDirty::CLEAN)
             }
         }

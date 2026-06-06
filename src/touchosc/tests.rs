@@ -130,7 +130,7 @@ fn generate_layout_from_patch() {
     assert_eq!(layout.tabpages[3].name, "Starlight");
 
     // Base pages follow.
-    assert_eq!(layout.tabpages[4].name, "channels");
+    assert_eq!(layout.tabpages[4].name, "animation");
 
     // Verify address rewriting on renamed groups.
     let front_addrs: Vec<_> = layout.tabpages[0]

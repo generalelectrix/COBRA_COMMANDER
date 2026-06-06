@@ -162,12 +162,20 @@ impl Positioner {
             .copied()
     }
 
-    /// Rename the currently-active preset slot. Returns the slot index that
-    /// was renamed, or `None` if `active` is out of range.
-    pub fn rename_active_preset(&mut self, name: String) -> Option<usize> {
+    /// Rename the currently-active preset slot and push the one label slot
+    /// that changed on the per-group preset selector and (when the addressed
+    /// group is the current channel) the Positioner tab. No-op if `active`
+    /// is out of range.
+    pub fn rename_active_preset(&mut self, name: String, emitter: &FixtureStateEmitter) {
         let active = self.active;
-        self.presets.get_mut(active)?.name = name;
-        Some(active)
+        let Some(preset) = self.presets.get_mut(active) else {
+            return;
+        };
+        preset.name = name.clone();
+        addr::POSITION_PRESET_LABEL.set_one(active, name.clone(), emitter);
+        if emitter.channel().is_current() {
+            addr::PRESET_LABELS.set_one(active, name, &emitter.scoped(addr::GROUP));
+        }
     }
 }
 
