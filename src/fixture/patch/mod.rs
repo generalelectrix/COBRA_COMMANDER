@@ -275,6 +275,7 @@ impl Patch {
         if cfg.color_organ {
             group.use_color_organ();
         }
+        group.init_positioner_if_supported();
 
         let id = group.id();
         let location = if cfg.channel {
@@ -513,6 +514,14 @@ pub struct ChannelId(usize);
 impl ChannelId {
     pub fn inner(&self) -> usize {
         self.0
+    }
+
+    /// Construct a `ChannelId` directly from a raw index. For tests only —
+    /// production code receives `ChannelId`s from `Patch` lookups so they're
+    /// guaranteed to refer to a real channel.
+    #[cfg(test)]
+    pub fn for_test(raw: usize) -> Self {
+        Self(raw)
     }
 }
 
@@ -789,6 +798,122 @@ mod test {
     - addr: 513",
             "invalid DMX address 513",
         );
+    }
+
+    /// Positioner state is per-group, survives a rename-preserving repatch,
+    /// and reconciles its per-fixture offset vectors when the patched
+    /// fixture count changes — preserving values where the indices overlap,
+    /// padding zeroes when the group grows, and dropping tail entries when
+    /// it shrinks.
+    #[test]
+    fn test_repatch_positioner_reconciles_fixture_count() -> Result<()> {
+        use number::BipolarFloat;
+
+        let cfg: Vec<FixtureGroupConfig> = parse(
+            "
+- fixture: IWashLed
+  patches:
+    - addr: 1
+    - addr: 13
+    - addr: 25
+    - addr: 37
+",
+        )?;
+        let mut patch = Patch::patch_all(&cfg)?;
+
+        // Set distinct offsets in slot 0 so we can verify they survive the
+        // repatch. Use the second slot too to make sure reconciliation
+        // applies across all 8 preset slots, not just the active one.
+        {
+            let group = patch.iter_mut().next().expect("one group patched");
+            let positioner = group
+                .positioner_mut()
+                .expect("iWashLed opts into the positioner");
+            let presets = positioner.presets_mut();
+            presets[0].offsets[0].x = BipolarFloat::new(0.1);
+            presets[0].offsets[1].y = BipolarFloat::new(-0.2);
+            presets[0].offsets[2].x = BipolarFloat::new(0.3);
+            presets[0].offsets[3].y = BipolarFloat::new(0.4);
+            presets[1].offsets[3].x = BipolarFloat::new(0.99);
+            positioner.set_active(1);
+            positioner.set_selected_fixture(3);
+        }
+
+        // Repatch with two additional fixtures (grow 4 → 6). Preserve the
+        // group's GroupId from cfg so the repatch is rename-preserving.
+        let stable_id = cfg[0].id;
+        let mut grown_cfg = parse(
+            "
+- fixture: IWashLed
+  patches:
+    - addr: 1
+    - addr: 13
+    - addr: 25
+    - addr: 37
+    - addr: 49
+    - addr: 61
+",
+        )?;
+        grown_cfg[0].id = stable_id;
+        patch.repatch(&grown_cfg)?;
+        let mut cfg = grown_cfg;
+
+        // Existing offsets survived, new fixtures landed at zero, every
+        // slot reconciled — not just slot 0/1.
+        {
+            let group = patch.iter().next().unwrap();
+            let p = group.positioner().expect("positioner survived repatch");
+
+            assert_eq!(p.active(), 1, "active slot preserved");
+            assert_eq!(
+                p.selected_fixture(),
+                3,
+                "selected fixture preserved (still in range)",
+            );
+
+            let presets = p.presets();
+            assert_eq!(presets[0].offsets.len(), 6);
+            assert_eq!(presets[0].offsets[0].x.val(), 0.1);
+            assert_eq!(presets[0].offsets[1].y.val(), -0.2);
+            assert_eq!(presets[0].offsets[2].x.val(), 0.3);
+            assert_eq!(presets[0].offsets[3].y.val(), 0.4);
+            assert_eq!(presets[0].offsets[4].x.val(), 0.0);
+            assert_eq!(presets[0].offsets[4].y.val(), 0.0);
+            assert_eq!(presets[0].offsets[5].x.val(), 0.0);
+
+            assert_eq!(presets[1].offsets.len(), 6);
+            assert_eq!(presets[1].offsets[3].x.val(), 0.99);
+            assert_eq!(presets[1].offsets[4].x.val(), 0.0);
+
+            // Untouched slot is still all zeros at the new length.
+            assert_eq!(presets[5].offsets.len(), 6);
+            for off in &presets[5].offsets {
+                assert_eq!(off.x.val(), 0.0);
+                assert_eq!(off.y.val(), 0.0);
+            }
+        }
+
+        // Repatch shrinking to 3 fixtures — tail entries drop;
+        // selected_fixture (which was 3, now out of range) clamps to the
+        // new max (2).
+        cfg[0].patches.truncate(3);
+        patch.repatch(&cfg)?;
+
+        {
+            let group = patch.iter().next().unwrap();
+            let p = group.positioner().expect("positioner survived shrink");
+            let presets = p.presets();
+            assert_eq!(presets[0].offsets.len(), 3);
+            assert_eq!(presets[0].offsets[0].x.val(), 0.1);
+            assert_eq!(presets[0].offsets[1].y.val(), -0.2);
+            assert_eq!(presets[0].offsets[2].x.val(), 0.3);
+            // selected_fixture clamped from 3 to 2 (the new last index).
+            assert_eq!(p.selected_fixture(), 2);
+            // active slot unchanged.
+            assert_eq!(p.active(), 1);
+        }
+
+        Ok(())
     }
 
     /// Test that we can patch an instance of WLED.

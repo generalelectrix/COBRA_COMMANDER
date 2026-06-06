@@ -145,6 +145,16 @@ pub trait AnimatedFixture: Update + EmitState + Control + DescribeOscControls {
         dmx_buf: &mut [u8],
     ) where
         A: TargetedAnimationValues<Self::Target>;
+
+    /// If this fixture type opts into the positioner, return the animation
+    /// targets that the positioner's X, Y, and (optionally) Focus axes feed
+    /// into. Default `None`: not positionable.
+    ///
+    /// `focus` is `Option<Self::Target>` so fixtures without a focus axis
+    /// (e.g. moving-head LED washes) can opt in for pan/tilt only.
+    fn positioner_axes() -> Option<crate::positioner::PositionerAxes<Self::Target>> {
+        None
+    }
 }
 
 pub trait Fixture: Update + EmitState + Control + DescribeOscControls {
@@ -171,6 +181,11 @@ pub trait Fixture: Update + EmitState + Control + DescribeOscControls {
 
     /// Reset all of the animations associated with this fixture.
     fn reset_animations(&mut self);
+
+    /// Whether this fixture type supports the positioner. Default `false`.
+    fn supports_positioner(&self) -> bool {
+        false
+    }
 }
 
 impl<T> Fixture for T
@@ -255,12 +270,12 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     ) {
-        // Stack buffer holding (animation_value, target) for every contribution
-        // visible to the fixture.
-        let mut buf = [(0.0, F::Target::default()); N_ANIM];
-        let mut count = 0;
+        // Stack buffer holding (animation_value, target) for the animation
+        // contributions visible to the fixture.
+        let mut anim_buf = [(0.0, F::Target::default()); N_ANIM];
+        let mut anim_count = 0;
         for ta in self.animations.iter() {
-            buf[count] = (
+            anim_buf[anim_count] = (
                 ta.animation.get_value(
                     phase_offset,
                     offset_index,
@@ -269,13 +284,33 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
                 ),
                 ta.target,
             );
-            count += 1;
+            anim_count += 1;
         }
-        self.fixture.render_with_animations(
-            group_controls,
-            &AnimationSlice(&buf[..count]),
-            dmx_buffer,
-        );
+
+        // Positioner contributions: 0 entries if the fixture type didn't opt in
+        // or the group has no positioner offset for this fixture; 2 entries
+        // (x, y) if the fixture has no focus axis; 3 if it does. The focus
+        // offset is stored on every PositionOffset uniformly, but only
+        // contributes to render when `axes.focus` is Some.
+        let mut pos_buf = [(0.0, F::Target::default()); crate::positioner::N_POSITIONER_AXES];
+        let pos_count = match (F::positioner_axes(), group_controls.positioner_offset) {
+            (Some(axes), Some(off)) => {
+                pos_buf[0] = (off.x.val(), axes.x);
+                pos_buf[1] = (off.y.val(), axes.y);
+                let mut count = 2;
+                if let Some(focus_target) = axes.focus {
+                    pos_buf[count] = (off.focus.val(), focus_target);
+                    count += 1;
+                }
+                count
+            }
+            _ => 0,
+        };
+
+        let combined =
+            AnimationSlice(&anim_buf[..anim_count]).chain(AnimationSlice(&pos_buf[..pos_count]));
+        self.fixture
+            .render_with_animations(group_controls, &combined, dmx_buffer);
     }
 
     fn get_animation_mut(
@@ -295,5 +330,9 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         for anim in &mut self.animations {
             anim.reset();
         }
+    }
+
+    fn supports_positioner(&self) -> bool {
+        F::positioner_axes().is_some()
     }
 }

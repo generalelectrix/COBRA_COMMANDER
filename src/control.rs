@@ -189,15 +189,21 @@ impl Controller {
 
 #[cfg(test)]
 impl Controller {
-    pub fn test_new() -> (Self, Sender<ControlMessage>) {
+    /// Build a Controller wired to in-process channels, with the OSC
+    /// response receiver surfaced so tests can capture what the Show emits.
+    pub fn test_new() -> (
+        Self,
+        Sender<ControlMessage>,
+        std::sync::mpsc::Receiver<crate::osc::OscControlResponse>,
+    ) {
         let (send, recv) = std::sync::mpsc::channel();
-        let (osc, _osc_recv) = OscController::test_new();
+        let (osc, osc_recv) = OscController::test_new();
         let controller = Self {
             osc,
             midi: MidiController::new(vec![], send.clone()).unwrap(),
             recv,
         };
-        (controller, send)
+        (controller, send, osc_recv)
     }
 }
 
@@ -331,6 +337,10 @@ pub enum MetaCommand {
     AudioControl(tunnels::audio::ControlMessage),
     /// Give the OSC listener a pre-bound receive socket.
     SwapOscSocket(UdpSocket),
+    /// Rename the currently-active preset of the currently-selected
+    /// channel's group. Silent no-op if the current channel has no
+    /// positioner or no channel is selected.
+    RenamePositionerPreset(String),
 }
 
 impl fmt::Debug for MetaCommand {
@@ -361,6 +371,7 @@ impl fmt::Debug for MetaCommand {
             }
             Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
             Self::SwapOscSocket(_) => write!(f, "SwapOscSocket"),
+            Self::RenamePositionerPreset(name) => write!(f, "RenamePositionerPreset({name:?})"),
         }
     }
 }
@@ -533,7 +544,7 @@ mod tests {
 
     #[test]
     fn reconcile_submaster_wings_one_channel() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
         controller.reconcile_submaster_wings(1).unwrap();
         assert_eq!(submaster_wing_count(&controller), 1);
         assert_eq!(controller.midi_slot_names()[0], "Submaster Wing 1");
@@ -541,7 +552,7 @@ mod tests {
 
     #[test]
     fn reconcile_submaster_wings_grows() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
         controller.reconcile_submaster_wings(1).unwrap();
         assert_eq!(submaster_wing_count(&controller), 1);
 
@@ -552,7 +563,7 @@ mod tests {
 
     #[test]
     fn reconcile_submaster_wings_shrinks() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
         controller.reconcile_submaster_wings(9).unwrap();
         assert_eq!(submaster_wing_count(&controller), 2);
 
@@ -562,14 +573,14 @@ mod tests {
 
     #[test]
     fn reconcile_submaster_wings_zero_channels_still_one() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
         controller.reconcile_submaster_wings(0).unwrap();
         assert_eq!(submaster_wing_count(&controller), 1);
     }
 
     #[test]
     fn reconcile_clock_wing_adds_when_needed() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
         assert!(!has_clock_wing(&controller));
 
         controller.reconcile_clock_wing(true).unwrap();
@@ -578,7 +589,7 @@ mod tests {
 
     #[test]
     fn reconcile_clock_wing_removes_when_not_needed() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
         controller.reconcile_clock_wing(true).unwrap();
         assert!(has_clock_wing(&controller));
 
@@ -588,7 +599,7 @@ mod tests {
 
     #[test]
     fn reconcile_clock_wing_noop_when_already_correct() {
-        let (mut controller, _send) = Controller::test_new();
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
 
         // No clock wing, don't need one — no-op.
         controller.reconcile_clock_wing(false).unwrap();

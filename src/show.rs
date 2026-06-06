@@ -265,6 +265,26 @@ impl Show {
             MetaCommand::AudioControl(msg) => {
                 Ok(self.clocks.control_audio(msg, &mut self.controller))
             }
+            MetaCommand::RenamePositionerPreset(name) => {
+                let Some(channel) = self.channels.current_channel() else {
+                    return Ok(GuiDirty::CLEAN);
+                };
+                let group = self.patch.channel_group_mut(channel)?;
+                let (group_name, positioner) = group.split_for_positioner_dispatch();
+                let Some(positioner) = positioner else {
+                    return Ok(GuiDirty::CLEAN);
+                };
+                let sender = self.controller.sender_with_metadata(None);
+                let emitter = crate::osc::FixtureStateEmitter::new(
+                    group_name,
+                    ChannelStateEmitter::new(
+                        crate::channel::ChannelBinding::Current(channel),
+                        &sender,
+                    ),
+                );
+                positioner.rename_active_preset(name, &emitter);
+                Ok(GuiDirty::CLEAN)
+            }
         }
     }
 
@@ -436,10 +456,38 @@ impl Show {
                 self.clocks.control_clock_osc(msg, &mut self.controller)?;
                 Ok(GuiDirty::CLEAN)
             }
+            crate::osc::positioner::GROUP => {
+                // /Positioner/... dispatch. Look up the current channel's
+                // group; if it has a positioner, hand the message off with
+                // a `ChannelBinding::Current` emitter (we know we're in
+                // current-channel context by construction).
+                let Some(channel) = self.channels.current_channel() else {
+                    return Ok(GuiDirty::CLEAN);
+                };
+                let group = self.patch.channel_group_mut(channel)?;
+                let channel_emitter = ChannelStateEmitter::new(
+                    crate::channel::ChannelBinding::Current(channel),
+                    &sender,
+                );
+                // The fixture emitter and the positioner_mut borrow target
+                // different fields of `group`; spell that out via let
+                // bindings so the borrow checker can split them.
+                let (name, positioner) = group.split_for_positioner_dispatch();
+                if let Some(positioner) = positioner {
+                    let fixture_emitter =
+                        crate::osc::FixtureStateEmitter::new(name, channel_emitter);
+                    positioner.control_osc_positioner_scoped(msg, &fixture_emitter)?;
+                }
+                Ok(GuiDirty::CLEAN)
+            }
             // Assume any other control group is referring to a fixture group.
             fixture_group => {
                 let (group, channel_id) = self.patch.lookup_mut_by_name(fixture_group)?;
-                group.control(msg, ChannelStateEmitter::new(channel_id, &sender))?;
+                let binding = crate::channel::ChannelBinding::resolve(
+                    channel_id,
+                    self.channels.current_channel(),
+                );
+                group.control(msg, ChannelStateEmitter::new(binding, &sender))?;
                 Ok(GuiDirty::CLEAN)
             }
         }
@@ -564,29 +612,46 @@ impl Show {
     /// Send messages to refresh all UI state.
     fn refresh_ui(&mut self) {
         let emitter = &self.controller.sender_with_metadata(None);
+        let current_channel = self.channels.current_channel();
         for group in self.patch.iter() {
-            group.emit_state(ChannelStateEmitter::new(
+            let binding = crate::channel::ChannelBinding::resolve(
                 self.patch.channel_for_id(group.id()),
-                emitter,
-            ));
+                current_channel,
+            );
+            group.emit_state(ChannelStateEmitter::new(binding, emitter));
         }
 
         self.master_controls.emit_state(emitter);
 
         self.channels.emit_state(false, &self.patch, emitter);
 
+        let positioner_emitter = ScopedControlEmitter {
+            entity: crate::osc::positioner::GROUP,
+            emitter,
+        };
         if let Some(current_channel) = self.channels.current_channel() {
             match self.patch.channel_group(current_channel) {
-                Ok(group) => self.animation_ui_state.emit_state(
-                    current_channel,
-                    group,
-                    &ScopedControlEmitter {
-                        entity: crate::osc::animation::GROUP,
-                        emitter,
-                    },
-                ),
+                Ok(group) => {
+                    self.animation_ui_state.emit_state(
+                        current_channel,
+                        group,
+                        &ScopedControlEmitter {
+                            entity: crate::osc::animation::GROUP,
+                            emitter,
+                        },
+                    );
+                    if let Some(positioner) = group.positioner() {
+                        positioner.emit_positioner_state(&positioner_emitter);
+                    } else {
+                        crate::positioner::emit_cleared_positioner_state(&positioner_emitter);
+                    }
+                }
                 Err(e) => error!("{e:#}"),
             }
+        } else {
+            // No current channel at all (e.g. empty patch at cold start).
+            // Same cleared state as the non-positionable case.
+            crate::positioner::emit_cleared_positioner_state(&positioner_emitter);
         }
 
         self.clocks.emit_state(&mut self.controller);
@@ -680,20 +745,40 @@ impl From<Hsluv> for HsluvColor {
 #[cfg(test)]
 impl Show {
     fn test_new(patch: Patch) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
-        Self::test_new_inner(patch, |_tx| Clocks::test_new())
+        let (show, send, _osc_recv) = Self::test_new_inner(patch, |_tx| Clocks::test_new());
+        (show, send)
     }
 
     fn test_new_internal(patch: Patch) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
-        Self::test_new_inner(patch, |tx| {
+        let (show, send, _osc_recv) = Self::test_new_inner(patch, |tx| {
             Clocks::internal(None, tx).expect("internal clocks should construct in test")
-        })
+        });
+        (show, send)
+    }
+
+    /// Variant of `test_new` that surfaces the OSC response receiver so the
+    /// caller can capture what the Show emits in response to incoming OSC
+    /// messages. See `tests::OscCapture` for the wrapper integration tests
+    /// use around the raw receiver.
+    pub(crate) fn test_new_with_osc_capture(
+        patch: Patch,
+    ) -> (
+        Self,
+        std::sync::mpsc::Sender<ControlMessage>,
+        std::sync::mpsc::Receiver<crate::osc::OscControlResponse>,
+    ) {
+        Self::test_new_inner(patch, |_tx| Clocks::test_new())
     }
 
     fn test_new_inner(
         patch: Patch,
         build_clocks: impl FnOnce(std::sync::mpsc::Sender<EnvelopeStreams>) -> Clocks,
-    ) -> (Self, std::sync::mpsc::Sender<ControlMessage>) {
-        let (controller, send) = Controller::test_new();
+    ) -> (
+        Self,
+        std::sync::mpsc::Sender<ControlMessage>,
+        std::sync::mpsc::Receiver<crate::osc::OscControlResponse>,
+    ) {
+        let (controller, send, osc_recv) = Controller::test_new();
         let universe_count = patch.universe_count();
         let channels = Channels::new(&patch);
         let initial_channel = channels.current_channel();
@@ -725,7 +810,21 @@ impl Show {
         };
         show.reconcile_submaster_wings().unwrap();
         show.reconcile_clock_wing().unwrap();
-        (show, send)
+        (show, send, osc_recv)
+    }
+
+    /// Read-only access to the patch, for test assertions about in-memory
+    /// state. Production code should access groups through proper OSC /
+    /// MetaCommand entry points, not by reaching around the Show.
+    #[cfg(test)]
+    pub(crate) fn patch_for_test(&self) -> &Patch {
+        &self.patch
+    }
+
+    /// Read-only access to the channel-selection state, for test assertions.
+    #[cfg(test)]
+    pub(crate) fn channels_for_test(&self) -> &Channels {
+        &self.channels
     }
 }
 
@@ -759,6 +858,103 @@ mod tests {
         let patch = Patch::patch_all(&configs).unwrap();
         let (show, _send) = Show::test_new_internal(patch);
         show
+    }
+
+    // === OSC integration test harness ===========================================
+    //
+    // The harness has three layers, each independently useful:
+    //
+    // 1. `show_with_capture_from_yaml` — builds a Show wired to in-process OSC
+    //    channels and returns it alongside an `OscCapture` that drains whatever
+    //    the Show emits in response to incoming OSC messages.
+    //
+    // 2. `OscCapture` — drains the OSC response channel and exposes ergonomic
+    //    drain/assert helpers.
+    //
+    // 3. `fire` / `fire_press` — build an `OscControlMessage` from a string
+    //    address + arg, dispatch it through `Show::handle_osc_message`, and
+    //    return the resulting `GuiDirty`.
+    //
+    // Typical flow:
+    //
+    // ```rust
+    // let (mut show, capture, _send) = show_with_capture_from_yaml(SOME_PATCH);
+    // fire(&mut show, "/Channels/Select/1/1", OscType::Float(1.0)).unwrap();
+    // capture.drain();  // discard the initial selection emit
+    // fire_press(&mut show, "/Positioner/Preset/1/3").unwrap();
+    // let emits = capture.drain_by_addr();
+    // assert_eq!(emits.get("/Positioner/Preset/1/3"), Some(&OscType::Float(1.0)));
+    // ```
+    use crate::osc::{OscClientId, OscControlResponse};
+    use rosc::{OscMessage, OscType};
+    use std::collections::HashMap;
+    use std::sync::mpsc::Receiver;
+
+    /// Wraps the OSC response receiver with drain/assert helpers tailored to
+    /// the patterns integration tests use.
+    pub(crate) struct OscCapture {
+        rx: Receiver<OscControlResponse>,
+    }
+
+    impl OscCapture {
+        fn new(rx: Receiver<OscControlResponse>) -> Self {
+            Self { rx }
+        }
+
+        /// Drain every response pending on the channel right now. Non-blocking;
+        /// returns whatever has accumulated since the last drain.
+        pub fn drain(&self) -> Vec<OscControlResponse> {
+            let mut out = Vec::new();
+            while let Ok(r) = self.rx.try_recv() {
+                out.push(r);
+            }
+            out
+        }
+
+        /// Drain and return as a HashMap keyed by full OSC address. If multiple
+        /// emits target the same address, the last one wins — which matches
+        /// TouchOSC display semantics (we care about the final visible state).
+        pub fn drain_by_addr(&self) -> HashMap<String, OscType> {
+            self.drain()
+                .into_iter()
+                .map(|r| {
+                    (
+                        r.msg.addr,
+                        r.msg.args.into_iter().next().unwrap_or(OscType::Nil),
+                    )
+                })
+                .collect()
+        }
+    }
+
+    /// Build a Show wired to in-process channels, with a paired `OscCapture`
+    /// that captures everything emitted from `Show::handle_osc_message`.
+    fn show_with_capture_from_yaml(
+        yaml: &str,
+    ) -> (Show, OscCapture, std::sync::mpsc::Sender<ControlMessage>) {
+        let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
+        let patch = Patch::patch_all(&configs).unwrap();
+        let (show, send, rx) = Show::test_new_with_osc_capture(patch);
+        (show, OscCapture::new(rx), send)
+    }
+
+    /// Build and dispatch an OSC message at `addr` carrying a single `arg`,
+    /// returning the resulting `GuiDirty`.
+    fn fire(show: &mut Show, addr: &str, arg: OscType) -> Result<GuiDirty> {
+        let msg = crate::osc::OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .expect("test address parses");
+        show.handle_osc_message(&msg)
+    }
+
+    /// Convenience for momentary button presses — fires `Float(1.0)`.
+    fn fire_press(show: &mut Show, addr: &str) -> Result<GuiDirty> {
+        fire(show, addr, OscType::Float(1.0))
     }
 
     #[test]
@@ -1121,5 +1317,511 @@ mod tests {
                 .master_strobe_fader_channel_mapped
                 .load(std::sync::atomic::Ordering::Relaxed)
         );
+    }
+
+    // === Positioner end-to-end integration tests ============================
+    //
+    // These exercise the full OSC dispatch path on Show: fire a message at
+    // `handle_osc_message`, then assert both the in-memory mutation and the
+    // OSC responses that came back out. The two-iPad binding choreography
+    // (Positioner tab ↔ per-group preset selector) is the canonical case —
+    // see the docstring on each test for the scenario it covers.
+    mod positioner_integration {
+        use super::*;
+        use crate::positioner::BumpStep;
+
+        /// One IWashLed group on channel 0.
+        const ONE_IWASH: &str = "\
+- fixture: IWashLed
+  patches:
+    - addr: 1
+    - addr: 13
+";
+
+        /// Two IWashLed groups: IWashFront on channel 0, IWashBack on channel 1.
+        const TWO_IWASH: &str = "\
+- fixture: IWashLed
+  group: IWashFront
+  patches:
+    - addr: 1
+    - addr: 13
+- fixture: IWashLed
+  group: IWashBack
+  patches:
+    - addr: 25
+    - addr: 37
+";
+
+        /// IWashLed on channel 0 (positionable) and Dimmer on channel 1
+        /// (non-positionable).
+        const MIXED_POSITIONABLE_AND_NOT: &str = "\
+- fixture: IWashLed
+  patches:
+    - addr: 1
+- fixture: Dimmer
+  patches:
+    - addr: 100
+";
+
+        /// Tap `/Positioner/Preset/1/3` on the Positioner tab while
+        /// IWashLed is the current channel. Expect: in-memory `active`
+        /// flips to slot 2, the per-group `PositionPresetSelect/1/3` echoes
+        /// back, and both label arrays are pushed.
+        #[test]
+        fn positioner_preset_tap_echoes_to_per_group_radio() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            // Discard the initial sync emits from Show::test_new construction.
+            capture.drain();
+
+            fire_press(&mut show, "/Positioner/Preset/1/3").unwrap();
+            let emits = capture.drain_by_addr();
+
+            // In-memory state: active slot is 2 (0-indexed; 3rd button).
+            let channel = show.channels_for_test().current_channel().unwrap();
+            let positioner = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .expect("IWashLed is positionable");
+            assert_eq!(positioner.active(), 2);
+
+            // Positioner-tab Preset radio: slot 3 lit, others dark.
+            for i in 1..=8 {
+                let addr = format!("/Positioner/Preset/1/{i}");
+                let expected = if i == 3 {
+                    OscType::Float(1.0)
+                } else {
+                    OscType::Float(0.0)
+                };
+                assert_eq!(
+                    emits.get(&addr),
+                    Some(&expected),
+                    "/Positioner/Preset slot {i} state wrong",
+                );
+            }
+
+            // Per-group PositionPresetSelect: slot 3 lit, others dark.
+            for i in 1..=8 {
+                let addr = format!("/IWashLed/PositionPresetSelect/1/{i}");
+                let expected = if i == 3 {
+                    OscType::Float(1.0)
+                } else {
+                    OscType::Float(0.0)
+                };
+                assert_eq!(
+                    emits.get(&addr),
+                    Some(&expected),
+                    "/IWashLed/PositionPresetSelect slot {i} state wrong",
+                );
+            }
+
+            // Both label arrays emitted with the default preset names.
+            for i in 0..8 {
+                let expected = OscType::String(format!("Position {}", i + 1));
+                assert_eq!(
+                    emits.get(&format!("/Positioner/PresetLabel/{i}")),
+                    Some(&expected),
+                );
+                assert_eq!(
+                    emits.get(&format!("/IWashLed/PositionPresetLabel/{i}")),
+                    Some(&expected),
+                );
+            }
+        }
+
+        /// Tap `/IWashLed/PositionPresetSelect/1/5` (per-group dispatch)
+        /// while IWashLed is the current channel. Expect: `active` flips
+        /// to slot 4, and both the per-group radio echo AND the channel-
+        /// scoped tab refresh happen.
+        #[test]
+        fn per_group_preset_tap_on_current_channel_cross_emits() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            fire_press(&mut show, "/IWashLed/PositionPresetSelect/1/5").unwrap();
+            let emits = capture.drain_by_addr();
+
+            let channel = show.channels_for_test().current_channel().unwrap();
+            let positioner = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .unwrap();
+            assert_eq!(positioner.active(), 4);
+
+            // Per-group radio echoed.
+            assert_eq!(
+                emits.get("/IWashLed/PositionPresetSelect/1/5"),
+                Some(&OscType::Float(1.0)),
+            );
+            // Positioner tab refreshed (Preset radio + a label slot as proof).
+            assert_eq!(
+                emits.get("/Positioner/Preset/1/5"),
+                Some(&OscType::Float(1.0)),
+            );
+            assert_eq!(
+                emits.get("/Positioner/PresetLabel/4"),
+                Some(&OscType::String("Position 5".to_string())),
+            );
+        }
+
+        /// Tap `/IWashBack/PositionPresetSelect/1/5` while IWashFront IS the
+        /// current channel. Expect: IWashBack's state mutates, IWashFront's
+        /// doesn't, and the Positioner tab is *not*
+        /// touched (operator on the iWashFront tab shouldn't see slot 5 light
+        /// up because of activity on a different group).
+        #[test]
+        fn per_group_preset_tap_on_other_channel_is_silent_on_channel_tab() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(TWO_IWASH);
+            // IWashFront is patched first and becomes the default current channel.
+            let front_id = show.channels_for_test().current_channel().unwrap();
+            capture.drain();
+
+            fire_press(&mut show, "/IWashBack/PositionPresetSelect/1/5").unwrap();
+            let emits = capture.drain_by_addr();
+
+            // IWashBack's state mutated; IWashFront's untouched.
+            let front_active = show
+                .patch_for_test()
+                .channel_group(front_id)
+                .unwrap()
+                .positioner()
+                .unwrap()
+                .active();
+            assert_eq!(front_active, 0, "IWashFront active unchanged");
+
+            // Look up IWashBack by name (it's on channel 1).
+            let back_channel = crate::fixture::patch::ChannelId::for_test(1);
+            let back_active = show
+                .patch_for_test()
+                .channel_group(back_channel)
+                .unwrap()
+                .positioner()
+                .unwrap()
+                .active();
+            assert_eq!(back_active, 4, "IWashBack active flipped");
+
+            // Per-group radio echoed on IWashBack.
+            assert_eq!(
+                emits.get("/IWashBack/PositionPresetSelect/1/5"),
+                Some(&OscType::Float(1.0)),
+            );
+            // Positioner tab was NOT touched — no Preset radio echo, no
+            // label refresh. This is the key cross-binding-isolation check.
+            for i in 1..=8 {
+                let addr = format!("/Positioner/Preset/1/{i}");
+                assert!(
+                    !emits.contains_key(&addr),
+                    "unexpected Positioner-tab emit at {addr}: {:?}",
+                    emits.get(&addr),
+                );
+            }
+            for i in 0..8 {
+                let addr = format!("/Positioner/PresetLabel/{i}");
+                assert!(
+                    !emits.contains_key(&addr),
+                    "unexpected Positioner-tab emit at {addr}: {:?}",
+                    emits.get(&addr),
+                );
+            }
+        }
+
+        /// Switch from a positionable channel to a non-positionable one. The
+        /// Positioner tab should clear: FixtureLabel
+        /// reads `"—"`, faders snap to 0, preset radio fully deselects,
+        /// preset labels go blank.
+        #[test]
+        fn channel_switch_to_non_positionable_clears_tab() {
+            let (mut show, capture, _send) =
+                show_with_capture_from_yaml(MIXED_POSITIONABLE_AND_NOT);
+            // Default current channel is the IWashLed (channel 0); switch to
+            // the Dimmer (channel 1).
+            capture.drain();
+            fire_press(&mut show, "/Show/Channel/1/2").unwrap();
+
+            let emits = capture.drain_by_addr();
+
+            // FixtureLabel cleared.
+            assert_eq!(
+                emits.get("/Positioner/FixtureLabel"),
+                Some(&OscType::String("—".to_string())),
+            );
+            // Faders zeroed.
+            assert_eq!(emits.get("/Positioner/X"), Some(&OscType::Float(0.0)));
+            assert_eq!(emits.get("/Positioner/Y"), Some(&OscType::Float(0.0)));
+            assert_eq!(emits.get("/Positioner/Focus"), Some(&OscType::Float(0.0)));
+            // Preset radio fully deselected (all 8 buttons emit 0.0).
+            for i in 1..=8 {
+                let addr = format!("/Positioner/Preset/1/{i}");
+                assert_eq!(
+                    emits.get(&addr),
+                    Some(&OscType::Float(0.0)),
+                    "preset slot {i} not cleared",
+                );
+            }
+            // Preset labels blanked (empty strings).
+            for i in 0..8 {
+                let addr = format!("/Positioner/PresetLabel/{i}");
+                assert_eq!(
+                    emits.get(&addr),
+                    Some(&OscType::String(String::new())),
+                    "preset label {i} not blanked",
+                );
+            }
+        }
+
+        /// `MetaCommand::RenamePositionerPreset` should update the active
+        /// preset's name and re-emit both label arrays (Positioner-tab and
+        /// per-group). This is the desktop GUI's rename flow end-to-end.
+        #[test]
+        fn rename_emits_to_both_label_arrays() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            show.handle_meta_command(MetaCommand::RenamePositionerPreset("Bar Spots".to_string()))
+                .unwrap();
+
+            let emits = capture.drain_by_addr();
+
+            // In-memory state: slot 0 (the default active slot) was renamed.
+            let channel = show.channels_for_test().current_channel().unwrap();
+            let positioner = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .unwrap();
+            assert_eq!(positioner.presets()[0].name, "Bar Spots");
+
+            // Both label-array slot 0 entries reflect the new name.
+            let expected = OscType::String("Bar Spots".to_string());
+            assert_eq!(
+                emits.get("/Positioner/PresetLabel/0"),
+                Some(&expected),
+                "Positioner-tab label not updated",
+            );
+            assert_eq!(
+                emits.get("/IWashLed/PositionPresetLabel/0"),
+                Some(&expected),
+                "per-group label not updated",
+            );
+        }
+
+        /// End-to-end smoke test of the fader → in-memory state path: write
+        /// `/Positioner/X` and assert the offset stored in the active preset.
+        /// Then bump that offset via the momentary bump button and assert
+        /// the magnitude added. Covers `selected_fixture` lookup, fader-to-
+        /// offset write, and bump's modify-in-place arithmetic.
+        #[test]
+        fn fader_and_bump_persist_offset_into_in_memory_state() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            // Slide /Positioner/X to 0.5.
+            fire(&mut show, "/Positioner/X", OscType::Float(0.5)).unwrap();
+            capture.drain();
+
+            let channel = show.channels_for_test().current_channel().unwrap();
+            let x = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .unwrap()
+                .presets()[0]
+                .offsets[0]
+                .x
+                .val();
+            assert!((x - 0.5).abs() < 1e-9, "X fader didn't land: x = {x}");
+
+            // Bump up — default step is Medium (0.01).
+            fire_press(&mut show, "/Positioner/XBumpUp").unwrap();
+            let x = show
+                .patch_for_test()
+                .channel_group(channel)
+                .unwrap()
+                .positioner()
+                .unwrap()
+                .presets()[0]
+                .offsets[0]
+                .x
+                .val();
+            let expected = 0.5 + BumpStep::Medium.magnitude();
+            assert!(
+                (x - expected).abs() < 1e-9,
+                "bump didn't accumulate: x = {x}, expected {expected}",
+            );
+        }
+
+        /// All Positioner-tab control addresses, used to assert that a given
+        /// command emits to *only* the expected subset.
+        fn all_positioner_tab_addrs() -> Vec<String> {
+            let mut addrs = vec![
+                "/Positioner/X".to_string(),
+                "/Positioner/Y".to_string(),
+                "/Positioner/Focus".to_string(),
+                "/Positioner/FixtureLabel".to_string(),
+            ];
+            for i in 1..=8 {
+                addrs.push(format!("/Positioner/Preset/1/{i}"));
+            }
+            for i in 0..8 {
+                addrs.push(format!("/Positioner/PresetLabel/{i}"));
+            }
+            for i in 1..=3 {
+                addrs.push(format!("/Positioner/BumpStep/1/{i}"));
+            }
+            addrs
+        }
+
+        /// Assert `emits` includes exactly the addresses in `expected` from
+        /// the set of all Positioner-tab addresses. Other addresses outside
+        /// that set (per-group, channel state, etc.) are ignored.
+        fn assert_positioner_tab_emits(emits: &HashMap<String, OscType>, expected: &[&str]) {
+            let expected: std::collections::HashSet<&str> = expected.iter().copied().collect();
+            for addr in all_positioner_tab_addrs() {
+                let present = emits.contains_key(&addr);
+                let want = expected.contains(addr.as_str());
+                assert_eq!(
+                    present, want,
+                    "Positioner-tab addr {addr}: present={present}, expected={want}",
+                );
+            }
+        }
+
+        /// Moving one fader must push only that fader, not the other two
+        /// axes, not FixtureLabel, not the preset radio, not bump-step.
+        #[test]
+        fn fader_emits_only_target_axis() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            fire(&mut show, "/Positioner/X", OscType::Float(0.5)).unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(&emits, &["/Positioner/X"]);
+
+            fire(&mut show, "/Positioner/Y", OscType::Float(-0.25)).unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(&emits, &["/Positioner/Y"]);
+
+            fire(&mut show, "/Positioner/Focus", OscType::Float(0.1)).unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(&emits, &["/Positioner/Focus"]);
+        }
+
+        /// Bumping one axis must push only that axis's fader.
+        #[test]
+        fn bump_emits_only_target_axis() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            fire_press(&mut show, "/Positioner/XBumpUp").unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(&emits, &["/Positioner/X"]);
+
+            fire_press(&mut show, "/Positioner/YBumpDown").unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(&emits, &["/Positioner/Y"]);
+
+            fire_press(&mut show, "/Positioner/FocusBumpUp").unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(&emits, &["/Positioner/Focus"]);
+        }
+
+        /// Changing the bump-step magnitude must push only the BumpStep
+        /// radio's 3 button-state messages.
+        #[test]
+        fn bump_step_emits_only_bump_step_radio() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            // Switch from default Medium (slot 2) to Coarse (slot 1).
+            fire_press(&mut show, "/Positioner/BumpStep/1/1").unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(
+                &emits,
+                &[
+                    "/Positioner/BumpStep/1/1",
+                    "/Positioner/BumpStep/1/2",
+                    "/Positioner/BumpStep/1/3",
+                ],
+            );
+        }
+
+        /// Prev/Next selected fixture must push FixtureLabel and the three
+        /// axis faders, but not the preset radio or bump-step.
+        #[test]
+        fn nudge_fixture_emits_only_fixture_label_and_axes() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            fire_press(&mut show, "/Positioner/Next").unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(
+                &emits,
+                &[
+                    "/Positioner/FixtureLabel",
+                    "/Positioner/X",
+                    "/Positioner/Y",
+                    "/Positioner/Focus",
+                ],
+            );
+        }
+
+        /// Reset (single fixture) zeroes the selected fixture's offsets, so
+        /// the three faders snap to zero. Nothing else changes.
+        #[test]
+        fn reset_fixture_emits_only_axes() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            // Stash some non-zero values so the snap-to-zero is observable.
+            fire(&mut show, "/Positioner/X", OscType::Float(0.5)).unwrap();
+            fire(&mut show, "/Positioner/Y", OscType::Float(-0.25)).unwrap();
+            capture.drain();
+
+            fire_press(&mut show, "/Positioner/Reset").unwrap();
+            let emits = capture.drain_by_addr();
+            assert_positioner_tab_emits(
+                &emits,
+                &["/Positioner/X", "/Positioner/Y", "/Positioner/Focus"],
+            );
+        }
+
+        /// Renaming a preset slot must push only that one slot's label on
+        /// each surface — not the other 7, not the preset radio, not the
+        /// faders, not anything else on the Positioner tab.
+        #[test]
+        fn rename_emits_only_active_slot_label() {
+            let (mut show, capture, _send) = show_with_capture_from_yaml(ONE_IWASH);
+            capture.drain();
+
+            show.handle_meta_command(MetaCommand::RenamePositionerPreset("Bar Spots".to_string()))
+                .unwrap();
+            let emits = capture.drain_by_addr();
+
+            // On the Positioner tab: only PresetLabel/0 was emitted.
+            assert_positioner_tab_emits(&emits, &["/Positioner/PresetLabel/0"]);
+
+            // On the per-group surface: only PositionPresetLabel/0 was
+            // emitted; the other 7 label slots and the preset radio were not.
+            assert!(emits.contains_key("/IWashLed/PositionPresetLabel/0"));
+            for i in 1..8 {
+                let addr = format!("/IWashLed/PositionPresetLabel/{i}");
+                assert!(
+                    !emits.contains_key(&addr),
+                    "unexpected per-group label emit at {addr}: {:?}",
+                    emits.get(&addr),
+                );
+            }
+            for i in 1..=8 {
+                let addr = format!("/IWashLed/PositionPresetSelect/1/{i}");
+                assert!(
+                    !emits.contains_key(&addr),
+                    "unexpected per-group radio emit at {addr}: {:?}",
+                    emits.get(&addr),
+                );
+            }
+        }
     }
 }

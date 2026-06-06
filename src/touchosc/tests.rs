@@ -120,8 +120,8 @@ fn generate_layout_from_patch() {
 
     let layout = parse_touchosc(&output_path).unwrap();
 
-    // 4 fixture pages + 6 base pages = 10 total.
-    assert_eq!(layout.tabpages.len(), 10);
+    // 4 fixture pages + 7 base pages = 11 total.
+    assert_eq!(layout.tabpages.len(), 11);
 
     // Fixture pages come first in patch order.
     assert_eq!(layout.tabpages[0].name, "Front");
@@ -130,7 +130,7 @@ fn generate_layout_from_patch() {
     assert_eq!(layout.tabpages[3].name, "Starlight");
 
     // Base pages follow.
-    assert_eq!(layout.tabpages[4].name, "channels");
+    assert_eq!(layout.tabpages[4].name, "animation");
 
     // Verify address rewriting on renamed groups.
     let front_addrs: Vec<_> = layout.tabpages[0]

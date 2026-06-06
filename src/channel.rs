@@ -71,19 +71,20 @@ impl Channels {
         if selected_fixture_only {
             if let Some(channel_id) = self.current_channel {
                 match patch.channel_group(channel_id) {
-                    Ok(f) => f.emit_state(ChannelStateEmitter {
-                        channel_id: Some(channel_id),
+                    // The addressed group is the current channel by construction.
+                    Ok(f) => f.emit_state(ChannelStateEmitter::new(
+                        ChannelBinding::Current(channel_id),
                         emitter,
-                    }),
+                    )),
                     Err(e) => error!("{e:#}"),
                 }
             }
         } else {
             for (channel_id, group) in patch.channels_with_ids() {
-                group.emit_state(ChannelStateEmitter {
-                    channel_id: Some(channel_id),
+                group.emit_state(ChannelStateEmitter::new(
+                    ChannelBinding::resolve(Some(channel_id), self.current_channel),
                     emitter,
-                });
+                ));
             }
         }
     }
@@ -128,6 +129,20 @@ impl Channels {
                         emitter,
                     },
                 );
+                // Positioner tab: refresh state for the new current channel.
+                // Required because channel change does not go through
+                // refresh_ui. If the new channel is non-positionable, push
+                // the cleared "—" state so the iPad doesn't keep showing
+                // stale state from the previous positionable channel.
+                let positioner_emitter = ScopedControlEmitter {
+                    entity: crate::osc::positioner::GROUP,
+                    emitter,
+                };
+                if let Some(positioner) = group.positioner() {
+                    positioner.emit_positioner_state(&positioner_emitter);
+                } else {
+                    crate::positioner::emit_cleared_positioner_state(&positioner_emitter);
+                }
             }
             ControlMessage::Control { channel_id, msg } => {
                 let (channel_id, group) = if let Some(id) = channel_id {
@@ -142,10 +157,10 @@ impl Channels {
                 };
                 let handled = group.control_from_channel(
                     msg,
-                    ChannelStateEmitter {
-                        channel_id: Some(channel_id),
+                    ChannelStateEmitter::new(
+                        ChannelBinding::resolve(Some(channel_id), self.current_channel),
                         emitter,
-                    },
+                    ),
                 )?;
                 if !handled {
                     debug!(
@@ -164,25 +179,69 @@ pub fn strobe_control_channel(channel_count: usize) -> usize {
     (crate::midi::slots::submaster_wing_count(channel_count) * 8) - 1
 }
 
+/// The relationship between the channel an emitter is addressing and the
+/// currently-selected channel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChannelBinding {
+    /// The addressed group IS the currently-selected channel.
+    Current(ChannelId),
+    /// The addressed group has a channel id but isn't currently selected.
+    Other(ChannelId),
+    /// The addressed group isn't channel-bound at all.
+    Unbound,
+}
+
+impl ChannelBinding {
+    /// Resolve from the addressed group's channel id and the global
+    /// current-channel selection.
+    pub fn resolve(addressed: Option<ChannelId>, current: Option<ChannelId>) -> Self {
+        match addressed {
+            None => Self::Unbound,
+            Some(id) if Some(id) == current => Self::Current(id),
+            Some(id) => Self::Other(id),
+        }
+    }
+
+    /// The channel id of the addressed group, if any.
+    pub fn channel_id(&self) -> Option<ChannelId> {
+        match self {
+            Self::Current(id) | Self::Other(id) => Some(*id),
+            Self::Unbound => None,
+        }
+    }
+
+    /// True iff the addressed group is the currently-selected channel.
+    pub fn is_current(&self) -> bool {
+        matches!(self, Self::Current(_))
+    }
+}
+
 /// Provide methods to emit channel control state changes for a specific channel.
-/// If no channel is set, no state change events will be emitted.
+/// If no channel is set (binding is [`ChannelBinding::Unbound`]), no state
+/// change events will be emitted.
 pub struct ChannelStateEmitter<'a> {
-    channel_id: Option<ChannelId>,
+    channel: ChannelBinding,
     emitter: &'a dyn EmitControlMessage,
 }
 
 impl<'a> ChannelStateEmitter<'a> {
-    /// An emitter that ignores channel state changes.
-    pub fn new(channel_id: Option<ChannelId>, emitter: &'a dyn EmitControlMessage) -> Self {
-        Self {
-            channel_id,
-            emitter,
-        }
+    pub fn new(channel: ChannelBinding, emitter: &'a dyn EmitControlMessage) -> Self {
+        Self { channel, emitter }
+    }
+
+    /// The channel binding this emitter is addressing.
+    pub fn channel(&self) -> &ChannelBinding {
+        &self.channel
+    }
+
+    /// The underlying control message sender.
+    pub fn inner(&self) -> &'a dyn EmitControlMessage {
+        self.emitter
     }
 
     /// Emit the provided state change.
     pub fn emit(&self, msg: ChannelStateChange) {
-        let Some(channel_id) = self.channel_id else {
+        let Some(channel_id) = self.channel.channel_id() else {
             return;
         };
         let sc = StateChange::State { channel_id, msg };
@@ -290,12 +349,71 @@ impl KnobValue {
 
 #[cfg(test)]
 pub mod mock {
-    use crate::{channel::ChannelStateEmitter, control::mock::NoOpEmitter};
+    use crate::{
+        channel::{ChannelBinding, ChannelStateEmitter},
+        control::mock::NoOpEmitter,
+    };
 
     pub fn no_op_emitter() -> ChannelStateEmitter<'static> {
-        ChannelStateEmitter {
-            channel_id: None,
-            emitter: &NoOpEmitter,
-        }
+        ChannelStateEmitter::new(ChannelBinding::Unbound, &NoOpEmitter)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cid(n: usize) -> ChannelId {
+        ChannelId::for_test(n)
+    }
+
+    #[test]
+    fn resolve_unbound_when_addressed_is_none() {
+        // No addressed channel — binding is Unbound regardless of current.
+        assert_eq!(ChannelBinding::resolve(None, None), ChannelBinding::Unbound);
+        assert_eq!(
+            ChannelBinding::resolve(None, Some(cid(0))),
+            ChannelBinding::Unbound,
+        );
+    }
+
+    #[test]
+    fn resolve_current_when_addressed_equals_current() {
+        let id = cid(3);
+        assert_eq!(
+            ChannelBinding::resolve(Some(id), Some(id)),
+            ChannelBinding::Current(id),
+        );
+    }
+
+    #[test]
+    fn resolve_other_when_addressed_differs_from_current() {
+        // Different channel.
+        assert_eq!(
+            ChannelBinding::resolve(Some(cid(1)), Some(cid(2))),
+            ChannelBinding::Other(cid(1)),
+        );
+        // Addressed exists but no current channel — still Other, not Current.
+        assert_eq!(
+            ChannelBinding::resolve(Some(cid(1)), None),
+            ChannelBinding::Other(cid(1)),
+        );
+    }
+
+    #[test]
+    fn channel_id_and_is_current_match_each_variant() {
+        let id = cid(7);
+
+        let current = ChannelBinding::Current(id);
+        assert!(current.is_current());
+        assert_eq!(current.channel_id(), Some(id));
+
+        let other = ChannelBinding::Other(id);
+        assert!(!other.is_current());
+        assert_eq!(other.channel_id(), Some(id));
+
+        let unbound = ChannelBinding::Unbound;
+        assert!(!unbound.is_current());
+        assert_eq!(unbound.channel_id(), None);
     }
 }

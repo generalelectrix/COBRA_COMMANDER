@@ -33,6 +33,20 @@ impl LabelArray {
             })
         }
     }
+
+    /// Write a single label slot. Indices `>= self.n` are silently ignored.
+    pub fn set_one<S>(&self, index: usize, label: String, emitter: &S)
+    where
+        S: crate::osc::EmitScopedOscMessage + ?Sized,
+    {
+        if index >= self.n {
+            return;
+        }
+        emitter.emit_osc(ScopedOscMessage {
+            control: &format!("{}/{index}", self.control),
+            arg: OscType::String(label),
+        });
+    }
 }
 
 #[cfg(test)]

@@ -61,6 +61,7 @@ mod local_ip_watch;
 mod master;
 mod midi;
 mod osc;
+mod positioner;
 mod preview;
 mod show;
 mod show_file;

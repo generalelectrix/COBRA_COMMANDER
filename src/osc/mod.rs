@@ -1,4 +1,4 @@
-use crate::channel::{ChannelStateChange, ChannelStateEmitter};
+use crate::channel::{ChannelBinding, ChannelStateChange, ChannelStateEmitter};
 use crate::config::GroupName;
 use crate::control::ControlMessage;
 use crate::control::EmitControlMessage;
@@ -34,6 +34,7 @@ pub mod clock;
 mod control_message;
 mod label_array;
 mod listener;
+pub mod positioner;
 mod radio_button;
 mod sender;
 mod unipolar_array;
@@ -181,6 +182,21 @@ impl<'a> FixtureStateEmitter<'a> {
 
     pub fn emit_channel(&self, msg: ChannelStateChange) {
         self.channel_emitter.emit(msg);
+    }
+
+    /// The channel binding of the addressed group: whether it is the
+    /// currently-selected channel, another channel, or unbound.
+    pub fn channel(&self) -> &ChannelBinding {
+        self.channel_emitter.channel()
+    }
+
+    /// Build a sibling [`ScopedControlEmitter`] with a different entity
+    /// scope, reusing the same underlying control message sender.
+    pub fn scoped(&self, entity: &'a str) -> ScopedControlEmitter<'a> {
+        ScopedControlEmitter {
+            entity,
+            emitter: self.channel_emitter.inner(),
+        }
     }
 }
 
