@@ -1,6 +1,7 @@
 use crate::config::{FixtureGroupConfig, PatchBlock};
 use crate::fixture::patch::Patcher;
 use crate::gui_state::PatchSnapshot;
+use crate::show_file::ShowPatchConfigs;
 
 pub(crate) struct WorkingGroup {
     pub config: FixtureGroupConfig,
@@ -36,8 +37,12 @@ impl PatchWorkingCopy {
         }
     }
 
-    pub fn configs(&self) -> Vec<FixtureGroupConfig> {
-        self.groups.iter().map(|g| g.config.clone()).collect()
+    pub fn configs(&self) -> ShowPatchConfigs {
+        self.groups
+            .iter()
+            .map(|g| g.config.clone())
+            .collect::<Vec<_>>()
+            .into()
     }
 }
 

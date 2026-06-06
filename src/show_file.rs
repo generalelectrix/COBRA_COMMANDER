@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -18,12 +19,42 @@ pub const DEFAULT_FILE_NAME: &str = "show.cobra";
 /// Extension used for the temporary file during atomic saves.
 const TMP_EXTENSION: &str = "cobra.tmp";
 
+/// The path to a show file on disk.
+///
+/// Wraps an `Arc<Path>` so the path can be cloned across thread boundaries with
+/// only a refcount bump rather than a buffer reallocation. `Deref<Target = Path>`
+/// lets it act as a `&Path` for any `Path`-shaped API (e.g. `show_file::save`).
+#[derive(Clone)]
+pub struct ShowPath(Arc<Path>);
+
+impl ShowPath {
+    pub fn new(path: impl Into<Arc<Path>>) -> Self {
+        Self(path.into())
+    }
+}
+
+impl std::ops::Deref for ShowPath {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An immutable, cheap-clone handle to the show's patch configs.
+///
+/// Backed by `Arc<[T]>` so clones across thread boundaries cost a refcount
+/// bump rather than reallocating the underlying slice. The configs themselves
+/// are never mutated in place — repatch replaces the whole slice — so a
+/// shared, immutable view is the natural shape.
+pub type ShowPatchConfigs = Arc<[FixtureGroupConfig]>;
+
 /// On-disk format for a Cobra Commander show file (`.cobra`).
 ///
 /// Wraps the patch data so we can add sibling fields in the future.
 #[derive(Serialize, Deserialize)]
 pub struct ShowFile {
-    pub patch: Vec<FixtureGroupConfig>,
+    pub patch: ShowPatchConfigs,
 }
 
 /// Load a show file from disk.

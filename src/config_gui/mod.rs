@@ -319,7 +319,6 @@ impl eframe::App for ConsoleApp {
                     state: &mut self.patch_panel,
                     snapshot: &snapshot,
                     patchers: &self.patchers,
-                    show_file_path: &self.show_file_path,
                 }
                 .ui(ui);
             }
@@ -371,7 +370,9 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
             configs,
             bound,
         } => (path, configs, bound.socket, bound.port),
-        WelcomeResult::NewShow { path, bound } => (path, vec![], bound.socket, bound.port),
+        WelcomeResult::NewShow { path, bound } => {
+            (path, Default::default(), bound.socket, bound.port)
+        }
         WelcomeResult::Quit => return Ok(()),
     };
 
@@ -392,6 +393,8 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
         recv_control_msg,
     )?;
 
+    let show_file_path_for_show = show_file_path.clone();
+
     // Move-once values for the eframe creator closure.
     let mut startup = Some((
         controller,
@@ -399,6 +402,7 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
         bound_port,
         initial_configs,
         log_rx,
+        show_file_path_for_show,
     ));
 
     // Phase 3: Run the console GUI. GuiState construction (which needs a
@@ -416,8 +420,14 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
         Box::new(move |cc| {
             stage_theme::apply(&cc.egui_ctx);
 
-            let (controller, osc_local_ip, bound_port, initial_configs, log_rx) =
-                startup.take().expect("creator closure called once");
+            let (
+                controller,
+                osc_local_ip,
+                bound_port,
+                initial_configs,
+                log_rx,
+                show_file_path_for_show,
+            ) = startup.take().expect("creator closure called once");
 
             let repaint: RepaintSignal = {
                 let ctx = cc.egui_ctx.clone();
@@ -471,7 +481,7 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
             let show_gui_state = gui_state.clone();
             let show_envelope_tx = envelope_tx.clone();
             std::thread::spawn(move || {
-                let patch = match Patch::patch_all(&initial_configs) {
+                let patch = match Patch::patch_all(initial_configs) {
                     Ok(p) => p,
                     Err(e) => {
                         error!("Show patch error: {e:#}");
@@ -489,9 +499,10 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
                         return;
                     }
                 };
+                let show_path = crate::show_file::ShowPath::new(show_file_path_for_show);
                 let show = Show::new(
                     patch,
-                    initial_configs,
+                    Some(show_path),
                     controller,
                     dmx,
                     clocks,

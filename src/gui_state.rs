@@ -9,9 +9,9 @@ use midi_harness::SlotStatus;
 use tunnels::{animation::Animation, audio::AudioSnapshot, clock_server::SharedClockData};
 use tunnels_lib::{notified::Notified, repaint::RepaintSignal};
 
-use crate::config::FixtureGroupConfig;
 use crate::dmx::{DmxBuffer, UniverseIdx};
 use crate::osc::OscClientId;
+use crate::show_file::ShowPatchConfigs;
 
 /// Snapshot of animation state for the visualizer panel.
 #[derive(Default)]
@@ -21,10 +21,10 @@ pub struct AnimationSnapshot {
     pub fixture_count: usize,
 }
 
-/// Snapshot of the current patch configuration for the GUI.
+/// Snapshot of the patch configuration.
 #[derive(Clone, Debug, Default)]
 pub struct PatchSnapshot {
-    pub groups: Vec<FixtureGroupConfig>,
+    pub groups: ShowPatchConfigs,
 }
 
 /// Port name from Display impl, used for both display and identity.

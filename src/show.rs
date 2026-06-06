@@ -45,6 +45,9 @@ pub struct Show {
     envelope_streams_tx: Sender<EnvelopeStreams>,
     /// Last time a DMX output debug snapshot was pushed, for rate limiting.
     last_dmx_debug: Instant,
+    /// Path to the show file on disk, if one is bound. `None` disables
+    /// persistence.
+    show_file_path: Option<crate::show_file::ShowPath>,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -62,7 +65,7 @@ impl Show {
     #[expect(clippy::too_many_arguments)]
     pub fn new(
         patch: Patch,
-        initial_configs: Vec<crate::config::FixtureGroupConfig>,
+        show_file_path: Option<crate::show_file::ShowPath>,
         controller: Controller,
         dmx: Vec<DmxUniverse>,
         clocks: Clocks,
@@ -74,6 +77,7 @@ impl Show {
         let initial_channel = channels.current_channel();
         let animation_ui_state = AnimationUIState::new(initial_channel);
 
+        let initial_groups = patch.configs_arc();
         let mut show = Self {
             controller,
             dmx,
@@ -87,15 +91,29 @@ impl Show {
             gui_state,
             envelope_streams_tx,
             last_dmx_debug: Instant::now(),
+            show_file_path,
         };
         show.reconcile_submaster_wings()?;
         show.reconcile_clock_wing()?;
         show.refresh_ui();
         show.snapshot_gui_state(GuiDirty::all());
         show.gui_state.patch_snapshot.store(Arc::new(PatchSnapshot {
-            groups: initial_configs,
+            groups: initial_groups,
         }));
         Ok(show)
+    }
+
+    /// Persist the current show state to disk.
+    ///
+    /// No-op when no show file path is bound.
+    fn save_show(&self) -> Result<()> {
+        let Some(path) = self.show_file_path.as_ref() else {
+            return Ok(());
+        };
+        let show_file = crate::show_file::ShowFile {
+            patch: self.patch.configs_arc(),
+        };
+        crate::show_file::save(path, &show_file)
     }
 
     /// Run the show forever in the current thread.
@@ -175,10 +193,13 @@ impl Show {
     fn handle_meta_command(&mut self, cmd: MetaCommand) -> Result<GuiDirty> {
         match cmd {
             MetaCommand::Repatch(groups) => {
-                self.patch.repatch(&groups)?;
+                self.patch.repatch(Arc::clone(&groups))?;
                 self.gui_state
                     .patch_snapshot
                     .store(Arc::new(PatchSnapshot { groups }));
+                if let Err(e) = self.save_show() {
+                    error!("Show save failed: {e:#}");
+                }
                 self.post_repatch()
             }
             MetaCommand::RefreshUI => {
@@ -807,6 +828,7 @@ impl Show {
             gui_state,
             envelope_streams_tx,
             last_dmx_debug: Instant::now(),
+            show_file_path: None,
         };
         show.reconcile_submaster_wings().unwrap();
         show.reconcile_clock_wing().unwrap();
@@ -848,14 +870,14 @@ mod tests {
 
     fn show_from_yaml(yaml: &str) -> Show {
         let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
-        let patch = Patch::patch_all(&configs).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
         let (show, _send) = Show::test_new(patch);
         show
     }
 
     fn show_internal_from_yaml(yaml: &str) -> Show {
         let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
-        let patch = Patch::patch_all(&configs).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
         let (show, _send) = Show::test_new_internal(patch);
         show
     }
@@ -933,7 +955,7 @@ mod tests {
         yaml: &str,
     ) -> (Show, OscCapture, std::sync::mpsc::Sender<ControlMessage>) {
         let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
-        let patch = Patch::patch_all(&configs).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
         let (show, send, rx) = Show::test_new_with_osc_capture(patch);
         (show, OscCapture::new(rx), send)
     }
@@ -1129,7 +1151,7 @@ mod tests {
 
     fn repatch_from_yaml(show: &mut Show, yaml: &str) {
         let configs: Vec<crate::config::FixtureGroupConfig> = serde_yaml::from_str(yaml).unwrap();
-        show.handle_meta_command(MetaCommand::Repatch(configs))
+        show.handle_meta_command(MetaCommand::Repatch(configs.into()))
             .unwrap();
     }
 

@@ -4,10 +4,9 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use eframe::egui;
 
-use crate::config::FixtureGroupConfig;
 use crate::fixture::Patch;
 use crate::osc::BoundOsc;
-use crate::show_file::{self, ShowFile};
+use crate::show_file::{self, ShowFile, ShowPatchConfigs};
 use gui_common::MessageModal;
 
 /// The result of the welcome screen interaction.
@@ -16,7 +15,7 @@ pub(crate) enum WelcomeResult {
     /// User chose to load an existing show file (validated).
     LoadShow {
         path: PathBuf,
-        configs: Vec<FixtureGroupConfig>,
+        configs: ShowPatchConfigs,
         bound: BoundOsc,
     },
     /// User chose to create a new, empty show.
@@ -29,7 +28,7 @@ pub(crate) enum WelcomeResult {
 struct PendingShow {
     path: PathBuf,
     /// Fixture configs for a loaded show; empty for a new show.
-    configs: Vec<FixtureGroupConfig>,
+    configs: ShowPatchConfigs,
     /// Whether this selection creates a new, empty show.
     new: bool,
 }
@@ -146,7 +145,7 @@ impl WelcomeApp {
         };
 
         // Validate the patch by building it (discards the result — Patch isn't Send).
-        if let Err(e) = Patch::patch_all(&show_file.patch) {
+        if let Err(e) = Patch::patch_all(show_file.patch.clone()) {
             self.modal.show("Invalid Show File", format!("{e:#}"));
             return;
         }
@@ -170,7 +169,9 @@ impl WelcomeApp {
             return;
         };
 
-        let empty = ShowFile { patch: vec![] };
+        let empty = ShowFile {
+            patch: ShowPatchConfigs::default(),
+        };
         if let Err(e) = show_file::save(&path, &empty) {
             self.modal.show("Failed to Create Show", format!("{e:#}"));
             return;
@@ -180,7 +181,7 @@ impl WelcomeApp {
             ctx,
             PendingShow {
                 path,
-                configs: vec![],
+                configs: ShowPatchConfigs::default(),
                 new: true,
             },
         );
