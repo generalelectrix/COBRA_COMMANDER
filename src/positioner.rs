@@ -41,9 +41,7 @@ pub struct Positioner {
     fixture_count: usize,
 }
 
-/// The persistable subset of a `Positioner`: the named preset slots.
-/// Editing UI state (active slot, selected fixture, bump step) is
-/// session-only and is not part of this type.
+/// The named preset slots for a positionable group.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PositionerPresets {
     pub slots: [PositionPreset; N_POSITIONER_SLOTS],

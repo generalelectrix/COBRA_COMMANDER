@@ -219,11 +219,9 @@ impl Patch {
                 );
                 continue;
             };
-            if !group.supports_positioner() {
-                log::warn!("Loaded positioner for non-positionable group {id:?}; dropping");
-                continue;
+            if let Err(e) = group.install_positioner_presets(presets) {
+                log::warn!("Loaded positioner for group {id:?}: {e:#}; dropping");
             }
-            group.install_positioner_presets(presets);
         }
     }
 
