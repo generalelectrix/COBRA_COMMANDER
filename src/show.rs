@@ -48,6 +48,8 @@ pub struct Show {
     /// Path to the show file on disk, if one is bound. `None` disables
     /// persistence.
     show_file_path: Option<crate::show_file::ShowPath>,
+    /// Worker that performs the actual file write off the show thread.
+    saver: crate::show_saver::ShowSaver,
 }
 
 const CONTROL_TIMEOUT: Duration = Duration::from_micros(500);
@@ -92,6 +94,7 @@ impl Show {
             envelope_streams_tx,
             last_dmx_debug: Instant::now(),
             show_file_path,
+            saver: crate::show_saver::ShowSaver::spawn(),
         };
         show.reconcile_submaster_wings()?;
         show.reconcile_clock_wing()?;
@@ -103,17 +106,16 @@ impl Show {
         Ok(show)
     }
 
-    /// Persist the current show state to disk.
-    ///
-    /// No-op when no show file path is bound.
-    fn save_show(&self) -> Result<()> {
+    /// Submit a snapshot of the current show state for persistence. No-op
+    /// when no show file path is bound.
+    fn save_show(&self) {
         let Some(path) = self.show_file_path.as_ref() else {
-            return Ok(());
+            return;
         };
-        let show_file = crate::show_file::ShowFile {
+        let file = crate::show_file::ShowFile {
             patch: self.patch.configs_arc(),
         };
-        crate::show_file::save(path, &show_file)
+        self.saver.submit(path.clone(), file);
     }
 
     /// Run the show forever in the current thread.
@@ -197,9 +199,7 @@ impl Show {
                 self.gui_state
                     .patch_snapshot
                     .store(Arc::new(PatchSnapshot { groups }));
-                if let Err(e) = self.save_show() {
-                    error!("Show save failed: {e:#}");
-                }
+                self.save_show();
                 self.post_repatch()
             }
             MetaCommand::RefreshUI => {
@@ -829,6 +829,7 @@ impl Show {
             envelope_streams_tx,
             last_dmx_debug: Instant::now(),
             show_file_path: None,
+            saver: crate::show_saver::ShowSaver::spawn(),
         };
         show.reconcile_submaster_wings().unwrap();
         show.reconcile_clock_wing().unwrap();
