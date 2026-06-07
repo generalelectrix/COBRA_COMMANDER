@@ -267,7 +267,6 @@ impl Show {
             MetaCommand::SetClockWingModel(model) => {
                 self.controller
                     .reconcile_clock_wing(self.clocks.is_internal(), model)?;
-                self.refresh_ui();
                 Ok(StateDirty::MIDI_SLOTS)
             }
             MetaCommand::RegisterOscClient(client_id) => {
