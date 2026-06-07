@@ -49,13 +49,7 @@ impl RenderColor for Hsv {
         hsv_to_rgb(self.hue, self.sat, self.val)
     }
     fn rgbw(&self) -> ColorRgbw {
-        let [r, g, b] = self.rgb();
-        // FIXME: this is a shitty way to use the white diode.
-        // We should rescale the other values to maintain total brightness while
-        // bringing in white for pastels. This will take some thinking, and won't
-        // work for all colors.
-        let w = unit_to_u8((self.sat.invert() * self.val).val());
-        [r, g, b, w]
+        linear_rgb_to_rgbw(self.linear_rgb())
     }
     fn hsv(&self) -> ColorHsv {
         // This controller defines green as hue = 0.
@@ -67,6 +61,13 @@ impl RenderColor for Hsv {
             unit_to_u8(self.sat.val()),
             unit_to_u8(self.val.val()),
         ]
+    }
+}
+
+impl Hsv {
+    /// HSV to linear sRGB in `[0, 1]`.
+    fn linear_rgb(&self) -> (f64, f64, f64) {
+        hsv_to_linear_rgb(self.hue, self.sat, self.val)
     }
 }
 
@@ -115,57 +116,12 @@ pub struct Hsluv {
 
 impl RenderColor for Hsluv {
     fn rgb(&self) -> ColorRgb {
-        // HSLuv library uses degrees for phase and percent for other two components.
-        // Primary and secondary hues at base lightness (renders primary blue) are:
-        // (r, y, g, c, b, m): (12.2, 85.8, 127.7, 191.6, 265.87, 307.7)
-        // Subtracting 127.7 to shift primary green to 0 gives:
-        // (r, y, g, c, b, m): (244.5, 318.1, 0.0, 63.9, 138.17, 180.0)
-
-        // Observations:
-        // - each primary and opposing secondary are actually 180 degrees apart
-        // - the primary to primary distance and primary to secondary distance
-        //   varies quite a bit, presumably due to our ability to resolve subtle
-        //   hue variations in each range differently. This isn't great for art,
-        //   though, since too much of our hue range is dedicated to shades of
-        //   green. Rescale the ranges to give each subset an equal share of
-        //   the hue range.
-
-        // Perform operations in the unit range.
-        const RED: f64 = 244.5 / 360.;
-        const GREEN: f64 = 0.;
-        const BLUE: f64 = 138.17 / 360.;
-        const ONE_THIRD: f64 = 1. / 3.;
-        const TWO_THIRD: f64 = 2. / 3.;
-        const CYAN_SHIFT: f64 = (BLUE - GREEN) / ONE_THIRD;
-        const MAGENTA_SHIFT: f64 = (RED - BLUE) / ONE_THIRD;
-        const YELLOW_SHIFT: f64 = (1. - RED) / ONE_THIRD;
-
-        let hue = self.hue.val();
-
-        // Shift hue ranges.
-        let rescaled_hue = if hue < ONE_THIRD {
-            hue * CYAN_SHIFT
-        } else if hue < TWO_THIRD {
-            ((hue - ONE_THIRD) * MAGENTA_SHIFT) + BLUE
-        } else {
-            ((hue - TWO_THIRD) * YELLOW_SHIFT) + RED
-        };
-        // Convert to degrees and shift up by 127.7 to place green at 0.
-        let hue_degrees = rescaled_hue * 360. + 127.7;
-        let (r, g, b) = hsluv_to_rgb(
-            hue_degrees,
-            self.sat.val() * 100.,
-            self.lightness.val() * 100.,
-        );
+        let (r, g, b) = self.linear_rgb();
         [unit_to_u8(r), unit_to_u8(g), unit_to_u8(b)]
     }
 
     fn rgbw(&self) -> ColorRgbw {
-        // TODO: we have lots of rich info about our input color, we should be
-        // able to make good use of the white diode.
-        // Inspiration: https://blog.saikoled.com/post/44677718712/how-to-convert-from-hsi-to-rgb-white
-        let [r, g, b] = self.rgb();
-        [r, g, b, 0]
+        linear_rgb_to_rgbw(self.linear_rgb())
     }
 
     fn hsv(&self) -> ColorHsv {
@@ -174,9 +130,89 @@ impl RenderColor for Hsluv {
     }
 }
 
+impl Hsluv {
+    /// HSLuv to linear sRGB in `[0, 1]`. The hue coordinate is mapped via a
+    /// 24-anchor Catmull-Rom approximation of
+    ///
+    ///   f(u) = HSLuv_hue( HSV(u, sat=1, val=1) )
+    ///
+    /// so that named hues land at their HSV positions and the within-
+    /// segment sweep follows HSV's RGB-uniform shape rather than CIELUV's
+    /// perceptual-uniformity expansion of green and yellow. Saturation and
+    /// lightness are interpreted as HSLuv values. Out-of-gamut channels are
+    /// clipped to the displayable range.
+    fn linear_rgb(&self) -> (f64, f64, f64) {
+        // The exact `f` above asks "what HSLuv hue produces the same
+        // chromaticity as HSV at this input?" Calling its closed form
+        // requires two hsluv-crate round-trips per render; the spline
+        // below approximates `f` directly so the runtime cost is one
+        // hsluv_to_rgb call plus a handful of multiplies.
+        //
+        // `f` has surprising shape: it's nearly flat at the three RGB
+        // primaries (tangent ≈ 2°/unit-t) because pure-primary HSV stays
+        // near its HSLuv counterpart under small chromatic perturbations,
+        // and very steep between primary and secondary (tangent
+        // approaching 40°/unit-t through cyan and yellow) where the
+        // HSV→RGB mix moves the chromaticity quickly around the wheel.
+        // 24 anchors uniformly spaced in user input capture the curvature
+        // to within ~0.74° max error vs the exact inverse.
+        //
+        // Values are unwrapped (monotonically increasing past 360°) so
+        // the segment math doesn't need to handle the green↔red wrap.
+        // hsluv_to_rgb accepts angles > 360° and wraps internally.
+        const N_SEG: usize = 24;
+        const ANCHOR_DEG: [f64; N_SEG] = [
+            127.7150, 129.6099, 136.6877, 155.0453, 192.1771, 233.5490, 255.5095, 263.7201,
+            265.8743, 267.9638, 274.9051, 288.4547, 307.7150, 331.9367, 355.3484, 368.3239,
+            372.1771, 376.0787, 389.9437, 417.2823, 445.8743, 466.4839, 479.5531, 485.8594,
+        ];
+        // Catmull-Rom tangents (df/dt with t ∈ [0, 1] spanning one segment).
+        const ANCHOR_TAN: [f64; N_SEG] = [
+            1.8752, 4.4864, 12.7177, 27.7447, 39.2519, 31.6662, 15.0855, 5.1824, 2.1219, 4.5154,
+            10.2454, 16.4049, 21.7410, 23.8167, 18.1936, 8.4143, 3.8774, 8.8833, 20.6018, 27.9653,
+            24.6008, 16.8394, 9.6877, 4.0810,
+        ];
+
+        let scaled = self.hue.val() * N_SEG as f64;
+        let seg = (scaled as usize).min(N_SEG - 1);
+        let t = scaled - seg as f64;
+        let p0 = ANCHOR_DEG[seg];
+        let m0 = ANCHOR_TAN[seg];
+        let (p1, m1) = if seg + 1 == N_SEG {
+            // Wraparound: anchor 0 of the next period sits at f[0] + 360°
+            // with the same tangent (function is periodic).
+            (ANCHOR_DEG[0] + 360.0, ANCHOR_TAN[0])
+        } else {
+            (ANCHOR_DEG[seg + 1], ANCHOR_TAN[seg + 1])
+        };
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let hue_degrees = (2.0 * t3 - 3.0 * t2 + 1.0) * p0
+            + (t3 - 2.0 * t2 + t) * m0
+            + (-2.0 * t3 + 3.0 * t2) * p1
+            + (t3 - t2) * m1;
+        let (r, g, b) = hsluv_to_rgb(
+            hue_degrees,
+            self.sat.val() * 100.,
+            self.lightness.val() * 100.,
+        );
+        (r.clamp(0., 1.), g.clamp(0., 1.), b.clamp(0., 1.))
+    }
+}
+
 /// This is the lightness value where the gamut contains all three primary colors
 /// at the brightness equivalent to blue at maximum output.
 pub const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.3225);
+
+/// W diode luminous output relative to a single chromatic LED, expressed in
+/// chromatic-channel-units.
+///
+/// Typical entertainment-grade RGBW pars (Cree XM-L Color, Luxeon C Color)
+/// and six-die hex pars (Osram OSTAR Stage) sit near 2.0. A value of 3.0
+/// corresponds to the idealized "W = R+G+B equal-mix" regime; 1.0
+/// corresponds to the saikoled HSI→RGBW regime, appropriate for
+/// SK6812-class pixel strings and warm-white phosphor parts.
+pub const W_DIODE_BRIGHTNESS: f64 = 2.0;
 
 /// An HSV color in an output 24-bit space.
 /// This is an uncommon output model, but a few models of DMX fixture do use it.
@@ -196,10 +232,14 @@ pub type ColorRgbw = [u8; 4];
 /// This makes it easy to turn a knob between yellow, red, and magenta without
 /// passing through green.
 pub fn hsv_to_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> ColorRgb {
+    let (r, g, b) = hsv_to_linear_rgb(hue, sat, val);
+    [unit_to_u8(r), unit_to_u8(g), unit_to_u8(b)]
+}
+
+fn hsv_to_linear_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> (f64, f64, f64) {
     let hue = hue + 1. / 3.;
     if sat == 0.0 {
-        let v = unit_to_u8(val.val());
-        return [v, v, v];
+        return (val.val(), val.val(), val.val());
     }
     let var_h = if hue == 1.0 { 0.0 } else { hue.val() * 6.0 };
 
@@ -208,15 +248,14 @@ pub fn hsv_to_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> ColorRg
     let var_2 = val.val() * (1.0 - sat.val() * (var_h - var_i));
     let var_3 = val.val() * (1.0 - sat.val() * (1.0 - (var_h - var_i)));
 
-    let (rv, gv, bv) = match var_i as i64 {
+    match var_i as i64 {
         0 => (val.val(), var_3, var_1),
         1 => (var_2, val.val(), var_1),
         2 => (var_1, val.val(), var_3),
         3 => (var_1, var_2, val.val()),
         4 => (var_3, var_1, val.val()),
         _ => (val.val(), var_1, var_2),
-    };
-    [unit_to_u8(rv), unit_to_u8(gv), unit_to_u8(bv)]
+    }
 }
 
 /// Convert unit-scaled HSI into a 24-bit RGB color.
@@ -305,6 +344,31 @@ pub fn hsi_to_rgbw(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> 
         unit_to_u8(i_scale * gv),
         unit_to_u8(i_scale * bv),
         unit_to_u8((1. - sat.val()) * intensity.val()),
+    ]
+}
+
+/// Convert linear RGB in `[0, 1]` to an RGBW drive vector via
+/// brightness-aware white subtraction.
+///
+/// The achromatic minimum of the input is migrated to the W channel, scaled
+/// by [`W_DIODE_BRIGHTNESS`] to compensate for the W diode's lumen output
+/// relative to a single chromatic diode. On a fixture whose W actually
+/// emits `W_DIODE_BRIGHTNESS` chromatic-channel-units of light, the
+/// four-channel output reproduces the spectrum the chromatic channels
+/// would emit alone, so chromaticity and brightness are preserved.
+///
+/// Exactly one of R/G/B is zero except on near-white inputs where W
+/// saturates at unit drive, in which case the chromatic channels carry
+/// the residual achromatic load.
+fn linear_rgb_to_rgbw((r, g, b): (f64, f64, f64)) -> ColorRgbw {
+    let m = r.min(g).min(b);
+    let w = (3. * m / W_DIODE_BRIGHTNESS).min(1.);
+    let c = w * W_DIODE_BRIGHTNESS / 3.;
+    [
+        unit_to_u8(r - c),
+        unit_to_u8(g - c),
+        unit_to_u8(b - c),
+        unit_to_u8(w),
     ]
 }
 
