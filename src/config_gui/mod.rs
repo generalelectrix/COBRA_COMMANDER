@@ -60,6 +60,11 @@ use positioner_panel::{PositionerPanel, PositionerPanelState};
 use welcome::WelcomeResult;
 
 fn apply_dark_theme(ctx: &egui::Context) {
+    // Pin the theme to dark so it never follows the OS appearance. egui defaults
+    // to `ThemePreference::System`, which resolves to light on systems without a
+    // dark mode (e.g. macOS before Mojave).
+    ctx.set_theme(egui::ThemePreference::Dark);
+
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = egui::Color32::BLACK;
     visuals.window_fill = egui::Color32::BLACK;
