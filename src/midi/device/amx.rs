@@ -7,7 +7,7 @@
 //! tunnels assumes that devices are stateless and are passed around with the
 //! messages to allow delaying interpretation of the midi messages... we need
 //! to fix that original mistake to unwind this.
-use log::{debug, error};
+use log::{debug, warn};
 use midi_harness::{InitMidiDevice, Output};
 use number::UnipolarFloat;
 use strum_macros::Display;
@@ -141,7 +141,7 @@ impl AkaiAmx {
                 Play => PLAY,
             };
         if let Err(err) = output.send(event(note_on(MIDI_CHANNEL, control), state as u8)) {
-            error!("MIDI send error setting LED state {channel}({button}) to {state}: {err}.");
+            warn!("MIDI send error setting LED state {channel}({button}) to {state}: {err}.");
         }
     }
 
@@ -158,7 +158,7 @@ impl AkaiAmx {
             cc(MIDI_CHANNEL, control),
             unipolar_to_range(0, 85, value),
         )) {
-            error!("MIDI send error setting VU meter: {err}");
+            warn!("MIDI send error setting VU meter: {err}");
         }
     }
 }

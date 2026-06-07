@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Result;
-use log::error;
+use log::warn;
 use tunnels::clock_server::{SharedClockData, clock_subscriber};
 use zero_configure::pub_sub::SubscriberService;
 pub struct ClockService {
@@ -58,7 +58,7 @@ pub fn connect_to_provider(
         loop {
             let msg = match receiver.receive_msg(true) {
                 Err(e) => {
-                    error!("clock receive error: {e}");
+                    warn!("clock receive error: {e}");
                     continue;
                 }
                 Ok(None) => {

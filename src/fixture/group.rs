@@ -7,7 +7,6 @@ use log::error;
 use std::fmt::{Debug, Display};
 use std::time::Duration;
 
-use log::debug;
 use number::Phase;
 
 use super::animation_target::ControllableTargetedAnimation;
@@ -359,7 +358,6 @@ impl FixtureGroup {
                 },
                 dmx_buf,
             );
-            debug!("{}@{}: {:?}", self.qualified_name(), dmx_index + 1, dmx_buf);
         }
     }
 }

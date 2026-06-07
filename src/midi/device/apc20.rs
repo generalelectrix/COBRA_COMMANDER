@@ -1,4 +1,4 @@
-use log::{debug, error};
+use log::{debug, warn};
 use midi_harness::{InitMidiDevice, Output};
 use tunnels::{
     midi::{Event, EventType, Mapping},
@@ -78,7 +78,7 @@ impl AkaiApc20 {
                         },
                         value: if Some(c) == channel { 127 } else { 0 },
                     }) {
-                        error!("midi send error for APC20: {err}");
+                        warn!("midi send error for APC20: {err}");
                     }
                 }
             }

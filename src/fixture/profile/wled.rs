@@ -127,7 +127,7 @@ fn get_seg(state: &mut State) -> &mut Seg {
 
 pub mod rug_doctor {
     //! Composite fixture, controlling both a WLED node and an Astera controller.
-    use log::error;
+    use log::{debug, error};
     use serde::Serialize;
 
     use crate::color::ColorRgb;
@@ -193,7 +193,7 @@ pub mod rug_doctor {
         fn render(&self, _: &FixtureGroupControls, dmx_buf: &mut [u8]) {
             let preset_index = self.wled.preset.selected();
             let preset = self.presets.get(preset_index).unwrap_or_else(|| {
-                error!(
+                debug!(
                     "selected WLED preset {preset_index} out of range for astera, using default"
                 );
                 &MISSING_PRESET

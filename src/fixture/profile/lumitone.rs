@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::error;
+use log::{error, warn};
 
 use crate::{
     color::{ColorRgb, ColorSpace},
@@ -321,7 +321,7 @@ impl LumitoneSender {
                 // too soon.
                 self.last_send = Instant::now();
                 if let Err(err) = self.send() {
-                    error!("Lumitone send error: {err}.");
+                    warn!("Lumitone send error: {err}.");
                 }
             } else {
                 // Finite time until we should send. Keep updating our

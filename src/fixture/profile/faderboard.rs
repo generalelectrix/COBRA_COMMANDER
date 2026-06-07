@@ -1,6 +1,6 @@
 //! A DMX faderboard utility.
 
-use log::error;
+use log::debug;
 
 use crate::fixture::prelude::*;
 
@@ -29,7 +29,7 @@ impl Faderboard {
     fn handle_state_change(&mut self, sc: StateChange, emitter: &FixtureStateEmitter) {
         let (chan, val) = sc;
         if chan >= CHANNEL_COUNT {
-            error!("Channel out of range: {chan}.");
+            debug!("Channel out of range: {chan}.");
             return;
         }
         self.vals[chan] = val;

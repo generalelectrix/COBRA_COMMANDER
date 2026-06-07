@@ -113,7 +113,17 @@ impl Channels {
     ) -> anyhow::Result<()> {
         match ctl {
             ControlMessage::SelectChannel(g) => {
-                let (channel, group) = patch.channel(*g)?;
+                // A raw OSC index (e.g. a TouchOSC layout with more channels than
+                // the show has patched) is untrusted input, not a fault — ignore
+                // an out-of-range selection quietly rather than surfacing it as an
+                // error in the control loop.
+                let (channel, group) = match patch.channel(*g) {
+                    Ok(found) => found,
+                    Err(e) => {
+                        debug!("ignoring out-of-range channel selection: {e}");
+                        return Ok(());
+                    }
+                };
                 if self.current_channel == Some(channel) {
                     // Channel is not changed, ignore.
                     return Ok(());
@@ -146,7 +156,15 @@ impl Channels {
             }
             ControlMessage::Control { channel_id, msg } => {
                 let (channel_id, group) = if let Some(id) = channel_id {
-                    patch.channel_mut(*id)?
+                    // Raw OSC channel id — untrusted input. An out-of-range id is
+                    // not a fault; ignore it quietly.
+                    match patch.channel_mut(*id) {
+                        Ok(found) => found,
+                        Err(e) => {
+                            debug!("ignoring out-of-range channel control: {e}");
+                            return Ok(());
+                        }
+                    }
                 } else {
                     let selected = self.current_channel.ok_or_else(|| {
                         anyhow!(

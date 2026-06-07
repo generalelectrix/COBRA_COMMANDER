@@ -27,7 +27,7 @@ use tunnels::audio::EnvelopeStreams;
 
 use anyhow::{Context, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
-use log::error;
+use log::{debug, error, warn};
 use rust_dmx::{DmxPort, OfflineDmxPort};
 
 pub struct Show {
@@ -160,7 +160,7 @@ impl Show {
                 self.render();
                 for univ in &mut self.dmx {
                     if let Err(e) = univ.port.write(&univ.buffer) {
-                        error!("DMX write error: {e:#}.");
+                        warn!("DMX write error: {e:#}.");
                     }
                 }
                 self.snapshot_dmx_debug();
@@ -412,9 +412,10 @@ impl Show {
             }
             ShowControlMessage::Animation(msg) => {
                 let Some(channel) = self.channels.current_channel() else {
-                    bail!(
-                        "cannot handle animation control message because no channel is selected\n{msg:?}"
-                    );
+                    // An animation control message with no channel selected is an
+                    // expected transient input condition, not a fault — ignore it.
+                    debug!("ignoring animation control message with no channel selected\n{msg:?}");
+                    return Ok(StateDirty::CLEAN);
                 };
                 let group = self.patch.channel_group_mut(channel)?;
                 self.animation_ui_state.control(
@@ -468,9 +469,10 @@ impl Show {
             }
             crate::osc::animation::GROUP => {
                 let Some(channel) = self.channels.current_channel() else {
-                    bail!(
-                        "cannot handle animation control message because no channel is selected\n{msg:?}"
-                    );
+                    // An animation control message with no channel selected is an
+                    // expected transient input condition, not a fault — ignore it.
+                    debug!("ignoring animation control message with no channel selected\n{msg:?}");
+                    return Ok(StateDirty::CLEAN);
                 };
                 let group = self.patch.channel_group_mut(channel)?;
                 self.animation_ui_state.control_osc(
@@ -597,7 +599,7 @@ impl Show {
         }
 
         if let Err(err) = self.snapshot_animation_state() {
-            error!("Animation state snapshot error: {err}.");
+            warn!("Animation state snapshot error: {err}.");
         };
     }
 

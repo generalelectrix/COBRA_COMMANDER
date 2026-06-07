@@ -11,7 +11,7 @@
 //! controls on every update.  It still has a lot of buttons, but it sure would
 //! have been nice to get those other 13 back...
 
-use log::error;
+use log::{error, warn};
 use midi_harness::{InitMidiDevice, Output};
 use number::{BipolarFloat, UnipolarFloat};
 use tunnels::{
@@ -101,7 +101,7 @@ impl BehringerCmdDV1 {
         for i in 0..duplicates {
             let control = start + (4 * i);
             if let Err(err) = output.send(event(note_on(MIDI_CHANNEL, control), state as u8)) {
-                error!("MIDI send error setting LED {index} state to {state}: {err}.");
+                warn!("MIDI send error setting LED {index} state to {state}: {err}.");
             }
         }
     }
@@ -125,7 +125,7 @@ impl BehringerCmdDV1 {
         for i in 0..duplicates {
             let control = start + (4 * i);
             if let Err(err) = output.send(event(cc(MIDI_CHANNEL, control), value)) {
-                error!("MIDI send error setting encoder {index} LED state: {err}.");
+                warn!("MIDI send error setting encoder {index} LED state: {err}.");
             }
         }
     }
