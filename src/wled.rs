@@ -60,13 +60,13 @@ impl WledController {
                         wled.state = Some(state);
                         debug!("Sending WLED state to {}.", init_url);
                         if let Err(err) = wled.flush_state() {
-                            error!("failed to send WLED state update: {err}");
+                            warn!("failed to send WLED state update: {err}");
                             continue;
                         }
                     }
                     WledControlMessage::GetEffectMetadata => {
                         // TODO
-                        error!("fxdata not implemented");
+                        debug!("fxdata not implemented");
                         continue;
                     }
                 }
@@ -81,7 +81,7 @@ impl WledController {
     /// Send a WLED control message.
     pub fn send(&self, msg: WledControlMessage) {
         if self.send.send(msg).is_err() {
-            error!(
+            warn!(
                 "WLED control channel hung up, unable to send message to {}.",
                 self.url
             );

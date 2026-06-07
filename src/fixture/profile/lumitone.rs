@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::error;
+use log::{error, warn};
 
 use crate::{
     color::{ColorRgb, ColorSpace},
@@ -94,7 +94,7 @@ impl PatchFixture for Lumitone {
                 last_send: Instant::now(),
             };
             if let Err(err) = sender.run() {
-                error!("{err}");
+                warn!("{err}");
             }
         });
 
@@ -191,7 +191,7 @@ impl Lumitone {
             }))
             .is_err()
         {
-            error!("Cannot send Lumitone state update; sender disconnected.");
+            warn!("Cannot send Lumitone state update; sender disconnected.");
         }
     }
 
@@ -208,7 +208,7 @@ impl Lumitone {
         self.color4
             .render_without_animations(&Default::default(), Model::Rgb, &mut p.color4);
         if self.send.send(Message::CustomPalette(p)).is_err() {
-            error!("Cannot send Lumitone custom palette update; sender disconnected.");
+            warn!("Cannot send Lumitone custom palette update; sender disconnected.");
         }
     }
 }
@@ -321,7 +321,7 @@ impl LumitoneSender {
                 // too soon.
                 self.last_send = Instant::now();
                 if let Err(err) = self.send() {
-                    error!("Lumitone send error: {err}.");
+                    warn!("Lumitone send error: {err}.");
                 }
             } else {
                 // Finite time until we should send. Keep updating our

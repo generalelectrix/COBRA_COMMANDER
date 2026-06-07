@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 use anyhow::{Context, Result};
-use log::{error, info};
+use log::{info, warn};
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tiny_http::{Header, Response, Server};
 
@@ -119,7 +119,7 @@ fn serve_loop(server: &Server, layout_xml: &[u8], layout_name: &str) {
             .with_header(content_disposition.clone());
 
         if let Err(e) = request.respond(response) {
-            error!("failed to respond to TouchOSC sync request: {e}");
+            warn!("failed to respond to TouchOSC sync request: {e}");
         }
     }
 }

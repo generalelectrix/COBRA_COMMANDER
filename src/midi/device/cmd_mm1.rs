@@ -1,5 +1,5 @@
 //! Device model for the Behringer CMD MM-1 fader wing.
-use log::{debug, error};
+use log::{error, warn};
 use midi_harness::{InitMidiDevice, Output};
 use number::UnipolarFloat;
 use strum_macros::Display;
@@ -128,7 +128,7 @@ impl BehringerCmdMM1 {
         output: &mut dyn Output,
     ) {
         if channel >= Self::CHANNEL_COUNT as usize {
-            debug!("CMD MM-1 channel {channel} out of range for LED state update");
+            error!("CMD MM-1 channel {channel} out of range for LED state update");
             return;
         }
         let control = match button {
@@ -137,7 +137,7 @@ impl BehringerCmdMM1 {
             CmdMM1ChannelButton::Two => 20 + (channel as u8 * 4),
         };
         if let Err(err) = output.send(event(note_on(MIDI_CHANNEL, control), state as u8)) {
-            error!("MIDI send error setting LED state {channel}({button}) to {state}: {err}.");
+            warn!("MIDI send error setting LED state {channel}({button}) to {state}: {err}.");
         }
     }
 
@@ -149,7 +149,7 @@ impl BehringerCmdMM1 {
         // Why they chose to scale the VU meters from 48 to 63... shrug.
         let scaled_val = unipolar_to_range(48, 63, value);
         if let Err(err) = output.send(event(cc(MIDI_CHANNEL, control), scaled_val)) {
-            error!("MIDI send error setting VU meter LED state: {err}.");
+            warn!("MIDI send error setting VU meter LED state: {err}.");
         }
     }
 }
@@ -307,7 +307,7 @@ impl MidiHandler for BehringerCmdMM1 {
             | AudioStateChange::NormFloorMode(_)
             | AudioStateChange::NormCeilingMode(_) => Ok(()),
         } {
-            error!("MIDI error updating audio control for {msg:?}: {err}.");
+            warn!("MIDI error updating audio control for {msg:?}: {err}.");
         }
     }
 }

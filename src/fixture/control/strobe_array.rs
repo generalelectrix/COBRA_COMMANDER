@@ -4,7 +4,7 @@
 use std::iter::zip;
 
 use anyhow::{Result, anyhow, bail, ensure};
-use log::error;
+use log::{error, warn};
 use rand::prelude::*;
 
 pub type CellIndex = usize;
@@ -137,7 +137,7 @@ impl<const N: usize> Flasher<N> {
             self.selected_chase = selected_chase;
             self.selected_multiplier = selected_multiplier;
             if let Err(err) = self.chases.reset(selected_chase, selected_multiplier) {
-                error!("{err}");
+                warn!("{err}");
             };
         }
 
@@ -149,7 +149,7 @@ impl<const N: usize> Flasher<N> {
                 &mut self.state,
             )
         {
-            error!("{err}");
+            warn!("{err}");
         };
     }
 }

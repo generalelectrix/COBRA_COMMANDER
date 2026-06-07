@@ -1,5 +1,5 @@
 //! Device model for the Novation Launch Control XL.
-use log::{debug, error};
+use log::{debug, error, warn};
 use midi_harness::{InitMidiDevice, Output};
 use tunnels::{
     midi::{Event, EventType},
@@ -39,7 +39,7 @@ fn set_led(index: u8, state: LedState, out: &mut dyn Output) {
         state.as_byte(),
         0xF7,
     ]) {
-        error!("MIDI send error setting LED index {index}: {err}.");
+        warn!("MIDI send error setting LED index {index}: {err}.");
     }
 }
 

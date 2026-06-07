@@ -9,7 +9,7 @@
 //! doesn't matter in practice, and it will especially not matter if we're using
 //! random noise generation to drive them.
 
-use log::error;
+use log::warn;
 use ordered_float::OrderedFloat;
 use strum_macros::{Display, EnumIter, EnumString, VariantArray};
 
@@ -93,7 +93,7 @@ impl AnimatedFixture for Leko {
         let model = match Model::model_for_mode(group_controls.render_mode) {
             Ok(m) => m,
             Err(err) => {
-                error!("failed to render Leko: {err}");
+                warn!("failed to render Leko: {err}");
                 return;
             }
         };

@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 
 use fixture_macros::AsPatchOption;
 use hsluv::hsluv_to_rgb;
-use log::warn;
+use log::debug;
 use number::{Phase, UnipolarFloat};
 use serde::Deserialize;
 use strum_macros::{Display, EnumIter};
@@ -125,7 +125,7 @@ impl RenderColor for Hsluv {
     }
 
     fn hsv(&self) -> ColorHsv {
-        warn!("HSV output rendering is not implemented for HSLuv");
+        debug!("HSV output rendering is not implemented for HSLuv");
         [0, 0, 0]
     }
 }

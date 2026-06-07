@@ -4,7 +4,7 @@ use anyhow::Result;
 pub use device::color_organ::ColorOrgan;
 use device::{apc20::AkaiApc20, launch_control_xl::NovationLaunchControlXL};
 use enum_dispatch::enum_dispatch;
-use log::error;
+use log::warn;
 use midi_harness::{
     DeviceChange, DeviceId, DeviceKind, DeviceManager, HandleDeviceChange, InitMidiDevice, Output,
     SlotStatus,
@@ -131,7 +131,7 @@ impl HandleDeviceChange for ControlHandler {
                     .unwrap();
             }
             Err(err) => {
-                error!(
+                warn!(
                     "An error occurred while processing a MIDI device change notification: {err}."
                 );
             }

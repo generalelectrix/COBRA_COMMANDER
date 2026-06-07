@@ -9,7 +9,7 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
-use log::{error, info};
+use log::{info, warn};
 use rosc::{OscPacket, encoder};
 
 use crate::osc::{OscClientId, OscControlResponse, TalkbackMode};
@@ -101,7 +101,7 @@ impl OscSender {
         let packet = OscPacket::Message(resp.msg);
         self.msg_buf.clear();
         if let Err(err) = encoder::encode_into(&packet, &mut self.msg_buf) {
-            error!("Error encoding OSC packet {packet:?}: {err}.");
+            warn!("Error encoding OSC packet {packet:?}: {err}.");
             return;
         };
         let clients = self.clients.load();
@@ -110,7 +110,7 @@ impl OscSender {
                 continue;
             }
             if let Err(err) = self.socket.send_to(&self.msg_buf, client.addr()) {
-                error!("OSC send error to {client}: {err}.");
+                warn!("OSC send error to {client}: {err}.");
             }
         }
     }
