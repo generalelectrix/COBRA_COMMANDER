@@ -3,7 +3,7 @@
 use crate::control::{ControlMessage, MetaCommand};
 use crate::osc::sender::OscClientListener;
 use crate::osc::{OscClientId, OscControlMessage, OscError};
-use log::{debug, error, warn};
+use log::{error, warn};
 use rosc::OscPacket;
 use std::net::UdpSocket;
 use std::sync::mpsc::Sender;
@@ -58,7 +58,9 @@ impl OscListener {
     /// Forward a control message to the show, logging if the channel has closed.
     fn emit(&self, msg: ControlMessage) {
         if let Err(e) = self.send.send(msg) {
-            warn!("OSC control channel closed: {e}");
+            // Fatal: if the show's receiver is gone the listener can no longer
+            // deliver any control input, so the controller is effectively dead.
+            error!("OSC control channel closed: {e}");
         }
     }
 
@@ -114,7 +116,7 @@ impl OscListener {
             let packet = match rosc::decoder::decode_udp(&self.buf[..size]) {
                 Ok((_, packet)) => packet,
                 Err(e) => {
-                    debug!("Error decoding OSC packet: {e}");
+                    warn!("Error decoding OSC packet: {e}");
                     continue;
                 }
             };
@@ -129,7 +131,7 @@ impl OscListener {
             }
 
             if let Err(e) = self.forward_packet(packet, client_id) {
-                debug!("Error unpacking/forwarding OSC packet: {e}");
+                warn!("Error unpacking/forwarding OSC packet: {e}");
             }
         }
     }

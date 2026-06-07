@@ -35,7 +35,7 @@ impl ShowSaver {
     /// the log.
     pub fn submit(&self, path: ShowPath, file: ShowFile) {
         if let Err(e) = self.tx.send(SaveRequest { path, file }) {
-            log::warn!("Show saver channel closed: {e}");
+            log::error!("Show saver channel closed: {e}");
         }
     }
 }

@@ -4,7 +4,7 @@
 //! per-show selection state ("which channel is the operator focused on?") and
 //! the OSC control handlers that route channel-scoped messages.
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use log::{debug, error};
 use number::{BipolarFloat, UnipolarFloat};
 
@@ -166,14 +166,11 @@ impl Channels {
                         }
                     }
                 } else {
-                    // A control message with no channel selected is an expected
-                    // transient input condition, not a fault.
-                    let Some(selected) = self.current_channel else {
-                        debug!(
-                            "ignoring channel control message with no channel selected: {msg:?}"
-                        );
-                        return Ok(());
-                    };
+                    let selected = self.current_channel.ok_or_else(|| {
+                        anyhow!(
+                            "no channel ID provided or selected for channel control message {msg:?}"
+                        )
+                    })?;
                     (selected, patch.channel_group_mut(selected)?)
                 };
                 let handled = group.control_from_channel(

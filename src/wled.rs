@@ -81,7 +81,7 @@ impl WledController {
     /// Send a WLED control message.
     pub fn send(&self, msg: WledControlMessage) {
         if self.send.send(msg).is_err() {
-            warn!(
+            error!(
                 "WLED control channel hung up, unable to send message to {}.",
                 self.url
             );

@@ -94,7 +94,7 @@ impl PatchFixture for Lumitone {
                 last_send: Instant::now(),
             };
             if let Err(err) = sender.run() {
-                warn!("{err}");
+                error!("{err}");
             }
         });
 
@@ -191,7 +191,7 @@ impl Lumitone {
             }))
             .is_err()
         {
-            warn!("Cannot send Lumitone state update; sender disconnected.");
+            error!("Cannot send Lumitone state update; sender disconnected.");
         }
     }
 
@@ -208,7 +208,7 @@ impl Lumitone {
         self.color4
             .render_without_animations(&Default::default(), Model::Rgb, &mut p.color4);
         if self.send.send(Message::CustomPalette(p)).is_err() {
-            warn!("Cannot send Lumitone custom palette update; sender disconnected.");
+            error!("Cannot send Lumitone custom palette update; sender disconnected.");
         }
     }
 }

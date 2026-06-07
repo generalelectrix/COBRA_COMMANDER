@@ -7,7 +7,7 @@ use crate::osc::listener::{OscListener, PendingSocket};
 use crate::osc::sender::OscSender;
 use anyhow::Result;
 use anyhow::{Context, bail};
-use log::warn;
+use log::error;
 use number::{BipolarFloat, Phase, UnipolarFloat};
 use rosc::{OscMessage, OscType};
 use serde::Deserialize;
@@ -130,7 +130,7 @@ impl OscController {
     /// Send an OSC message to all clients.
     pub fn send(&self, msg: OscControlResponse) {
         if self.send.send(msg).is_err() {
-            warn!("OSC send channel is disconnected.");
+            error!("OSC send channel is disconnected.");
         }
     }
 
