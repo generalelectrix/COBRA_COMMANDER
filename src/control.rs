@@ -152,18 +152,31 @@ impl Controller {
         Ok(())
     }
 
-    /// Ensure the clock wing slot exists iff `needs_clock_wing` is true.
-    pub fn reconcile_clock_wing(&mut self, needs_clock_wing: bool) -> Result<()> {
-        use crate::midi::{device::cmd_mm1::BehringerCmdMM1, slots::CLOCK_WING_SLOT};
+    /// Ensure the clock wing slot exists with the given `model` iff
+    /// `needs_clock_wing` is true. A slot bound to a different model is rebuilt,
+    /// discarding its port assignments.
+    pub fn reconcile_clock_wing(&mut self, needs_clock_wing: bool, model: Device) -> Result<()> {
+        use crate::midi::slots::CLOCK_WING_SLOT;
+        use tunnels::midi_controls::MidiDevice;
 
-        let has = self.midi_slot_names().iter().any(|n| n == CLOCK_WING_SLOT);
+        let current_model = self
+            .midi_slot_statuses()
+            .into_iter()
+            .find(|s| s.name == CLOCK_WING_SLOT)
+            .map(|s| s.model);
 
-        if needs_clock_wing && !has {
-            self.add_midi_slot(
-                CLOCK_WING_SLOT.to_string(),
-                Device::CmdMM1(BehringerCmdMM1 {}),
-            )?;
-        } else if !needs_clock_wing && has {
+        if needs_clock_wing {
+            match current_model {
+                None => {
+                    self.add_midi_slot(CLOCK_WING_SLOT.to_string(), model)?;
+                }
+                Some(name) if name != model.device_name() => {
+                    self.remove_midi_slot(CLOCK_WING_SLOT)?;
+                    self.add_midi_slot(CLOCK_WING_SLOT.to_string(), model)?;
+                }
+                Some(_) => {}
+            }
+        } else if current_model.is_some() {
             self.remove_midi_slot(CLOCK_WING_SLOT)?;
         }
         Ok(())
@@ -333,6 +346,8 @@ pub enum MetaCommand {
     Repatch(crate::show_file::ShowPatchConfigs),
     /// Enable or disable the master strobe fader channel.
     SetMasterStrobeChannel(bool),
+    /// Set the model used for the clock wing slot.
+    SetClockWingModel(Device),
     /// Forward an audio control message to the active audio input.
     AudioControl(tunnels::audio::ControlMessage),
     /// Give the OSC listener a pre-bound receive socket.
@@ -369,6 +384,7 @@ impl fmt::Debug for MetaCommand {
             Self::SetMasterStrobeChannel(enable) => {
                 write!(f, "SetMasterStrobeChannel({enable})")
             }
+            Self::SetClockWingModel(model) => write!(f, "SetClockWingModel({model})"),
             Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
             Self::SwapOscSocket(_) => write!(f, "SwapOscSocket"),
             Self::RenamePositionerPreset(name) => write!(f, "RenamePositionerPreset({name:?})"),
@@ -536,10 +552,15 @@ mod tests {
     }
 
     fn has_clock_wing(controller: &Controller) -> bool {
+        clock_wing_model(controller).is_some()
+    }
+
+    fn clock_wing_model(controller: &Controller) -> Option<String> {
         controller
-            .midi_slot_names()
-            .iter()
-            .any(|n| n == slots::CLOCK_WING_SLOT)
+            .midi_slot_statuses()
+            .into_iter()
+            .find(|s| s.name == slots::CLOCK_WING_SLOT)
+            .map(|s| s.model)
     }
 
     #[test]
@@ -583,17 +604,23 @@ mod tests {
         let (mut controller, _send, _osc_recv) = Controller::test_new();
         assert!(!has_clock_wing(&controller));
 
-        controller.reconcile_clock_wing(true).unwrap();
+        controller
+            .reconcile_clock_wing(true, slots::DEFAULT_CLOCK_WING)
+            .unwrap();
         assert!(has_clock_wing(&controller));
     }
 
     #[test]
     fn reconcile_clock_wing_removes_when_not_needed() {
         let (mut controller, _send, _osc_recv) = Controller::test_new();
-        controller.reconcile_clock_wing(true).unwrap();
+        controller
+            .reconcile_clock_wing(true, slots::DEFAULT_CLOCK_WING)
+            .unwrap();
         assert!(has_clock_wing(&controller));
 
-        controller.reconcile_clock_wing(false).unwrap();
+        controller
+            .reconcile_clock_wing(false, slots::DEFAULT_CLOCK_WING)
+            .unwrap();
         assert!(!has_clock_wing(&controller));
     }
 
@@ -602,12 +629,43 @@ mod tests {
         let (mut controller, _send, _osc_recv) = Controller::test_new();
 
         // No clock wing, don't need one — no-op.
-        controller.reconcile_clock_wing(false).unwrap();
+        controller
+            .reconcile_clock_wing(false, slots::DEFAULT_CLOCK_WING)
+            .unwrap();
         assert!(!has_clock_wing(&controller));
 
         // Has clock wing, still need one — no-op.
-        controller.reconcile_clock_wing(true).unwrap();
-        controller.reconcile_clock_wing(true).unwrap();
+        controller
+            .reconcile_clock_wing(true, slots::DEFAULT_CLOCK_WING)
+            .unwrap();
+        controller
+            .reconcile_clock_wing(true, slots::DEFAULT_CLOCK_WING)
+            .unwrap();
         assert!(has_clock_wing(&controller));
+    }
+
+    #[test]
+    fn reconcile_clock_wing_rebuilds_on_model_change() {
+        use tunnels::midi_controls::MidiDevice;
+
+        // Two distinct clock-wing models to switch between.
+        let [first, second] = match slots::CLOCK_WING_MODELS {
+            [a, b, ..] => [*a, *b],
+            _ => panic!("expected at least two clock wing models"),
+        };
+
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
+        controller.reconcile_clock_wing(true, first).unwrap();
+        assert_eq!(
+            clock_wing_model(&controller).as_deref(),
+            Some(first.device_name())
+        );
+
+        // Switching models rebuilds the slot with the new model.
+        controller.reconcile_clock_wing(true, second).unwrap();
+        assert_eq!(
+            clock_wing_model(&controller).as_deref(),
+            Some(second.device_name())
+        );
     }
 }

@@ -18,7 +18,7 @@ use crate::{
         PatchSnapshot, SharedGuiState, StateDirty,
     },
     master::MasterControls,
-    midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler},
+    midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler, slots},
     osc::{OscControlMessage, ScopedControlEmitter},
     preview::Previewer,
 };
@@ -263,6 +263,11 @@ impl Show {
                 self.reconcile_clock_wing()?;
                 self.refresh_ui();
                 Ok(StateDirty::MIDI_SLOTS | StateDirty::CLOCK_STATE | StateDirty::AUDIO)
+            }
+            MetaCommand::SetClockWingModel(model) => {
+                self.controller
+                    .reconcile_clock_wing(self.clocks.is_internal(), model)?;
+                Ok(StateDirty::MIDI_SLOTS)
             }
             MetaCommand::RegisterOscClient(client_id) => {
                 println!("Registering new OSC client at {client_id}.");
@@ -638,10 +643,18 @@ impl Show {
             .reconcile_submaster_wings(self.patch.channel_count())
     }
 
-    /// Reconcile the clock wing slot with the current clock mode.
+    /// Reconcile the clock wing slot with the current clock mode, preserving
+    /// the model of an existing slot.
     fn reconcile_clock_wing(&mut self) -> Result<()> {
+        let model = self
+            .controller
+            .midi_slot_statuses()
+            .into_iter()
+            .find(|s| s.name == slots::CLOCK_WING_SLOT)
+            .and_then(|s| slots::clock_wing_by_name(&s.model))
+            .unwrap_or(slots::DEFAULT_CLOCK_WING);
         self.controller
-            .reconcile_clock_wing(self.clocks.is_internal())
+            .reconcile_clock_wing(self.clocks.is_internal(), model)
     }
 
     /// Send messages to refresh all UI state.
@@ -1019,6 +1032,42 @@ mod tests {
         assert_eq!(
             dirty,
             StateDirty::MIDI_SLOTS | StateDirty::CLOCK_STATE | StateDirty::AUDIO,
+        );
+    }
+
+    fn clock_wing_model(show: &Show) -> Option<String> {
+        show.controller
+            .midi_slot_statuses()
+            .into_iter()
+            .find(|s| s.name == slots::CLOCK_WING_SLOT)
+            .map(|s| s.model)
+    }
+
+    #[test]
+    fn meta_command_set_clock_wing_model_rebuilds_slot() {
+        use crate::midi::{Device, device::amx::AkaiAmx};
+        use tunnels::midi_controls::MidiDevice;
+
+        // Internal clocks → clock wing slot is present with the default model.
+        let mut show = show_internal_from_yaml(ONE_UNIVERSE_PATCH);
+        assert_eq!(
+            clock_wing_model(&show).as_deref(),
+            Some(slots::DEFAULT_CLOCK_WING.device_name())
+        );
+
+        let amx = Device::Amx(AkaiAmx {});
+        let dirty = show
+            .handle_meta_command(MetaCommand::SetClockWingModel(amx))
+            .expect("set clock wing model should not error");
+        assert_eq!(dirty, StateDirty::MIDI_SLOTS);
+        assert_eq!(clock_wing_model(&show).as_deref(), Some(amx.device_name()));
+
+        // Switching back to the default rebuilds the slot again.
+        show.handle_meta_command(MetaCommand::SetClockWingModel(slots::DEFAULT_CLOCK_WING))
+            .expect("set clock wing model should not error");
+        assert_eq!(
+            clock_wing_model(&show).as_deref(),
+            Some(slots::DEFAULT_CLOCK_WING.device_name())
         );
     }
 
