@@ -40,6 +40,7 @@ impl AnimatedFixture for CosmicBurst {
     ) where
         A: TargetedAnimationValues<Self::Target>,
     {
+        dmx_buf[1] = 32; // shutter open
         self.dimmer.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::Dimmer),
