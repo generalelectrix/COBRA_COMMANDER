@@ -770,7 +770,7 @@ dependencies = [
 [[package]]
 name = "bonsoir"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "if-addrs",
@@ -1104,7 +1104,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2403,7 +2403,7 @@ dependencies = [
 [[package]]
 name = "gui_common"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "chrono",
  "eframe",
@@ -3354,7 +3354,7 @@ dependencies = [
 [[package]]
 name = "midi_harness"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "coremidi-hotplug-notification",
@@ -3417,7 +3417,7 @@ dependencies = [
 [[package]]
 name = "minusmq"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "log",
@@ -5305,7 +5305,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stage_theme"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "eframe",
 ]
@@ -5793,7 +5793,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -5818,7 +5818,7 @@ dependencies = [
 [[package]]
 name = "tunnels_audio"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "atomic_enum",
@@ -5834,7 +5834,7 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -6484,7 +6484,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -7450,7 +7450,7 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#efc4beeec59509f03a5242d6c79981685291a86c"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "bonsoir",
