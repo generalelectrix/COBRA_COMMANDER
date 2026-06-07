@@ -64,6 +64,7 @@ objc2-foundation = "0.2"
 typetag = "0.2"
 tempfile = "3"
 egui_kittest = { version = "0.33", features = ["wgpu", "snapshot"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # [patch.'https://github.com/generalelectrix/tunnels']
 # midi_harness = { path = "../tunnels/midi_harness" }

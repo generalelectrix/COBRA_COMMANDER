@@ -49,13 +49,7 @@ impl RenderColor for Hsv {
         hsv_to_rgb(self.hue, self.sat, self.val)
     }
     fn rgbw(&self) -> ColorRgbw {
-        let [r, g, b] = self.rgb();
-        // FIXME: this is a shitty way to use the white diode.
-        // We should rescale the other values to maintain total brightness while
-        // bringing in white for pastels. This will take some thinking, and won't
-        // work for all colors.
-        let w = unit_to_u8((self.sat.invert() * self.val).val());
-        [r, g, b, w]
+        linear_rgb_to_rgbw(self.linear_rgb())
     }
     fn hsv(&self) -> ColorHsv {
         // This controller defines green as hue = 0.
@@ -67,6 +61,13 @@ impl RenderColor for Hsv {
             unit_to_u8(self.sat.val()),
             unit_to_u8(self.val.val()),
         ]
+    }
+}
+
+impl Hsv {
+    /// HSV to linear sRGB in `[0, 1]`.
+    fn linear_rgb(&self) -> (f64, f64, f64) {
+        hsv_to_linear_rgb(self.hue, self.sat, self.val)
     }
 }
 
@@ -115,6 +116,25 @@ pub struct Hsluv {
 
 impl RenderColor for Hsluv {
     fn rgb(&self) -> ColorRgb {
+        let (r, g, b) = self.linear_rgb();
+        [unit_to_u8(r), unit_to_u8(g), unit_to_u8(b)]
+    }
+
+    fn rgbw(&self) -> ColorRgbw {
+        linear_rgb_to_rgbw(self.linear_rgb())
+    }
+
+    fn hsv(&self) -> ColorHsv {
+        warn!("HSV output rendering is not implemented for HSLuv");
+        [0, 0, 0]
+    }
+}
+
+impl Hsluv {
+    /// HSLuv to linear sRGB in `[0, 1]`, with the hue circle rescaled so that
+    /// the RGB primaries sit exactly 120° apart and out-of-gamut channels
+    /// clipped to the displayable range.
+    fn linear_rgb(&self) -> (f64, f64, f64) {
         // HSLuv library uses degrees for phase and percent for other two components.
         // Primary and secondary hues at base lightness (renders primary blue) are:
         // (r, y, g, c, b, m): (12.2, 85.8, 127.7, 191.6, 265.87, 307.7)
@@ -157,26 +177,23 @@ impl RenderColor for Hsluv {
             self.sat.val() * 100.,
             self.lightness.val() * 100.,
         );
-        [unit_to_u8(r), unit_to_u8(g), unit_to_u8(b)]
-    }
-
-    fn rgbw(&self) -> ColorRgbw {
-        // TODO: we have lots of rich info about our input color, we should be
-        // able to make good use of the white diode.
-        // Inspiration: https://blog.saikoled.com/post/44677718712/how-to-convert-from-hsi-to-rgb-white
-        let [r, g, b] = self.rgb();
-        [r, g, b, 0]
-    }
-
-    fn hsv(&self) -> ColorHsv {
-        warn!("HSV output rendering is not implemented for HSLuv");
-        [0, 0, 0]
+        (r.clamp(0., 1.), g.clamp(0., 1.), b.clamp(0., 1.))
     }
 }
 
 /// This is the lightness value where the gamut contains all three primary colors
 /// at the brightness equivalent to blue at maximum output.
 pub const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.3225);
+
+/// W diode luminous output relative to a single chromatic LED, expressed in
+/// chromatic-channel-units.
+///
+/// Typical entertainment-grade RGBW pars (Cree XM-L Color, Luxeon C Color)
+/// and six-die hex pars (Osram OSTAR Stage) sit near 2.0. A value of 3.0
+/// corresponds to the idealized "W = R+G+B equal-mix" regime; 1.0
+/// corresponds to the saikoled HSI→RGBW regime, appropriate for
+/// SK6812-class pixel strings and warm-white phosphor parts.
+pub const W_DIODE_BRIGHTNESS: f64 = 2.0;
 
 /// An HSV color in an output 24-bit space.
 /// This is an uncommon output model, but a few models of DMX fixture do use it.
@@ -196,10 +213,14 @@ pub type ColorRgbw = [u8; 4];
 /// This makes it easy to turn a knob between yellow, red, and magenta without
 /// passing through green.
 pub fn hsv_to_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> ColorRgb {
+    let (r, g, b) = hsv_to_linear_rgb(hue, sat, val);
+    [unit_to_u8(r), unit_to_u8(g), unit_to_u8(b)]
+}
+
+fn hsv_to_linear_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> (f64, f64, f64) {
     let hue = hue + 1. / 3.;
     if sat == 0.0 {
-        let v = unit_to_u8(val.val());
-        return [v, v, v];
+        return (val.val(), val.val(), val.val());
     }
     let var_h = if hue == 1.0 { 0.0 } else { hue.val() * 6.0 };
 
@@ -208,15 +229,14 @@ pub fn hsv_to_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> ColorRg
     let var_2 = val.val() * (1.0 - sat.val() * (var_h - var_i));
     let var_3 = val.val() * (1.0 - sat.val() * (1.0 - (var_h - var_i)));
 
-    let (rv, gv, bv) = match var_i as i64 {
+    match var_i as i64 {
         0 => (val.val(), var_3, var_1),
         1 => (var_2, val.val(), var_1),
         2 => (var_1, val.val(), var_3),
         3 => (var_1, var_2, val.val()),
         4 => (var_3, var_1, val.val()),
         _ => (val.val(), var_1, var_2),
-    };
-    [unit_to_u8(rv), unit_to_u8(gv), unit_to_u8(bv)]
+    }
 }
 
 /// Convert unit-scaled HSI into a 24-bit RGB color.
@@ -305,6 +325,31 @@ pub fn hsi_to_rgbw(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> 
         unit_to_u8(i_scale * gv),
         unit_to_u8(i_scale * bv),
         unit_to_u8((1. - sat.val()) * intensity.val()),
+    ]
+}
+
+/// Convert linear RGB in `[0, 1]` to an RGBW drive vector via
+/// brightness-aware white subtraction.
+///
+/// The achromatic minimum of the input is migrated to the W channel, scaled
+/// by [`W_DIODE_BRIGHTNESS`] to compensate for the W diode's lumen output
+/// relative to a single chromatic diode. On a fixture whose W actually
+/// emits `W_DIODE_BRIGHTNESS` chromatic-channel-units of light, the
+/// four-channel output reproduces the spectrum the chromatic channels
+/// would emit alone, so chromaticity and brightness are preserved.
+///
+/// Exactly one of R/G/B is zero except on near-white inputs where W
+/// saturates at unit drive, in which case the chromatic channels carry
+/// the residual achromatic load.
+fn linear_rgb_to_rgbw((r, g, b): (f64, f64, f64)) -> ColorRgbw {
+    let m = r.min(g).min(b);
+    let w = (3. * m / W_DIODE_BRIGHTNESS).min(1.);
+    let c = w * W_DIODE_BRIGHTNESS / 3.;
+    [
+        unit_to_u8(r - c),
+        unit_to_u8(g - c),
+        unit_to_u8(b - c),
+        unit_to_u8(w),
     ]
 }
 

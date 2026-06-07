@@ -1031,6 +1031,7 @@ dependencies = [
  "gethostname",
  "gui_common",
  "hsluv",
+ "image",
  "itertools 0.14.0",
  "linkme",
  "local-ip-address",
