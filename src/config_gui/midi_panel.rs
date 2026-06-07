@@ -3,8 +3,10 @@ use midi_harness::{DeviceKind, MidiPortSpec, PortStatus, SlotStatus};
 use tunnels::midi::list_ports;
 
 use crate::control::MetaCommand;
+use crate::midi::slots::{CLOCK_WING_MODELS, CLOCK_WING_SLOT};
 use crate::ui_util::GuiContext;
 use gui_common::STATUS_COLORS;
+use tunnels::midi_controls::MidiDevice;
 
 pub struct MidiPanelState {
     input_ports: Vec<MidiPortSpec>,
@@ -82,7 +84,7 @@ impl MidiPanel<'_> {
 
                 for slot in slots {
                     ui.label(&slot.name);
-                    ui.label(&slot.model);
+                    self.model_combo(ui, &slot.name, &slot.model);
 
                     self.port_combo(ui, &slot.name, &slot.input, DeviceKind::Input);
                     self.port_combo(ui, &slot.name, &slot.output, DeviceKind::Output);
@@ -114,6 +116,29 @@ impl MidiPanel<'_> {
                 .ctx
                 .send_command(MetaCommand::SetMasterStrobeChannel(strobe_enabled));
         }
+    }
+
+    /// Render the model cell for a slot. The clock wing slot offers a choice of
+    /// clock-wing-capable models; every other slot shows its fixed model as a
+    /// plain label.
+    fn model_combo(&mut self, ui: &mut egui::Ui, slot_name: &str, current_model: &str) {
+        if slot_name != CLOCK_WING_SLOT {
+            ui.label(current_model);
+            return;
+        }
+
+        let ctx = &mut self.ctx;
+        egui::ComboBox::from_id_salt(format!("{slot_name}_model"))
+            .selected_text(current_model)
+            .show_ui(ui, |ui| {
+                for model in CLOCK_WING_MODELS {
+                    let name = model.device_name();
+                    let is_selected = name == current_model;
+                    if ui.selectable_label(is_selected, name).clicked() && !is_selected {
+                        let _ = ctx.send_command(MetaCommand::SetClockWingModel(*model));
+                    }
+                }
+            });
     }
 
     /// Render a combo box for selecting a MIDI port.
@@ -212,8 +237,9 @@ impl MidiPanel<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::control::mock::auto_respond_client;
+    use crate::control::mock::{auto_respond_client, recording_client};
     use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
     use gui_common::MessageModal;
     use midi_harness::DeviceId;
 
@@ -298,5 +324,45 @@ mod tests {
         });
         harness.run();
         harness.snapshot("midi_panel_populated");
+    }
+
+    #[test]
+    fn clock_wing_model_dropdown_offers_models_and_fires_command() {
+        let (client, recorded) = recording_client();
+        let mut modal = MessageModal::default();
+        let slots = test_slots();
+        let mut harness = Harness::new_ui(|ui| {
+            MidiPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut MidiPanelState {
+                    input_ports: vec![],
+                    output_ports: vec![],
+                },
+                slots: &slots,
+                master_strobe_fader_channel_mapped: false,
+            }
+            .ui(ui);
+        });
+        harness.run();
+
+        // Open the Clock Wing model dropdown — its selected value is the current model.
+        harness.get_by_value("CMD MM-1").click();
+        harness.run();
+
+        // Both clock-wing-capable models are offered.
+        assert!(harness.query_by_label("AMX").is_some());
+
+        // Selecting AMX sends the model-change command.
+        harness.get_by_label("AMX").click();
+        harness.run();
+
+        let recorded = recorded.lock().expect("recording log poisoned");
+        assert!(
+            recorded.iter().any(|c| c == "SetClockWingModel(AMX)"),
+            "expected SetClockWingModel(AMX), got: {recorded:?}"
+        );
     }
 }

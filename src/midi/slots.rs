@@ -1,7 +1,26 @@
-//! Pure logic for MIDI slot naming and count calculation.
+//! Pure logic for MIDI slot naming, count calculation, and clock-wing models.
+
+use super::Device;
+use super::device::{amx::AkaiAmx, cmd_mm1::BehringerCmdMM1};
+use tunnels::midi_controls::MidiDevice;
 
 pub const CLOCK_WING_SLOT: &str = "Clock Wing";
 const SUBMASTER_WING_PREFIX: &str = "Submaster Wing ";
+
+/// The clock wing model used when no other has been chosen.
+pub const DEFAULT_CLOCK_WING: Device = Device::CmdMM1(BehringerCmdMM1 {});
+
+/// The clock-wing-capable MIDI device models. A model belongs here iff it drives
+/// clock control via `emit_clock_control`.
+pub const CLOCK_WING_MODELS: &[Device] = &[DEFAULT_CLOCK_WING, Device::Amx(AkaiAmx {})];
+
+/// The clock-wing model with the given device name, if one is known.
+pub fn clock_wing_by_name(name: &str) -> Option<Device> {
+    CLOCK_WING_MODELS
+        .iter()
+        .copied()
+        .find(|m| m.device_name() == name)
+}
 
 pub fn submaster_wing_name(one_indexed: usize) -> String {
     format!("{SUBMASTER_WING_PREFIX}{one_indexed}")
