@@ -28,7 +28,7 @@ impl WledController {
         let state = Arc::new(Mutex::new(None));
         let state_clone = state.clone();
         // Drain control channel using a thread into mutex.
-        std::thread::spawn(move || {
+        crate::worker::spawn("wled-drain", move |_shutdown| {
             for msg in recv_state {
                 let Ok(mut lock) = state_clone.lock() else {
                     error!("Failed to get WLED state lock.");
@@ -40,11 +40,13 @@ impl WledController {
         });
 
         let init_url = url.clone();
-        std::thread::spawn(move || {
+        crate::worker::spawn("wled-poll", move |shutdown| {
             let mut wled = initialize(&init_url, Duration::from_secs(5));
             let sleep = Duration::from_millis(100);
             loop {
-                std::thread::sleep(sleep);
+                if shutdown.sleep_or_shutdown(sleep) {
+                    return;
+                }
                 let msg = {
                     let Ok(mut lock) = state.lock() else {
                         error!("Failed to get WLED state lock.");

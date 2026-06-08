@@ -127,10 +127,14 @@ impl Show {
     }
 
     /// Run the show forever in the current thread.
-    pub fn run(&mut self) {
+    pub fn run(&mut self, shutdown: crate::worker::Shutdown) {
         let mut last_update = Instant::now();
 
         loop {
+            if shutdown.triggered() {
+                return;
+            }
+
             // Process a control event if one is pending.
             match self.control(CONTROL_TIMEOUT) {
                 Ok(dirty) => {

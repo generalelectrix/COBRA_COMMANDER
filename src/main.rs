@@ -71,6 +71,7 @@ mod touchosc;
 mod ui_util;
 mod util;
 mod wled;
+mod worker;
 
 fn main() -> Result<()> {
     let args = Cli::try_parse()?;

@@ -360,6 +360,18 @@ impl eframe::App for ConsoleApp {
 
         self.modal.ui(ctx);
     }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Signal and join every worker thread while the GUI is still tearing
+        // down, so the OSC receive socket and the rest are released rather than
+        // left running. Runs before the app's `Drop`, so a worker can't be left
+        // alive to deadlock a destructor that waits on it.
+        let crate::worker::Stragglers(stragglers) =
+            crate::worker::shutdown_and_join(std::time::Duration::from_secs(2));
+        if !stragglers.is_empty() {
+            log::warn!("exiting with worker threads still running: {stragglers:?}");
+        }
+    }
 }
 
 /// Single entry point for the console. Runs the welcome screen, initializes
@@ -482,7 +494,7 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
 
             let show_gui_state = gui_state.clone();
             let show_envelope_tx = envelope_tx.clone();
-            std::thread::spawn(move || {
+            crate::worker::spawn("show", move |shutdown| {
                 let patch = match Patch::from_show_file(initial_show_file) {
                     Ok(p) => p,
                     Err(e) => {
@@ -513,7 +525,7 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
                     show_envelope_tx,
                 );
                 match show {
-                    Ok(mut show) => show.run(),
+                    Ok(mut show) => show.run(shutdown),
                     Err(e) => error!("Show initialization error: {e:#}"),
                 }
             });

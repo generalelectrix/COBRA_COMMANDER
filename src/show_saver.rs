@@ -1,5 +1,4 @@
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::show_file::{self, ShowFile, ShowPath};
@@ -9,7 +8,6 @@ const SAVE_THROTTLE: Duration = Duration::from_millis(500);
 /// Off-thread worker that writes submitted show files to disk.
 pub struct ShowSaver {
     tx: mpsc::Sender<SaveRequest>,
-    _handle: thread::JoinHandle<()>,
 }
 
 struct SaveRequest {
@@ -21,14 +19,8 @@ impl ShowSaver {
     /// Spawn the worker thread.
     pub fn spawn() -> Self {
         let (tx, rx) = mpsc::channel::<SaveRequest>();
-        let handle = thread::Builder::new()
-            .name("show-saver".to_string())
-            .spawn(move || run(rx))
-            .expect("failed to spawn show-saver thread");
-        Self {
-            tx,
-            _handle: handle,
-        }
+        crate::worker::spawn("show-saver", move |_shutdown| run(rx));
+        Self { tx }
     }
 
     /// Submit a save request. Returns immediately; write errors surface in

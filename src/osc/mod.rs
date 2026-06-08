@@ -19,7 +19,6 @@ use std::net::{SocketAddr, UdpSocket};
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use thiserror::Error;
 
 use self::radio_button::RadioButton;
@@ -101,14 +100,14 @@ impl OscController {
             send,
         );
 
-        thread::spawn(move || {
-            listener.run();
+        crate::worker::spawn("osc-listener", move |shutdown| {
+            listener.run(shutdown);
         });
 
         let (mut sender, response_send) =
             OscSender::new(initial_listener).context("failed to start OSC sender")?;
 
-        thread::spawn(move || {
+        crate::worker::spawn("osc-sender", move |_shutdown| {
             sender.run();
         });
 
