@@ -431,7 +431,10 @@ impl PatchPanel<'_> {
                 }
             });
 
-            ui.separator();
+            // Grow the divider down to meet the horizontal rule that closes
+            // the section (egui sizes it to content height, leaving a gap).
+            let grow = ui.spacing().item_spacing.y + 3.0;
+            ui.add(egui::Separator::default().vertical().grow(grow));
 
             // Right column: selected group detail.
             ui.vertical(|ui| {
