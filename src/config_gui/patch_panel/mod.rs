@@ -918,6 +918,26 @@ impl PatchPanel<'_> {
             }
         }
 
+        // Channel footprint for the current option selection.
+        if let Some(patcher) = patcher {
+            let opts = build_options_from_form(&form.patch_options);
+            if let Ok(cfg) =
+                (patcher.create_patch)(wc.groups[group_idx].config.options.clone(), opts)
+                && cfg.channel_count > 0
+            {
+                let count = form.count.parse::<usize>().unwrap_or(1).max(1);
+                if count > 1 {
+                    ui.label(format!(
+                        "Channels: {} each ({} total)",
+                        cfg.channel_count,
+                        cfg.channel_count * count
+                    ));
+                } else {
+                    ui.label(format!("Channels: {}", cfg.channel_count));
+                }
+            }
+        }
+
         let (addr_valid, count_valid) = if is_dmx_fixture {
             let addr_ok = form
                 .addr
@@ -1872,6 +1892,20 @@ mod test {
             .unwrap_or_default()
     }
 
+    /// Value of one patch option in the cached add-fixture form.
+    fn form_option_value(state: &PatchPanelState, key: &str) -> String {
+        state
+            .add_fixture_form
+            .as_ref()
+            .and_then(|f| {
+                f.patch_options
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, v)| v.clone())
+            })
+            .unwrap_or_default()
+    }
+
     // Deleting a group at a lower index than the selection shifts a different
     // group into the selected index; the add-fixture form must rebuild for the
     // new occupant. Groups `[Simple "A", PatchOpts "B"]`: select A (empty
@@ -1920,6 +1954,121 @@ mod test {
             form_option_keys(&state),
             vec!["variant".to_string(), "offset".to_string()],
             "after deleting A, the add-fixture form must rebuild for B (PatchOpts)"
+        );
+    }
+
+    // Selecting an option then committing through the actual "+ Add Fixture"
+    // button must leave the selection in place for the next patch — the
+    // per-frame rebuild guard must not reset it for the same group.
+    #[test]
+    fn patch_option_selection_survives_render_after_commit() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_options();
+        let patchers = test_patchers();
+        let mut modal = MessageModal::default();
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        // Pre-select the non-default Wide variant with a valid free address.
+        {
+            let form = state.add_fixture_form.as_mut().expect("form");
+            for (k, v) in form.patch_options.iter_mut() {
+                if k == "variant" {
+                    *v = "Wide".to_string();
+                }
+            }
+            form.addr = "100".to_string();
+        }
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+
+        harness.run();
+        harness.get_by_label("+ Add Fixture").click();
+        harness.run();
+        harness.run();
+        drop(harness);
+
+        assert_eq!(
+            form_option_value(&state, "variant"),
+            "Wide",
+            "selection must persist for the next patch in the same group"
+        );
+    }
+
+    // The carried selection is scoped to one group: switching to a different
+    // group of the same fixture type must reset to the default, not leak the
+    // prior group's choice.
+    #[test]
+    fn switching_groups_does_not_leak_patch_option_selection() {
+        let client = auto_respond_client();
+        let snapshot = PatchSnapshot {
+            groups: vec![
+                patch_opts_group(Some("A"), vec![]),
+                patch_opts_group(Some("B"), vec![]),
+            ]
+            .into(),
+        };
+        let patchers = test_patchers();
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        // Choose Wide in group A and commit it.
+        {
+            let form = state.add_fixture_form.as_mut().expect("form");
+            for (k, v) in form.patch_options.iter_mut() {
+                if k == "variant" {
+                    *v = "Wide".to_string();
+                }
+            }
+            form.addr = "100".to_string();
+        }
+        {
+            let mut modal = MessageModal::default();
+            let mut panel = PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            };
+            panel.commit_add_fixture(0);
+        }
+
+        // Switch to group B and let the rebuild guard run.
+        state.selected_group = Some(1);
+        let mut modal = MessageModal::default();
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        drop(harness);
+
+        assert_eq!(
+            form_option_value(&state, "variant"),
+            "Narrow",
+            "group B must show the default, not group A's Wide selection"
         );
     }
 
