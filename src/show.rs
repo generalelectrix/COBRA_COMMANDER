@@ -195,10 +195,20 @@ impl Show {
             ControlMessage::Osc(msg) => self.handle_osc_message(&msg),
             ControlMessage::Meta(cmd, reply) => {
                 let result = self.handle_meta_command(cmd);
-                if let Some(reply) = reply {
-                    let _ = reply.send(result.as_ref().map(|_| ()).map_err(|e| format!("{e:#}")));
-                }
-                result
+                let Some(reply) = reply else {
+                    // No requester to receive the outcome — surface errors via
+                    // the run loop's log.
+                    return result;
+                };
+                // The requester receives the outcome directly and reports any
+                // error itself; don't also propagate it to the run loop's
+                // logger, or the same error surfaces twice.
+                let dirty = match &result {
+                    Ok(dirty) => *dirty,
+                    Err(_) => StateDirty::CLEAN,
+                };
+                let _ = reply.send(result.map(|_| ()).map_err(|e| format!("{e:#}")));
+                Ok(dirty)
             }
         }
     }

@@ -232,8 +232,8 @@ impl DmxPortPanel<'_> {
                             format!("Universe {universe} set to {framerate} fps."),
                         );
                     }
-                    Err(e) => {
-                        self.ctx.report_error(format!("{e:#}"));
+                    Err(_) => {
+                        // `send_command` already surfaced the error modal.
                         // Revert text on failure so the user sees the still-current
                         // value on the next frame even if the field re-focuses
                         // before the next snapshot arrives.

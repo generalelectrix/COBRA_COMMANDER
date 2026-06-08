@@ -69,7 +69,7 @@ impl GuiContext<'_> {
 
     pub fn send_command(&mut self, cmd: MetaCommand) -> Result<(), anyhow::Error> {
         self.client.send_command(cmd).inspect_err(|e| {
-            self.modal.show("Error", e.to_string());
+            self.modal.show("Error", format!("{e:#}"));
         })
     }
 }
