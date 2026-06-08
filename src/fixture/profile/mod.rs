@@ -1,3 +1,4 @@
+pub mod abyss2;
 pub mod aquarius;
 pub mod astera;
 pub mod astroscan;
