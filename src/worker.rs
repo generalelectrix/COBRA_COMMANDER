@@ -166,10 +166,11 @@ mod tests {
     #[test]
     fn sleep_wakes_immediately_on_shutdown() {
         let workers = Workers::default();
+        let (tx, rx) = std::sync::mpsc::channel();
         let started = Instant::now();
-        workers.spawn("sleeper", |shutdown| {
+        workers.spawn("sleeper", move |shutdown| {
             // Would block for a minute if the condvar never woke it.
-            assert!(shutdown.sleep_or_shutdown(Duration::from_secs(60)));
+            let _ = tx.send(shutdown.sleep_or_shutdown(Duration::from_secs(60)));
         });
         thread::sleep(Duration::from_millis(50));
         let Stragglers(stragglers) = workers.shutdown_and_join(Duration::from_secs(2));
@@ -180,6 +181,11 @@ mod tests {
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "sleep blocked instead of waking on the signal"
+        );
+        assert_eq!(
+            rx.recv(),
+            Ok(true),
+            "sleep_or_shutdown should report that it was triggered"
         );
     }
 
