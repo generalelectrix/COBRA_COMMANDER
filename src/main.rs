@@ -66,6 +66,7 @@ mod preview;
 mod show;
 mod show_file;
 mod show_saver;
+mod shutdown;
 mod strobe;
 mod touchosc;
 mod ui_util;

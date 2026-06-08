@@ -1,8 +1,5 @@
 //! Interact with a remote clock service.
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use log::warn;
@@ -54,7 +51,7 @@ pub fn connect_to_provider(
     let mut receiver = service.subscribe(provider, 0)?;
     let storage = Arc::new(Mutex::new(SharedClockData::default()));
     let weak_handle = Arc::downgrade(&storage);
-    thread::spawn(move || {
+    crate::shutdown::workers().spawn("clock-service", move |_shutdown| {
         loop {
             let msg = match receiver.receive_msg(true) {
                 Err(e) => {

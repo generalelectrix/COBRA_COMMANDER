@@ -3,6 +3,7 @@
 use crate::control::{ControlMessage, MetaCommand};
 use crate::osc::sender::OscClientListener;
 use crate::osc::{OscClientId, OscControlMessage, OscError};
+use crate::shutdown::Shutdown;
 use log::{error, warn};
 use rosc::OscPacket;
 use std::net::UdpSocket;
@@ -97,9 +98,12 @@ impl OscListener {
         Ok(())
     }
 
-    /// Run the listener in the current thread until the show hangs up.
-    pub fn run(&mut self) {
+    /// Run the listener in the current thread until `shutdown` is signalled.
+    pub fn run(&mut self, shutdown: Shutdown) {
         loop {
+            if shutdown.triggered() {
+                return;
+            }
             self.swap_pending_socket();
 
             let (size, sender_addr) = match self.socket.recv_from(&mut self.buf) {
