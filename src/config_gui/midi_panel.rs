@@ -69,39 +69,41 @@ impl MidiPanel<'_> {
             return;
         }
 
-        egui::Grid::new("midi_slots_grid")
-            .num_columns(6)
-            .spacing([12.0, 4.0])
-            .striped(true)
-            .show(ui, |ui| {
-                ui.strong("Slot");
-                ui.strong("Model");
-                ui.strong("Input");
-                ui.strong("Output");
-                ui.label(""); // Auto button column
-                ui.label(""); // Clear button column
-                ui.end_row();
-
-                for slot in slots {
-                    ui.label(&slot.name);
-                    self.model_combo(ui, &slot.name, &slot.model);
-
-                    self.port_combo(ui, &slot.name, &slot.input, DeviceKind::Input);
-                    self.port_combo(ui, &slot.name, &slot.output, DeviceKind::Output);
-
-                    if ui.button("Auto").clicked() {
-                        self.auto_configure_slot(&slot.model, &slot.name);
-                    }
-
-                    if ui.button("Clear").clicked() {
-                        let _ = self.ctx.send_command(MetaCommand::ClearMidiDevice {
-                            slot_name: slot.name.clone(),
-                        });
-                    }
-
+        crate::ui_util::bounded_scroll(ui, "midi_slots", crate::ui_util::SCROLL_MAX_ROWS, |ui| {
+            egui::Grid::new("midi_slots_grid")
+                .num_columns(6)
+                .spacing([12.0, 4.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("Slot");
+                    ui.strong("Model");
+                    ui.strong("Input");
+                    ui.strong("Output");
+                    ui.label(""); // Auto button column
+                    ui.label(""); // Clear button column
                     ui.end_row();
-                }
-            });
+
+                    for slot in slots {
+                        ui.label(&slot.name);
+                        self.model_combo(ui, &slot.name, &slot.model);
+
+                        self.port_combo(ui, &slot.name, &slot.input, DeviceKind::Input);
+                        self.port_combo(ui, &slot.name, &slot.output, DeviceKind::Output);
+
+                        if ui.button("Auto").clicked() {
+                            self.auto_configure_slot(&slot.model, &slot.name);
+                        }
+
+                        if ui.button("Clear").clicked() {
+                            let _ = self.ctx.send_command(MetaCommand::ClearMidiDevice {
+                                slot_name: slot.name.clone(),
+                            });
+                        }
+
+                        ui.end_row();
+                    }
+                });
+        });
 
         ui.separator();
         let mut strobe_enabled = self.master_strobe_fader_channel_mapped;

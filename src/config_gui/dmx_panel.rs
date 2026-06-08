@@ -100,18 +100,32 @@ impl DmxPortPanel<'_> {
         ));
 
         let offline_name = rust_dmx::OfflineDmxPort.to_string();
-        if ui
-            .selectable_label(self.state.selected_port.is_none(), &offline_name)
-            .clicked()
-        {
-            self.state.selected_port = None;
-        }
+        // Collect the click inside the scroll closure, then apply it afterward
+        // so we don't borrow `selected_port` and `available_ports` at once.
+        let selected_port = self.state.selected_port;
+        let mut new_selection: Option<Option<usize>> = None;
+        crate::ui_util::bounded_scroll(
+            ui,
+            "dmx_available_ports",
+            crate::ui_util::SCROLL_MAX_ROWS,
+            |ui| {
+                if ui
+                    .selectable_label(selected_port.is_none(), &offline_name)
+                    .clicked()
+                {
+                    new_selection = Some(None);
+                }
 
-        for (i, port) in self.state.available_ports.iter().enumerate() {
-            let is_selected = self.state.selected_port == Some(i);
-            if ui.selectable_label(is_selected, port.to_string()).clicked() {
-                self.state.selected_port = Some(i);
-            }
+                for (i, port) in self.state.available_ports.iter().enumerate() {
+                    let is_selected = selected_port == Some(i);
+                    if ui.selectable_label(is_selected, port.to_string()).clicked() {
+                        new_selection = Some(Some(i));
+                    }
+                }
+            },
+        );
+        if let Some(selection) = new_selection {
+            self.state.selected_port = selection;
         }
 
         ui.separator();
@@ -142,59 +156,66 @@ impl DmxPortPanel<'_> {
                 .universes
                 .resize_with(self.port_status.ports.len(), UniversePanelState::default);
 
-            egui::Grid::new("dmx_universe_grid")
-                .striped(true)
-                .show(ui, |ui| {
-                    for (universe, port_info) in self.port_status.ports.iter().enumerate() {
-                        let same_as_current = selected_name == port_info.name;
-                        if ui
-                            .add_enabled(!same_as_current, egui::Button::new("Assign"))
-                            .on_hover_text(format!("Assign {selected_name}"))
-                            .clicked()
-                        {
-                            assign_action = Some(universe);
-                        }
+            crate::ui_util::bounded_scroll(
+                ui,
+                "dmx_universe_list",
+                crate::ui_util::SCROLL_MAX_ROWS,
+                |ui| {
+                    egui::Grid::new("dmx_universe_grid")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (universe, port_info) in self.port_status.ports.iter().enumerate() {
+                                let same_as_current = selected_name == port_info.name;
+                                if ui
+                                    .add_enabled(!same_as_current, egui::Button::new("Assign"))
+                                    .on_hover_text(format!("Assign {selected_name}"))
+                                    .clicked()
+                                {
+                                    assign_action = Some(universe);
+                                }
 
-                        ui.label(format!("Universe {universe}"));
-                        ui.label(&port_info.name);
+                                ui.label(format!("Universe {universe}"));
+                                ui.label(&port_info.name);
 
-                        if let Some(current_fps) = port_info.framerate {
-                            let Some(row) = self.state.universes.get_mut(universe) else {
+                                if let Some(current_fps) = port_info.framerate {
+                                    let Some(row) = self.state.universes.get_mut(universe) else {
+                                        ui.end_row();
+                                        continue;
+                                    };
+                                    let edit = egui::TextEdit::singleline(&mut row.framerate_text)
+                                        .desired_width(40.0);
+                                    let response = ui.add(edit);
+                                    // Capture commit *before* syncing from snapshot —
+                                    // on the lost-focus frame, has_focus is already
+                                    // false, so an unguarded snapshot sync would
+                                    // overwrite the user's input before we read it.
+                                    if response.lost_focus() {
+                                        match row.framerate_text.parse::<u8>() {
+                                            Ok(fps) if fps > 0 => {
+                                                framerate_action = Some((universe, fps));
+                                            }
+                                            _ => {
+                                                framerate_error = Some(format!(
+                                                    "invalid FPS \"{}\" (expected 1..=255)",
+                                                    row.framerate_text
+                                                ));
+                                                row.framerate_text = current_fps.to_string();
+                                            }
+                                        }
+                                    } else if !response.has_focus() {
+                                        let displayed = current_fps.to_string();
+                                        if row.framerate_text != displayed {
+                                            row.framerate_text = displayed;
+                                        }
+                                    }
+                                    ui.label("fps");
+                                }
+
                                 ui.end_row();
-                                continue;
-                            };
-                            let edit = egui::TextEdit::singleline(&mut row.framerate_text)
-                                .desired_width(40.0);
-                            let response = ui.add(edit);
-                            // Capture commit *before* syncing from snapshot —
-                            // on the lost-focus frame, has_focus is already
-                            // false, so an unguarded snapshot sync would
-                            // overwrite the user's input before we read it.
-                            if response.lost_focus() {
-                                match row.framerate_text.parse::<u8>() {
-                                    Ok(fps) if fps > 0 => {
-                                        framerate_action = Some((universe, fps));
-                                    }
-                                    _ => {
-                                        framerate_error = Some(format!(
-                                            "invalid FPS \"{}\" (expected 1..=255)",
-                                            row.framerate_text
-                                        ));
-                                        row.framerate_text = current_fps.to_string();
-                                    }
-                                }
-                            } else if !response.has_focus() {
-                                let displayed = current_fps.to_string();
-                                if row.framerate_text != displayed {
-                                    row.framerate_text = displayed;
-                                }
                             }
-                            ui.label("fps");
-                        }
-
-                        ui.end_row();
-                    }
-                });
+                        });
+                },
+            );
 
             if let Some(msg) = framerate_error {
                 self.ctx.report_error(msg);
@@ -340,6 +361,35 @@ mod test {
         });
         harness.run();
         harness.snapshot("dmx_panel_offline");
+    }
+
+    #[test]
+    fn render_with_many_ports() {
+        // More ports than the scroll cap: the available-ports list must stay
+        // height-bounded and scroll rather than growing the panel.
+        let client = auto_respond_client();
+        let status = DmxPortStatus { ports: vec![] };
+        let mut modal = MessageModal::default();
+        let mut state = DmxPortPanelState::new();
+        state.available_ports = (0..20)
+            .map(|_| Box::new(rust_dmx::OfflineDmxPort) as Box<dyn rust_dmx::DmxPort>)
+            .collect();
+        let debug_open = debug_open();
+
+        let mut harness = Harness::new_ui(|ui| {
+            DmxPortPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                port_status: &status,
+                debug_open: &debug_open,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.snapshot("dmx_panel_many_ports");
     }
 
     #[test]
