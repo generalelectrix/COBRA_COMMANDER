@@ -1,4 +1,4 @@
-//! Cooperative shutdown for poll-driven worker threads.
+//! Cooperative shutdown for long-lived worker threads.
 //!
 //! A thread whose only input is a channel stops when that channel's sender
 //! drops, so it needs no signal. This module serves loops with no closable
@@ -6,31 +6,48 @@
 //! joins their handles together on request.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use log::error;
 
-/// A flag a worker polls to learn it should stop.
+/// State shared between a [`Shutdown`] and its clones.
+#[derive(Default)]
+struct Inner {
+    /// Read lock-free by [`Shutdown::triggered`] on hot paths.
+    flag: AtomicBool,
+    /// Held only to coordinate the condvar, so a [`Shutdown::sleep`] waiter
+    /// cannot miss a trigger that lands between its flag check and its wait.
+    guard: Mutex<()>,
+    wake: Condvar,
+}
+
+/// A signal a worker observes to learn it should stop.
 #[derive(Clone, Default)]
-pub struct Shutdown(Arc<AtomicBool>);
+pub struct Shutdown(Arc<Inner>);
 
 impl Shutdown {
     /// True once shutdown has been requested.
     pub fn triggered(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
+        self.0.flag.load(Ordering::Acquire)
     }
 
-    /// Sleep up to `dur`, returning early once shutdown is triggered.
+    /// Request shutdown and wake every thread blocked in [`Shutdown::sleep`].
+    fn trigger(&self) {
+        let _guard = self.0.guard.lock().expect("shutdown lock");
+        self.0.flag.store(true, Ordering::Release);
+        self.0.wake.notify_all();
+    }
+
+    /// Block until shutdown is triggered or `dur` elapses.
     pub fn sleep(&self, dur: Duration) {
-        let step = Duration::from_millis(50);
-        let mut remaining = dur;
-        while !remaining.is_zero() && !self.triggered() {
-            let nap = step.min(remaining);
-            thread::sleep(nap);
-            remaining -= nap;
-        }
+        let guard = self.0.guard.lock().expect("shutdown lock");
+        let _ = self
+            .0
+            .wake
+            .wait_timeout_while(guard, dur, |_| !self.triggered())
+            .expect("shutdown lock");
     }
 }
 
@@ -74,7 +91,7 @@ impl Workers {
     /// channel-driven worker that only stops once a flag-driven worker drops its
     /// sender is not gated on the order the two were registered.
     pub fn shutdown_and_join(&self, timeout: Duration) -> Stragglers {
-        self.shutdown.0.store(true, Ordering::Relaxed);
+        self.shutdown.trigger();
         let handles: Vec<JoinHandle<()>> = self
             .handles
             .lock()
@@ -133,6 +150,28 @@ mod tests {
         );
 
         UdpSocket::bind(addr).expect("port should be free immediately after shutdown");
+    }
+
+    /// A worker blocked in `sleep` wakes the instant shutdown is triggered
+    /// instead of waiting out its full duration.
+    #[test]
+    fn sleep_wakes_immediately_on_shutdown() {
+        let workers = Workers::default();
+        let started = Instant::now();
+        workers.spawn("sleeper", |shutdown| {
+            // Would block for a minute if the condvar never woke it.
+            shutdown.sleep(Duration::from_secs(60));
+        });
+        thread::sleep(Duration::from_millis(50));
+        let Stragglers(stragglers) = workers.shutdown_and_join(Duration::from_secs(2));
+        assert!(
+            stragglers.is_empty(),
+            "sleeper did not wake: {stragglers:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "sleep blocked instead of waking on the signal"
+        );
     }
 
     /// A worker that ignores the flag is reported as a straggler rather than

@@ -362,16 +362,15 @@ impl eframe::App for ConsoleApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // Signal and join every worker thread before the process exits, so the
-        // OSC receive socket and the rest are released instead of leaking to a
-        // lingering process. This runs ahead of `Drop`, so a blocking destructor
-        // cannot strand the port; the timeout then guarantees exit regardless.
+        // Signal and join every worker thread while the GUI is still tearing
+        // down, so the OSC receive socket and the rest are released rather than
+        // left running. Runs before the app's `Drop`, so a worker can't be left
+        // alive to deadlock a destructor that waits on it.
         let crate::shutdown::Stragglers(stragglers) =
             crate::shutdown::workers().shutdown_and_join(std::time::Duration::from_secs(2));
         if !stragglers.is_empty() {
             log::warn!("exiting with worker threads still running: {stragglers:?}");
         }
-        std::process::exit(0);
     }
 }
 

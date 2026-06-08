@@ -44,7 +44,7 @@ impl WledController {
             let mut wled = initialize(&init_url, Duration::from_secs(5));
             let sleep = Duration::from_millis(100);
             loop {
-                std::thread::sleep(sleep);
+                shutdown.sleep(sleep);
                 if shutdown.triggered() {
                     return;
                 }
