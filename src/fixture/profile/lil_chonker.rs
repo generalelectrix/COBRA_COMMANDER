@@ -1,7 +1,7 @@
-//! "Lil Chonker" - the "Chode" 90W spot moving head (15-channel mode).
+//! "Lil Chonker": mini LED mover (15-channel mode).
 //!
 //! Color wheel, two gobo wheels (one fixed, one rotating), prism, focus.
-//! Color and gobo DMX values are placeholders pending a hardware mapping pass.
+//! Basically a mini Mac 250 Entour, but with crappier rotating gobos.
 use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
@@ -28,7 +28,6 @@ pub struct LilChonker {
     pan: Mirrored<RenderBipolarToCoarseAndFine>,
     #[animate]
     tilt: Mirrored<RenderBipolarToCoarseAndFine>,
-    /// Bipolar so it rests at mid-throw and rides the positioner's bipolar focus offset.
     #[animate]
     focus: BipolarChannel,
 }
