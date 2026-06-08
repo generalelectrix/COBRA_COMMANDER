@@ -1121,7 +1121,6 @@ mod test {
     const FIXTURES_WITHOUT_TEMPLATES: &[&str] = &[
         "Comet",
         "EmptyChannel",
-        "Faderboard",
         "Leko",
         "RugDoctor",
         "SwarmolonDerby",

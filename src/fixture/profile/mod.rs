@@ -18,6 +18,7 @@ pub mod h2o;
 pub mod hypnotic;
 pub mod iwash_led;
 pub mod leko;
+pub mod lil_chonker;
 pub mod lumasphere;
 pub mod lumitone;
 pub mod quadphase;
