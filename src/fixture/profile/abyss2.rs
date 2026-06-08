@@ -45,7 +45,7 @@ impl Default for Abyss2 {
                     ("Orange", 116),
                 ],
             ),
-            color_rotate: Bool::new_off("ColorRotate", ()),
+            color_rotate: Bool::new_on("ColorRotate", ()),
             // Ch 2 (upper half): CW 195-255 slow→fast, stop 189-194, CCW 128-188 slow→fast.
             color_rotation: Bipolar::split_channel("ColorRotation", 1, 195, 255, 188, 128, 191)
                 .with_detent()
