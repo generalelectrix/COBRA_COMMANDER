@@ -14,17 +14,18 @@ use strum_macros::{Display, EnumIter};
     Debug, Clone, Copy, Default, Eq, PartialEq, Deserialize, Display, EnumIter, AsPatchOption,
 )]
 pub enum ColorSpace {
-    /// HSV color space with green shifted to hue = 0.
-    #[default]
-    Hsv,
-    /// HSI color space with green shifted to hue = 0.
-    Hsi,
     /// HSLuv perceptually uniform color space, green shifted to hue = 0.
     /// www.hsluv.org
     ///
-    /// Hue coordinates are slightly re-scaled to put primaries exactly 120
-    /// degrees apart.
+    /// The hue axis is remapped so each hue value matches the corresponding
+    /// hue in HSV and HSI, keeping a given hue consistent across all three
+    /// spaces.
+    #[default]
     Hsluv,
+    /// HSI color space with green shifted to hue = 0.
+    Hsi,
+    /// HSV color space with green shifted to hue = 0.
+    Hsv,
 }
 
 /// Render a specific color out into various integer-based output spaces.
@@ -102,11 +103,11 @@ impl RenderColor for Hsi {
     }
 }
 
-/// A color in the HSLuv color space.
+/// A color in the HSLuv color space, with green at hue = 0.
 ///
-/// The behavior of hue is tweaked compared to the reference implementation.
-/// Green is at hue = 0.
-/// The primaries are adjusted to be exactly 120 degrees apart.
+/// Unlike standard HSLuv, the hue axis is remapped so each hue value matches
+/// the corresponding hue in HSV and HSI; saturation and lightness keep their
+/// HSLuv meaning.
 #[derive(Clone, Debug)]
 pub struct Hsluv {
     pub hue: Phase,

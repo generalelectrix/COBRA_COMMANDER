@@ -2,6 +2,8 @@ mod address_map;
 mod widgets;
 mod working_copy;
 
+use std::collections::HashMap;
+
 use eframe::egui;
 
 use crate::config::{DmxAddrConfig, FixtureGroupConfig, GroupId, GroupName, PatchBlock};
@@ -57,11 +59,14 @@ struct AddFixtureForm {
     addr: String,
     universe: String,
     count: String,
+    /// Empty DMX channels left between each fixture when patching several.
+    skip: String,
     mirror: bool,
     patch_options: Vec<(String, String)>,
 }
 
 impl AddFixtureForm {
+    /// Build a fresh form for a group with each patch option at its default.
     fn new_for_group(
         group: &working_copy::WorkingGroup,
         patcher: &Patcher,
@@ -72,11 +77,33 @@ impl AddFixtureForm {
             .map(|(key, opt)| (key.clone(), default_for_option(opt)))
             .collect();
 
-        let default_patch_opts = build_options_from_form(&patch_options);
-        let default_ch_count =
-            (patcher.create_patch)(group.config.options.clone(), default_patch_opts)
-                .map(|c| c.channel_count)
-                .unwrap_or(0);
+        let addr = Self::next_addr(group, patcher, addr_map, &patch_options);
+
+        Self {
+            addr,
+            universe: "0".to_string(),
+            count: "1".to_string(),
+            skip: "0".to_string(),
+            mirror: false,
+            patch_options,
+        }
+    }
+
+    /// First free address for one more fixture of the given options, searching
+    /// after the group's existing patches. Empty when the fixture is non-DMX.
+    fn next_addr(
+        group: &working_copy::WorkingGroup,
+        patcher: &Patcher,
+        addr_map: &AddressMap,
+        patch_options: &[(String, String)],
+    ) -> String {
+        let opts = build_options_from_form(patch_options);
+        let ch_count = (patcher.create_patch)(group.config.options.clone(), opts)
+            .map(|c| c.channel_count)
+            .unwrap_or(0);
+        if ch_count == 0 {
+            return String::new();
+        }
 
         let start_after = group
             .config
@@ -89,22 +116,10 @@ impl AddFixtureForm {
             })
             .unwrap_or(1);
 
-        let next_addr = if default_ch_count > 0 {
-            addr_map
-                .find_available(0, default_ch_count, start_after)
-                .map(|a| a.to_string())
-                .unwrap_or_default()
-        } else {
-            String::new()
-        };
-
-        Self {
-            addr: next_addr,
-            universe: "0".to_string(),
-            count: "1".to_string(),
-            mirror: false,
-            patch_options,
-        }
+        addr_map
+            .find_available(0, ch_count, start_after)
+            .map(|a| a.to_string())
+            .unwrap_or_default()
     }
 }
 
@@ -124,10 +139,9 @@ pub struct PatchPanelState {
     mode: PanelMode,
     /// Group index pending delete confirmation via modal.
     pending_delete: Option<usize>,
-    /// Persistent add-fixture form, rebuilt when the selected group changes.
-    add_fixture_form: Option<AddFixtureForm>,
-    /// Which group index the current add_fixture_form was built for.
-    add_fixture_group: Option<usize>,
+    /// Per-group add-fixture form drafts, keyed by stable GroupId so each
+    /// group's in-progress entry survives switching away and back.
+    add_fixture_forms: HashMap<GroupId, AddFixtureForm>,
 }
 
 impl PatchPanelState {
@@ -138,8 +152,7 @@ impl PatchPanelState {
             show_address_map: false,
             mode: PanelMode::View,
             pending_delete: None,
-            add_fixture_form: None,
-            add_fixture_group: None,
+            add_fixture_forms: HashMap::new(),
         }
     }
 }
@@ -181,8 +194,7 @@ impl PatchPanel<'_> {
                             let configs = wc.configs();
                             if self.ctx.send_command(MetaCommand::Repatch(configs)).is_ok() {
                                 self.state.working_copy = None;
-                                self.state.add_fixture_form = None;
-                                self.state.add_fixture_group = None;
+                                self.state.add_fixture_forms.clear();
                                 self.state.mode = PanelMode::View;
                                 self.ctx.modal.show(
                                     "Patch Applied",
@@ -193,8 +205,7 @@ impl PatchPanel<'_> {
                         if cancel_button(ui, "Revert") {
                             self.state.working_copy = None;
                             self.state.selected_group = None;
-                            self.state.add_fixture_form = None;
-                            self.state.add_fixture_group = None;
+                            self.state.add_fixture_forms.clear();
                             self.state.mode = PanelMode::View;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -264,12 +275,16 @@ impl PatchPanel<'_> {
                             let Some(wc) = self.state.working_copy.as_mut() else {
                                 return;
                             };
+                            let removed_id = wc.groups.get(group_idx).map(|g| g.config.id);
                             wc.groups.remove(group_idx);
                             self.state.selected_group = if wc.groups.is_empty() {
                                 None
                             } else {
                                 Some(group_idx.min(wc.groups.len() - 1))
                             };
+                            if let Some(id) = removed_id {
+                                self.state.add_fixture_forms.remove(&id);
+                            }
                             self.state.pending_delete = None;
                             ui.close();
                         }
@@ -416,7 +431,10 @@ impl PatchPanel<'_> {
                 }
             });
 
-            ui.separator();
+            // Grow the divider down to meet the horizontal rule that closes
+            // the section (egui sizes it to content height, leaving a gap).
+            let grow = ui.spacing().item_spacing.y + 3.0;
+            ui.add(egui::Separator::default().vertical().grow(grow));
 
             // Right column: selected group detail.
             ui.vertical(|ui| {
@@ -429,11 +447,10 @@ impl PatchPanel<'_> {
                         self.render_detail_editable_fields(ui, sel);
                         self.render_detail_group_options(ui, sel);
 
-                        ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                            if cancel_button(ui, "Delete Group") {
-                                self.state.pending_delete = Some(sel);
-                            }
-                        });
+                        ui.add_space(8.0);
+                        if cancel_button(ui, "Delete Group") {
+                            self.state.pending_delete = Some(sel);
+                        }
                     }
                 }
             });
@@ -532,19 +549,33 @@ impl PatchPanel<'_> {
             AddressMap::from_working_copy(wc)
         };
 
-        // Ensure the add-fixture form exists and matches the selected group.
-        if self.state.add_fixture_group != Some(group_idx) {
+        // Ensure a form draft exists for the selected group. Stored per stable
+        // GroupId so each group keeps its own draft across switches, and a
+        // delete/reorder that moves a different group into this index uses that
+        // group's draft rather than a stale one.
+        let group_id = self
+            .state
+            .working_copy
+            .as_ref()
+            .and_then(|wc| wc.groups.get(group_idx))
+            .map(|g| g.config.id);
+        let Some(group_id) = group_id else {
+            return;
+        };
+        if !self.state.add_fixture_forms.contains_key(&group_id) {
             let Some(wc) = self.state.working_copy.as_ref() else {
                 return;
             };
-            let fixture_type = &wc.groups[group_idx].config.fixture;
-            if let Some(patcher) = self.patchers.iter().find(|p| p.name.0 == *fixture_type) {
-                self.state.add_fixture_form = Some(AddFixtureForm::new_for_group(
-                    &wc.groups[group_idx],
-                    patcher,
-                    &addr_map,
-                ));
-                self.state.add_fixture_group = Some(group_idx);
+            let Some(group) = wc.groups.get(group_idx) else {
+                return;
+            };
+            if let Some(patcher) = self
+                .patchers
+                .iter()
+                .find(|p| p.name.0 == group.config.fixture)
+            {
+                let form = AddFixtureForm::new_for_group(group, patcher, &addr_map);
+                self.state.add_fixture_forms.insert(group_id, form);
             }
         }
 
@@ -559,11 +590,17 @@ impl PatchPanel<'_> {
 
             ui.separator();
 
-            // Right column: add fixture form.
+            // Right column: add fixture form. Scrollable so arbitrary patch
+            // options can't push the form past the available height.
             ui.vertical(|ui| {
                 ui.set_min_width(ui.available_width());
                 ui.heading("Add Fixture To Group");
-                self.render_inline_add_fixture(ui, group_idx);
+                egui::ScrollArea::vertical()
+                    .id_salt("add_fixture_form")
+                    .max_height(fixtures_height)
+                    .show(ui, |ui| {
+                        self.render_inline_add_fixture(ui, group_idx);
+                    });
             });
         });
     }
@@ -827,7 +864,16 @@ impl PatchPanel<'_> {
     // -----------------------------------------------------------------------
 
     fn render_inline_add_fixture(&mut self, ui: &mut egui::Ui, group_idx: usize) {
-        let Some(form) = self.state.add_fixture_form.as_mut() else {
+        let group_id = match self
+            .state
+            .working_copy
+            .as_ref()
+            .and_then(|wc| wc.groups.get(group_idx))
+        {
+            Some(g) => g.config.id,
+            None => return,
+        };
+        let Some(form) = self.state.add_fixture_forms.get_mut(&group_id) else {
             return;
         };
 
@@ -862,6 +908,11 @@ impl PatchPanel<'_> {
                 ui.label("Count:");
                 ui.add(egui::TextEdit::singleline(&mut form.count).desired_width(field_width));
             });
+            ui.horizontal(|ui| {
+                ui.label("Skip:");
+                ui.add(egui::TextEdit::singleline(&mut form.skip).desired_width(field_width))
+                    .on_hover_text("Empty DMX channels left between each fixture");
+            });
         }
 
         if let Some(patcher) = patcher {
@@ -876,6 +927,17 @@ impl PatchPanel<'_> {
                         }
                     }
                 }
+            }
+        }
+
+        // Per-fixture channel count for the current option selection.
+        if let Some(patcher) = patcher {
+            let opts = build_options_from_form(&form.patch_options);
+            if let Ok(cfg) =
+                (patcher.create_patch)(wc.groups[group_idx].config.options.clone(), opts)
+                && cfg.channel_count > 0
+            {
+                ui.label(format!("Channels: {}", cfg.channel_count));
             }
         }
 
@@ -906,13 +968,25 @@ impl PatchPanel<'_> {
     }
 
     fn commit_add_fixture(&mut self, group_idx: usize) {
-        let Some(ref form) = self.state.add_fixture_form else {
+        let group_id = match self
+            .state
+            .working_copy
+            .as_ref()
+            .and_then(|wc| wc.groups.get(group_idx))
+        {
+            Some(g) => g.config.id,
+            None => return,
+        };
+        let Some(form) = self.state.add_fixture_forms.get(&group_id) else {
             return;
         };
 
         let universe: usize = form.universe.parse().unwrap_or(0);
         let mirror = form.mirror;
         let patch_options = build_options_from_form(&form.patch_options);
+        let addr_str = form.addr.clone();
+        let count: usize = form.count.parse().unwrap_or(1).max(1);
+        let skip: usize = form.skip.parse().unwrap_or(0);
 
         let Some(wc) = self.state.working_copy.as_mut() else {
             return;
@@ -941,11 +1015,10 @@ impl PatchPanel<'_> {
             });
             group.channel_counts.push(0);
         } else {
-            let start_addr: usize = match form.addr.parse() {
+            let start_addr: usize = match addr_str.parse() {
                 Ok(v) => v,
                 Err(_) => return,
             };
-            let count: usize = form.count.parse().unwrap_or(1).max(1);
 
             if count == 1 {
                 group.config.patches.push(PatchBlock {
@@ -957,7 +1030,7 @@ impl PatchPanel<'_> {
                 group.channel_counts.push(ch_count);
             } else {
                 for c in 0..count {
-                    let addr = start_addr + c * ch_count;
+                    let addr = start_addr + c * (ch_count + skip);
                     group.config.patches.push(PatchBlock {
                         addr: Some(DmxAddrConfig::Single(DmxAddr::new(addr))),
                         universe,
@@ -969,21 +1042,25 @@ impl PatchPanel<'_> {
             }
         }
 
-        // Rebuild the form with fresh defaults (next available address, etc.).
-        let patcher = self.patchers.iter().find(|p| {
-            p.name.0
-                == self.state.working_copy.as_ref().unwrap().groups[group_idx]
-                    .config
-                    .fixture
-        });
-        if let Some(patcher) = patcher {
-            let wc = self.state.working_copy.as_ref().unwrap();
+        // Advance the stored draft's address past what was just patched; every
+        // other field (options, skip, count, universe) stays so the next patch
+        // reuses the selection.
+        let Some(wc) = self.state.working_copy.as_ref() else {
+            return;
+        };
+        let Some(group) = wc.groups.get(group_idx) else {
+            return;
+        };
+        if let Some(patcher) = self
+            .patchers
+            .iter()
+            .find(|p| p.name.0 == group.config.fixture)
+        {
             let new_addr_map = AddressMap::from_working_copy(wc);
-            self.state.add_fixture_form = Some(AddFixtureForm::new_for_group(
-                &wc.groups[group_idx],
-                patcher,
-                &new_addr_map,
-            ));
+            if let Some(form) = self.state.add_fixture_forms.get_mut(&group_id) {
+                form.addr =
+                    AddFixtureForm::next_addr(group, patcher, &new_addr_map, &form.patch_options);
+            }
         }
     }
 }
@@ -1614,12 +1691,9 @@ mod test {
         let fixture_type = &wc.groups[group_idx].config.fixture;
         let patcher = patchers.iter().find(|p| p.name.0 == *fixture_type).unwrap();
         let addr_map = AddressMap::from_working_copy(wc);
-        state.add_fixture_form = Some(AddFixtureForm::new_for_group(
-            &wc.groups[group_idx],
-            patcher,
-            &addr_map,
-        ));
-        state.add_fixture_group = Some(group_idx);
+        let id = wc.groups[group_idx].config.id;
+        let form = AddFixtureForm::new_for_group(&wc.groups[group_idx], patcher, &addr_map);
+        state.add_fixture_forms.insert(id, form);
     }
 
     #[test]
@@ -1718,10 +1792,7 @@ mod test {
         setup_add_fixture(&snapshot, &patchers, 0, &mut state);
 
         // Simulate commit — the form addr is empty for non-DMX.
-        let form = state
-            .add_fixture_form
-            .as_ref()
-            .expect("expected add_fixture_form");
+        let form = selected_form(&state).expect("expected add-fixture form");
         assert!(
             form.addr.is_empty(),
             "non-DMX fixture should have empty addr"
@@ -1774,5 +1845,367 @@ mod test {
         assert_eq!(group.config.patches.len(), 2);
         assert!(group.config.patches[1].addr.is_some());
         assert_eq!(group.channel_counts[1], 1);
+    }
+
+    // Patching several fixtures with a skip leaves that many empty channels
+    // between each: a 1-channel fixture, count 3, skip 2, from address 10 lands
+    // at 10, 13, 16 (stride = channel_count + skip).
+    #[test]
+    fn commit_add_fixture_applies_skip_between_fixtures() {
+        let patchers = test_patchers();
+        let snapshot = test_snapshot_with_groups();
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        {
+            let form = selected_form_mut(&mut state).expect("form");
+            form.addr = "10".to_string();
+            form.count = "3".to_string();
+            form.skip = "2".to_string();
+        }
+
+        let client = auto_respond_client();
+        let mut modal = MessageModal::default();
+        let mut panel = PatchPanel {
+            ctx: GuiContext {
+                modal: &mut modal,
+                client: &client,
+            },
+            state: &mut state,
+            snapshot: &snapshot,
+            patchers: &patchers,
+        };
+        panel.commit_add_fixture(0);
+
+        let group = &panel.state.working_copy.as_ref().unwrap().groups[0];
+        // Original group had one patch at address 1; three more were appended.
+        let addrs: Vec<usize> = group.config.patches[1..]
+            .iter()
+            .filter_map(|b| b.start_count().0.map(|a| a.dmx_index() + 1))
+            .collect();
+        assert_eq!(addrs, vec![10, 13, 16]);
+    }
+
+    /// The add-fixture form for the currently selected group.
+    fn selected_form(state: &PatchPanelState) -> Option<&AddFixtureForm> {
+        let id = state
+            .working_copy
+            .as_ref()?
+            .groups
+            .get(state.selected_group?)?
+            .config
+            .id;
+        state.add_fixture_forms.get(&id)
+    }
+
+    /// Mutable add-fixture form for the currently selected group.
+    fn selected_form_mut(state: &mut PatchPanelState) -> Option<&mut AddFixtureForm> {
+        let id = state
+            .working_copy
+            .as_ref()?
+            .groups
+            .get(state.selected_group?)?
+            .config
+            .id;
+        state.add_fixture_forms.get_mut(&id)
+    }
+
+    /// Render one panel frame, leaving the state mutated in place.
+    fn run_patch_frame(
+        state: &mut PatchPanelState,
+        snapshot: &PatchSnapshot,
+        patchers: &[Patcher],
+    ) {
+        let client = auto_respond_client();
+        let mut modal = MessageModal::default();
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state,
+                snapshot,
+                patchers,
+            }
+            .ui(ui);
+        });
+        harness.run();
+    }
+
+    /// Keys of the selected group's add-fixture form patch options.
+    fn form_option_keys(state: &PatchPanelState) -> Vec<String> {
+        selected_form(state)
+            .map(|f| f.patch_options.iter().map(|(k, _)| k.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Value of one patch option in the selected group's add-fixture form.
+    fn form_option_value(state: &PatchPanelState, key: &str) -> String {
+        selected_form(state)
+            .and_then(|f| {
+                f.patch_options
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, v)| v.clone())
+            })
+            .unwrap_or_default()
+    }
+
+    // Deleting a group at a lower index than the selection shifts a different
+    // group into the selected index; the add-fixture form must rebuild for the
+    // new occupant. Groups `[Simple "A", PatchOpts "B"]`: select A (empty
+    // options), delete A so B takes index 0 — the form must then show B's
+    // `variant`/`offset` options, not A's empty option set.
+    #[test]
+    fn delete_group_rebuilds_add_fixture_form_for_new_occupant() {
+        let client = auto_respond_client();
+        let snapshot = PatchSnapshot {
+            groups: vec![
+                simple_group(Some("A"), &[1]),
+                patch_opts_group(Some("B"), vec![patch_opts_block(20, "Narrow")]),
+            ]
+            .into(),
+        };
+        let patchers = test_patchers();
+        let mut modal = MessageModal::default();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+
+        // Frame 1: form built for the selected Simple group A (no patch options).
+        harness.run();
+        harness.get_by_label("Delete Group").click();
+        harness.run();
+        // Confirm the deletion in the modal.
+        harness.get_by_label("Delete").click();
+        harness.run();
+        harness.run();
+        drop(harness);
+
+        // B has shifted into index 0 and is now selected; its options must show.
+        assert_eq!(
+            form_option_keys(&state),
+            vec!["variant".to_string(), "offset".to_string()],
+            "after deleting A, the add-fixture form must rebuild for B (PatchOpts)"
+        );
+    }
+
+    // Selecting an option then committing through the actual "+ Add Fixture"
+    // button must leave the selection in place for the next patch — the
+    // per-frame rebuild guard must not reset it for the same group.
+    #[test]
+    fn patch_option_selection_survives_render_after_commit() {
+        let client = auto_respond_client();
+        let snapshot = test_snapshot_with_options();
+        let patchers = test_patchers();
+        let mut modal = MessageModal::default();
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        // Pre-select the non-default Wide variant with a valid free address.
+        {
+            let form = selected_form_mut(&mut state).expect("form");
+            for (k, v) in form.patch_options.iter_mut() {
+                if k == "variant" {
+                    *v = "Wide".to_string();
+                }
+            }
+            form.addr = "100".to_string();
+        }
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+
+        harness.run();
+        harness.get_by_label("+ Add Fixture").click();
+        harness.run();
+        harness.run();
+        drop(harness);
+
+        assert_eq!(
+            form_option_value(&state, "variant"),
+            "Wide",
+            "selection must persist for the next patch in the same group"
+        );
+    }
+
+    // The carried selection is scoped to one group: switching to a different
+    // group of the same fixture type must reset to the default, not leak the
+    // prior group's choice.
+    #[test]
+    fn switching_groups_does_not_leak_patch_option_selection() {
+        let client = auto_respond_client();
+        let snapshot = PatchSnapshot {
+            groups: vec![
+                patch_opts_group(Some("A"), vec![]),
+                patch_opts_group(Some("B"), vec![]),
+            ]
+            .into(),
+        };
+        let patchers = test_patchers();
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        // Choose Wide in group A and commit it.
+        {
+            let form = selected_form_mut(&mut state).expect("form");
+            for (k, v) in form.patch_options.iter_mut() {
+                if k == "variant" {
+                    *v = "Wide".to_string();
+                }
+            }
+            form.addr = "100".to_string();
+        }
+        {
+            let mut modal = MessageModal::default();
+            let mut panel = PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            };
+            panel.commit_add_fixture(0);
+        }
+
+        // Switch to group B and let the rebuild guard run.
+        state.selected_group = Some(1);
+        let mut modal = MessageModal::default();
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        drop(harness);
+
+        assert_eq!(
+            form_option_value(&state, "variant"),
+            "Narrow",
+            "group B must show the default, not group A's Wide selection"
+        );
+    }
+
+    // Committing a fixture must retain the selected patch options for the next
+    // one, so repeated patches of the same variant need no re-selection. Select
+    // "Wide" (6 channels), commit, and the rebuilt form must still hold "Wide".
+    #[test]
+    fn commit_add_fixture_preserves_selected_patch_options() {
+        let patchers = test_patchers();
+        let snapshot = test_snapshot_with_options();
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        // Choose the non-default "Wide" variant and a free address.
+        {
+            let form = selected_form_mut(&mut state).expect("form");
+            for (k, v) in form.patch_options.iter_mut() {
+                if k == "variant" {
+                    *v = "Wide".to_string();
+                }
+            }
+            form.addr = "100".to_string();
+        }
+
+        let client = auto_respond_client();
+        let mut modal = MessageModal::default();
+        let mut panel = PatchPanel {
+            ctx: GuiContext {
+                modal: &mut modal,
+                client: &client,
+            },
+            state: &mut state,
+            snapshot: &snapshot,
+            patchers: &patchers,
+        };
+        panel.commit_add_fixture(0);
+
+        // The committed fixture used Wide (6 channels)...
+        assert_eq!(
+            *panel.state.working_copy.as_ref().unwrap().groups[0]
+                .channel_counts
+                .last()
+                .unwrap(),
+            6
+        );
+
+        // ...and the stored draft must still hold Wide for the next patch.
+        assert_eq!(
+            form_option_value(panel.state, "variant"),
+            "Wide",
+            "patch option selection must persist across commits"
+        );
+    }
+
+    // A form draft is kept per group: setting an option, switching to another
+    // group, and switching back must restore the first group's draft rather
+    // than reverting to defaults.
+    #[test]
+    fn add_fixture_form_persists_across_group_switch() {
+        let snapshot = PatchSnapshot {
+            groups: vec![
+                patch_opts_group(Some("A"), vec![]),
+                patch_opts_group(Some("B"), vec![]),
+            ]
+            .into(),
+        };
+        let patchers = test_patchers();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+
+        // Build group A's draft and pick the non-default Wide variant.
+        run_patch_frame(&mut state, &snapshot, &patchers);
+        {
+            let form = selected_form_mut(&mut state).expect("form");
+            for (k, v) in form.patch_options.iter_mut() {
+                if k == "variant" {
+                    *v = "Wide".to_string();
+                }
+            }
+        }
+
+        // Switch to B and back to A.
+        state.selected_group = Some(1);
+        run_patch_frame(&mut state, &snapshot, &patchers);
+        state.selected_group = Some(0);
+        run_patch_frame(&mut state, &snapshot, &patchers);
+
+        assert_eq!(
+            form_option_value(&state, "variant"),
+            "Wide",
+            "group A's draft must survive switching away and back"
+        );
     }
 }
