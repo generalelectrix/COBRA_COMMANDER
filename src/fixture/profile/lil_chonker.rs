@@ -40,8 +40,8 @@ impl Default for LilChonker {
             dimmer: Unipolar::full_channel("Dimmer", 5)
                 .strobed()
                 .with_channel_level(),
-            // Ch 8: color wheel — open + 7 colors (names confirmed by eye on the head).
-            // DMX values still placeholders, evenly spaced across the solid-color range.
+            // Ch 8: color wheel — open + 7 colors at steps of 20. `SplitColor` adds 10,
+            // landing on the half-step between adjacent colors (e.g. 10 = open/red).
             color: LabeledSelect::new(
                 "Color",
                 7,
@@ -55,12 +55,15 @@ impl Default for LilChonker {
                     ("Magenta", 120),
                     ("Cyan", 140),
                 ],
-            ),
-            // Ch 12: fixed gobo wheel — open + 8 gobos (9 positions). dmx = index * 11 + 5;
-            // index 0 is the open position.
+            )
+            .with_split(10),
+            // Ch 12: fixed gobo wheel — open + 8 gobos (9 positions). dmx = index * 11 + 5.
+            // Gobos by index: 0 open, 1 gears, 2 breakup, 3 diamonds, 4 bubbles,
+            // 5 asym tri spiral, 6 basket, 7 teeth, 8 pyramid.
             gobo: IndexedSelect::multiple("Gobo", 11, false, 9, 11, 5),
-            // Ch 10: rotating gobo wheel — open + 6 gobos (7 positions). dmx = index * 10 + 5;
-            // index 0 is the open position.
+            // Ch 10: rotating gobo wheel — open + 6 gobos (7 positions). dmx = index * 10 + 5.
+            // Gobos by index: 0 open, 1 breakup, 2 triangle, 3 spiral,
+            // 4 pents on blue (litho, white on blue), 5 three dots, 6 offset dot.
             rotating_gobo: IndexedSelect::multiple("RotatingGobo", 9, false, 7, 10, 5),
             // Ch 11: rotating-gobo spin. Forward 61-158, reverse 159-255, stop ~30.
             gobo_rotation: Bipolar::split_channel("GoboRotation", 10, 61, 158, 159, 255, 30)
