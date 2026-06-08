@@ -17,9 +17,9 @@ use log::error;
 struct Inner {
     /// Read lock-free by [`Shutdown::triggered`] on hot paths.
     flag: AtomicBool,
-    /// Held only to coordinate the condvar, so a [`Shutdown::sleep`] waiter
-    /// cannot miss a trigger that lands between its flag check and its wait.
-    guard: Mutex<()>,
+    /// The signal under the condvar's lock, mirroring `flag`; a waiter reads it
+    /// from its guard rather than the atomic.
+    state: Mutex<bool>,
     wake: Condvar,
 }
 
@@ -33,21 +33,25 @@ impl Shutdown {
         self.0.flag.load(Ordering::Acquire)
     }
 
-    /// Request shutdown and wake every thread blocked in [`Shutdown::sleep`].
+    /// Request shutdown and wake every thread blocked in
+    /// [`Shutdown::sleep_or_shutdown`].
     fn trigger(&self) {
-        let _guard = self.0.guard.lock().expect("shutdown lock");
+        let mut state = self.0.state.lock().expect("shutdown lock");
+        *state = true;
         self.0.flag.store(true, Ordering::Release);
         self.0.wake.notify_all();
     }
 
-    /// Block until shutdown is triggered or `dur` elapses.
-    pub fn sleep(&self, dur: Duration) {
-        let guard = self.0.guard.lock().expect("shutdown lock");
-        let _ = self
+    /// Sleep until `dur` elapses or shutdown is triggered, returning `true` if
+    /// it was triggered.
+    pub fn sleep_or_shutdown(&self, dur: Duration) -> bool {
+        let state = self.0.state.lock().expect("shutdown lock");
+        let (state, _) = self
             .0
             .wake
-            .wait_timeout_while(guard, dur, |_| !self.triggered())
+            .wait_timeout_while(state, dur, |&mut triggered| !triggered)
             .expect("shutdown lock");
+        *state
     }
 }
 
@@ -165,7 +169,7 @@ mod tests {
         let started = Instant::now();
         workers.spawn("sleeper", |shutdown| {
             // Would block for a minute if the condvar never woke it.
-            shutdown.sleep(Duration::from_secs(60));
+            assert!(shutdown.sleep_or_shutdown(Duration::from_secs(60)));
         });
         thread::sleep(Duration::from_millis(50));
         let Stragglers(stragglers) = workers.shutdown_and_join(Duration::from_secs(2));

@@ -32,8 +32,7 @@ pub fn spawn(gui_state: Arc<GuiState>) {
     crate::worker::spawn("local-ip-watch", move |shutdown| {
         let mut last = **gui_state.osc_local_ip.load();
         loop {
-            shutdown.sleep(POLL_INTERVAL);
-            if shutdown.triggered() {
+            if shutdown.sleep_or_shutdown(POLL_INTERVAL) {
                 return;
             }
             let next = current_ip();

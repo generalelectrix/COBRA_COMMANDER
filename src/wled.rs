@@ -44,8 +44,7 @@ impl WledController {
             let mut wled = initialize(&init_url, Duration::from_secs(5));
             let sleep = Duration::from_millis(100);
             loop {
-                shutdown.sleep(sleep);
-                if shutdown.triggered() {
+                if shutdown.sleep_or_shutdown(sleep) {
                     return;
                 }
                 let msg = {
