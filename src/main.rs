@@ -66,12 +66,12 @@ mod preview;
 mod show;
 mod show_file;
 mod show_saver;
-mod shutdown;
 mod strobe;
 mod touchosc;
 mod ui_util;
 mod util;
 mod wled;
+mod worker;
 
 fn main() -> Result<()> {
     let args = Cli::try_parse()?;

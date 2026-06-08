@@ -127,7 +127,7 @@ impl Show {
     }
 
     /// Run the show forever in the current thread.
-    pub fn run(&mut self, shutdown: crate::shutdown::Shutdown) {
+    pub fn run(&mut self, shutdown: crate::worker::Shutdown) {
         let mut last_update = Instant::now();
 
         loop {

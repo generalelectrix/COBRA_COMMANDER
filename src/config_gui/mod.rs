@@ -366,8 +366,8 @@ impl eframe::App for ConsoleApp {
         // down, so the OSC receive socket and the rest are released rather than
         // left running. Runs before the app's `Drop`, so a worker can't be left
         // alive to deadlock a destructor that waits on it.
-        let crate::shutdown::Stragglers(stragglers) =
-            crate::shutdown::workers().shutdown_and_join(std::time::Duration::from_secs(2));
+        let crate::worker::Stragglers(stragglers) =
+            crate::worker::shutdown_and_join(std::time::Duration::from_secs(2));
         if !stragglers.is_empty() {
             log::warn!("exiting with worker threads still running: {stragglers:?}");
         }
@@ -494,7 +494,7 @@ pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
 
             let show_gui_state = gui_state.clone();
             let show_envelope_tx = envelope_tx.clone();
-            crate::shutdown::workers().spawn("show", move |shutdown| {
+            crate::worker::spawn("show", move |shutdown| {
                 let patch = match Patch::from_show_file(initial_show_file) {
                     Ok(p) => p,
                     Err(e) => {

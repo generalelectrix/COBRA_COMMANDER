@@ -29,7 +29,7 @@ pub fn current_ip() -> Option<IpAddr> {
 /// Spawn a detached thread that refreshes the host's local IP whenever it
 /// changes.
 pub fn spawn(gui_state: Arc<GuiState>) {
-    crate::shutdown::workers().spawn("local-ip-watch", move |shutdown| {
+    crate::worker::spawn("local-ip-watch", move |shutdown| {
         let mut last = **gui_state.osc_local_ip.load();
         loop {
             shutdown.sleep(POLL_INTERVAL);

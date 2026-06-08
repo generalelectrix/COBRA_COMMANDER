@@ -3,7 +3,7 @@
 use crate::control::{ControlMessage, MetaCommand};
 use crate::osc::sender::OscClientListener;
 use crate::osc::{OscClientId, OscControlMessage, OscError};
-use crate::shutdown::Shutdown;
+use crate::worker::Shutdown;
 use log::{error, warn};
 use rosc::OscPacket;
 use std::net::UdpSocket;

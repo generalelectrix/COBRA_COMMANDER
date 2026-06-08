@@ -19,7 +19,7 @@ impl ShowSaver {
     /// Spawn the worker thread.
     pub fn spawn() -> Self {
         let (tx, rx) = mpsc::channel::<SaveRequest>();
-        crate::shutdown::workers().spawn("show-saver", move |_shutdown| run(rx));
+        crate::worker::spawn("show-saver", move |_shutdown| run(rx));
         Self { tx }
     }
 

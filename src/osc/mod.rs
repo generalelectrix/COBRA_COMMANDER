@@ -100,14 +100,14 @@ impl OscController {
             send,
         );
 
-        crate::shutdown::workers().spawn("osc-listener", move |shutdown| {
+        crate::worker::spawn("osc-listener", move |shutdown| {
             listener.run(shutdown);
         });
 
         let (mut sender, response_send) =
             OscSender::new(initial_listener).context("failed to start OSC sender")?;
 
-        crate::shutdown::workers().spawn("osc-sender", move |_shutdown| {
+        crate::worker::spawn("osc-sender", move |_shutdown| {
             sender.run();
         });
 

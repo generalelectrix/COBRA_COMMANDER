@@ -85,7 +85,7 @@ impl PatchFixture for Lumitone {
             send,
         };
 
-        crate::shutdown::workers().spawn("lumitone", move |_shutdown| {
+        crate::worker::spawn("lumitone", move |_shutdown| {
             let sender = LumitoneSender {
                 addr: options.socket,
                 recv,

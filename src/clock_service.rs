@@ -51,7 +51,7 @@ pub fn connect_to_provider(
     let mut receiver = service.subscribe(provider, 0)?;
     let storage = Arc::new(Mutex::new(SharedClockData::default()));
     let weak_handle = Arc::downgrade(&storage);
-    crate::shutdown::workers().spawn("clock-service", move |_shutdown| {
+    crate::worker::spawn("clock-service", move |_shutdown| {
         loop {
             let msg = match receiver.receive_msg(true) {
                 Err(e) => {

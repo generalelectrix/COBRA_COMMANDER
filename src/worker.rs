@@ -2,8 +2,8 @@
 //!
 //! A thread whose only input is a channel stops when that channel's sender
 //! drops, so it needs no signal. This module serves loops with no closable
-//! input: they observe a shared [`Shutdown`] flag and return, and [`Workers`]
-//! joins their handles together on request.
+//! input: they observe a shared [`Shutdown`] and return, and
+//! [`shutdown_and_join`] stops and joins them all on request.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -51,31 +51,39 @@ impl Shutdown {
     }
 }
 
-/// A registry of poll-driven worker threads that are signalled and joined
-/// together.
+/// The names of workers that did not exit within the join timeout.
+pub struct Stragglers(pub Vec<String>);
+
+/// Spawn a named long-lived worker thread whose handle [`shutdown_and_join`]
+/// joins.
+///
+/// The worker may poll its [`Shutdown`] to stop; one driven only by a channel
+/// can ignore it and return when its sender drops instead.
+pub fn spawn(name: &str, body: impl FnOnce(Shutdown) + Send + 'static) {
+    workers().spawn(name, body);
+}
+
+/// Signal every worker to stop and join them, abandoning any that outlive
+/// `timeout`. Returns the names of the abandoned threads.
+pub fn shutdown_and_join(timeout: Duration) -> Stragglers {
+    workers().shutdown_and_join(timeout)
+}
+
+/// A registry of worker thread handles sharing one [`Shutdown`].
 #[derive(Default)]
-pub struct Workers {
+struct Workers {
     shutdown: Shutdown,
     handles: Mutex<Vec<JoinHandle<()>>>,
 }
 
-/// The names of workers that did not exit within the join timeout.
-pub struct Stragglers(pub Vec<String>);
-
 static WORKERS: OnceLock<Workers> = OnceLock::new();
 
-/// The process-wide worker registry.
-pub fn workers() -> &'static Workers {
+fn workers() -> &'static Workers {
     WORKERS.get_or_init(Workers::default)
 }
 
 impl Workers {
-    /// Spawn a named worker and track its handle for
-    /// [`Workers::shutdown_and_join`].
-    ///
-    /// The worker may poll the [`Shutdown`] to stop; one driven only by a
-    /// channel can ignore it and return when its sender drops instead.
-    pub fn spawn(&self, name: &str, body: impl FnOnce(Shutdown) + Send + 'static) {
+    fn spawn(&self, name: &str, body: impl FnOnce(Shutdown) + Send + 'static) {
         let shutdown = self.shutdown.clone();
         let handle = thread::Builder::new()
             .name(name.to_string())
@@ -84,13 +92,7 @@ impl Workers {
         self.handles.lock().expect("workers lock").push(handle);
     }
 
-    /// Request shutdown and join every registered worker, abandoning any that
-    /// outlive `timeout`. Returns the names of the abandoned threads.
-    ///
-    /// The whole set is awaited together rather than one handle at a time, so a
-    /// channel-driven worker that only stops once a flag-driven worker drops its
-    /// sender is not gated on the order the two were registered.
-    pub fn shutdown_and_join(&self, timeout: Duration) -> Stragglers {
+    fn shutdown_and_join(&self, timeout: Duration) -> Stragglers {
         self.shutdown.trigger();
         let handles: Vec<JoinHandle<()>> = self
             .handles
@@ -98,6 +100,9 @@ impl Workers {
             .expect("workers lock")
             .drain(..)
             .collect();
+        // Await the whole set together rather than one handle at a time, so a
+        // channel-driven worker that only stops once a flag-driven worker drops
+        // its sender is not gated on the order the two were registered.
         let deadline = Instant::now() + timeout;
         while handles.iter().any(|h| !h.is_finished()) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
