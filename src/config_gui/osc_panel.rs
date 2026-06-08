@@ -89,14 +89,21 @@ impl OscPanel<'_> {
             ui.add_space(4.0);
 
             let mut drop_target = None;
-            for client in self.clients {
-                ui.horizontal(|ui| {
-                    ui.label(format!("{}", client.addr()));
-                    if ui.button("Drop").clicked() {
-                        drop_target = Some(*client);
+            crate::ui_util::bounded_scroll(
+                ui,
+                "osc_clients",
+                crate::ui_util::SCROLL_MAX_ROWS,
+                |ui| {
+                    for client in self.clients {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{}", client.addr()));
+                            if ui.button("Drop").clicked() {
+                                drop_target = Some(*client);
+                            }
+                        });
                     }
-                });
-            }
+                },
+            );
             if let Some(client) = drop_target {
                 let _ = self.ctx.send_command(MetaCommand::DropOscClient(client));
             }

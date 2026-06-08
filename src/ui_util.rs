@@ -19,6 +19,26 @@ pub fn row_height_for(ui: &egui::Ui, rows: usize) -> f32 {
     row_height * rows as f32
 }
 
+/// Default number of table rows a bounded list shows before it scrolls.
+pub const SCROLL_MAX_ROWS: usize = 8;
+
+/// Wrap `content` in a vertical scroll area that grows with its content up to
+/// `max_rows` rows, then scrolls. The scrollbar stays hidden until the content
+/// exceeds that height.
+pub fn bounded_scroll<R>(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    max_rows: usize,
+    content: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    egui::ScrollArea::vertical()
+        .max_height(row_height_for(ui, max_rows))
+        .auto_shrink([false, true]) // keep full width; shrink height to content
+        .id_salt(id_salt)
+        .show(ui, content)
+        .inner
+}
+
 /// Compute the width needed for `chars` characters of text, scaled to the current font.
 ///
 /// Useful for setting `TextEdit::desired_width` on numeric fields so they
