@@ -2,7 +2,7 @@
 //! These types are intended to provide both a data model for fixture state,
 //! as well as standardized ways to interact with that state.
 
-use number::{BipolarFloat, UnipolarFloat};
+use number::BipolarFloat;
 
 use crate::osc::{EmitScopedOscMessage, OscControlMessage};
 
@@ -94,17 +94,20 @@ impl<T> RenderToDmx<T> for () {
     fn render(&self, _val: &T, _dmx_buf: &mut [u8]) {}
 }
 
-/// Decorates a render strategy with a fixed offset.
+/// Decorates a bipolar render strategy with a calibration offset.
 ///
-/// The offset is added to the value in its own typed space before the inner
-/// strategy renders it, and the sum is clamped back into the value's range.
+/// Recenters the control on `offset` — input `0` renders as `offset` — and
+/// rescales the bipolar range symmetrically about it, filling to the nearer
+/// rail (the half-span becomes `1 - |offset|`). This calibrates out a
+/// fixed physical offset while still using the full fader throw: both ends pan
+/// as far as possible in each direction, limited by the now-smaller side.
 ///
 /// Placement matters. This must wrap the base render strategy — the innermost,
-/// terminal render step — so the offset is the last transformation applied,
-/// after any earlier value processing. That makes it a fixed calibration of the
-/// rendered output. An offset applied to an outer value transform would instead
-/// offset the control's input, which a later transform could then alter — not a
-/// stable calibration. Apply it first, before any other decorator.
+/// terminal render step — so the remap is the last transformation applied, after
+/// any earlier value processing. That makes it a fixed calibration of the
+/// rendered output. Applied to an outer value transform it would instead remap
+/// the control's input, which a later transform could then alter — not a stable
+/// calibration. Apply it first, before any other decorator.
 #[derive(Debug)]
 pub struct OffsetRender<R> {
     offset: BipolarFloat,
@@ -119,15 +122,12 @@ impl<R> OffsetRender<R> {
 
 impl<R: RenderToDmx<BipolarFloat>> RenderToDmx<BipolarFloat> for OffsetRender<R> {
     fn render(&self, val: &BipolarFloat, dmx_buf: &mut [u8]) {
-        self.inner
-            .render(&BipolarFloat::new(val.val() + self.offset.val()), dmx_buf);
-    }
-}
-
-impl<R: RenderToDmx<UnipolarFloat>> RenderToDmx<UnipolarFloat> for OffsetRender<R> {
-    fn render(&self, val: &UnipolarFloat, dmx_buf: &mut [u8]) {
-        self.inner
-            .render(&UnipolarFloat::new(val.val() + self.offset.val()), dmx_buf);
+        // Recenter on `offset` and rescale the range symmetrically about it,
+        // filling to the nearer rail (half-span 1 - |offset|). Stays in range by
+        // construction; clamp guards against float error.
+        let offset = self.offset.val();
+        let scaled = offset + val.val() * (1.0 - offset.abs());
+        self.inner.render(&BipolarFloat::new(scaled), dmx_buf);
     }
 }
 
