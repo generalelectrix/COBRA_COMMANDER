@@ -22,7 +22,9 @@ pub use patcher::{
     CreateAnimatedGroup, CreateNonAnimatedGroup, PATCHERS, PatchConfig, PatchFixture, Patcher,
 };
 
-pub use option::{AsPatchOption, NoOptions, OptionsMenu, PatchOption, enum_patch_option};
+pub use option::{
+    AsPatchOption, NoOptions, OptionsMenu, PatchOption, deserialize_bipolar, enum_patch_option,
+};
 
 /// Build an [`anyhow::Error`] describing an internal patch inconsistency.
 ///

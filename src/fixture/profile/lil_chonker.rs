@@ -4,9 +4,7 @@
 //! Basically a mini Mac 250 Entour, but with crappier rotating gobos.
 use crate::fixture::prelude::*;
 
-#[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
-#[channel_count = 15]
-#[strobe(Short)]
+#[derive(Debug, EmitState, Control, DescribeControls, Update)]
 pub struct LilChonker {
     #[channel_control]
     #[animate]
@@ -25,15 +23,32 @@ pub struct LilChonker {
     #[animate]
     prism_rotation: ChannelKnobUnipolar<UnipolarChannel>,
     #[animate]
-    pan: Mirrored<RenderBipolarToCoarseAndFine>,
+    pan: Mirrored<OffsetRender<RenderBipolarToCoarseAndFine>>,
     #[animate]
     tilt: Mirrored<RenderBipolarToCoarseAndFine>,
     #[animate]
     focus: BipolarChannel,
 }
 
-impl Default for LilChonker {
-    fn default() -> Self {
+#[derive(Deserialize, OptionsMenu)]
+#[serde(deny_unknown_fields)]
+pub struct GroupOptions {
+    /// Fixed offset added to the pan control, to calibrate out a yoke whose
+    /// zero position is not facing forward.
+    #[serde(
+        default,
+        deserialize_with = "crate::fixture::patch::deserialize_bipolar"
+    )]
+    pub pan_offset: BipolarFloat,
+}
+
+impl PatchFixture for LilChonker {
+    const NAME: FixtureType = FixtureType("LilChonker");
+    type GroupOptions = GroupOptions;
+    type PatchOptions = NoOptions;
+
+    fn new(options: Self::GroupOptions) -> Self {
+        // `options.pan_offset` is an already-validated `BipolarFloat`; no coercion here.
         Self {
             // Ch 6: dimmer 0-100%. Brightness lives here; strobing modulates it.
             dimmer: Unipolar::full_channel("Dimmer", 5)
@@ -72,15 +87,32 @@ impl Default for LilChonker {
             prism: Bool::new_off("Prism", ()),
             // Ch 13: shares the channel with `prism`. 0-19 = out; 20-255 = in, rotating slow→fast.
             prism_rotation: Unipolar::channel("PrismRotation", 12, 20, 255).with_channel_knob(1),
-            // Ch 1/2: pan coarse + fine (adjacent).
-            pan: Bipolar::coarse_fine("Pan", 0).with_mirroring(true),
+            // Ch 1/2: pan coarse + fine (adjacent). `pan_offset` calibrates out a
+            // yoke whose zero is not facing forward; applied post-mirror.
+            pan: Bipolar::coarse_fine("Pan", 0)
+                .with_offset(options.pan_offset)
+                .with_mirroring(true),
             // Ch 3/4: tilt coarse + fine (adjacent).
             tilt: Bipolar::coarse_fine("Tilt", 2).with_mirroring(false),
             // Ch 9: focus, near to far. Bipolar center (0.0) = mid focus (~128).
             focus: Bipolar::channel("Focus", 8, 0, 255),
         }
     }
+
+    fn can_strobe() -> Option<StrobeResponse> {
+        Some(StrobeResponse::Short)
+    }
+
+    fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
+        PatchConfig {
+            channel_count: 15,
+            render_mode: None,
+        }
+    }
 }
+
+register_patcher!(LilChonker);
+register_touchosc_template!(LilChonker);
 
 impl AnimatedFixture for LilChonker {
     type Target = AnimationTarget;

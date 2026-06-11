@@ -1,7 +1,7 @@
 //! A control for unipolar floats.
 
 use anyhow::Context;
-use number::UnipolarFloat;
+use number::{BipolarFloat, UnipolarFloat};
 
 use crate::{
     channel::KnobIndex,
@@ -11,7 +11,7 @@ use crate::{
 
 use super::{
     ChannelControl, ChannelKnobHandler, ChannelKnobUnipolar, ChannelLevelHandler,
-    ChannelLevelUnipolar, OscControl, RenderToDmx, RenderToDmxWithAnimations,
+    ChannelLevelUnipolar, OffsetRender, OscControl, RenderToDmx, RenderToDmxWithAnimations,
 };
 
 /// A unipolar value, with controls.
@@ -52,6 +52,27 @@ impl<R: RenderToDmx<UnipolarFloat>> Unipolar<R> {
     pub fn strobed(mut self) -> Self {
         self.strobed = true;
         self
+    }
+
+    /// Add a fixed offset to this control's rendered output, clamped into range.
+    ///
+    /// The offset is a `BipolarFloat` so it can push the value the full span in
+    /// either direction.
+    ///
+    /// Call this first, immediately after constructing the control and before
+    /// any other decorator, so the offset is the last transformation applied and
+    /// lands on the final rendered value as a fixed calibration — rather than
+    /// being altered in turn by a later decorator.
+    // Wired up for parity with `Bipolar::with_offset`; no fixture uses a unipolar
+    // offset yet. Exercised by unit tests, so only dead in non-test builds.
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub fn with_offset(self, offset: BipolarFloat) -> Unipolar<OffsetRender<R>> {
+        Unipolar {
+            val: self.val,
+            name: self.name,
+            render: OffsetRender::new(offset, self.render),
+            strobed: self.strobed,
+        }
     }
 
     /// Decorate this control with channel level control.
@@ -269,6 +290,28 @@ mod tests {
         let ctrl = Unipolar::new("X", ()).at(UnipolarFloat::new(0.8));
         let result = ctrl.val_with_anim([0.5].into_iter());
         assert_eq!(result, UnipolarFloat::ONE);
+    }
+
+    #[test]
+    fn test_with_offset_shifts_and_clamps() {
+        use number::BipolarFloat;
+
+        // Full 0..255 channel; offset is a BipolarFloat so it can push either way.
+        let ctrl = Unipolar::full_channel("X", 0).with_offset(BipolarFloat::new(-0.2));
+        let mut buf = [0u8; 1];
+
+        // 0.5 + (-0.2) = 0.3 -> 76.
+        ctrl.render.render(&UnipolarFloat::new(0.5), &mut buf);
+        assert_eq!(buf[0], 76);
+
+        // 0.1 + (-0.2) = -0.1, clamped to 0.0 -> 0 (not wraparound).
+        ctrl.render.render(&UnipolarFloat::new(0.1), &mut buf);
+        assert_eq!(buf[0], 0);
+
+        // Positive offset clamps at the top rail too.
+        let ctrl = Unipolar::full_channel("X", 0).with_offset(BipolarFloat::new(0.5));
+        ctrl.render.render(&UnipolarFloat::new(0.8), &mut buf);
+        assert_eq!(buf[0], 255);
     }
 
     #[test]

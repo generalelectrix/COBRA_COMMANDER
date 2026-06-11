@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    Bool, ChannelControl, ChannelKnobBipolar, ChannelKnobHandler, OscControl, RenderToDmx,
-    RenderToDmxWithAnimations,
+    Bool, ChannelControl, ChannelKnobBipolar, ChannelKnobHandler, OffsetRender, OscControl,
+    RenderToDmx, RenderToDmxWithAnimations,
 };
 
 /// A bipolar value, with controls.
@@ -53,6 +53,21 @@ impl<R: RenderToDmx<BipolarFloat>> Bipolar<R> {
     pub fn with_detent(mut self) -> Self {
         self.virtual_detent = true;
         self
+    }
+
+    /// Add a fixed offset to this control's rendered output, clamped into range.
+    ///
+    /// Call this first, immediately after constructing the control and before
+    /// any other decorator, so the offset is the last transformation applied and
+    /// lands on the final rendered value as a fixed calibration — rather than
+    /// being altered in turn by a later decorator.
+    pub fn with_offset(self, offset: BipolarFloat) -> Bipolar<OffsetRender<R>> {
+        Bipolar {
+            val: self.val,
+            virtual_detent: self.virtual_detent,
+            name: self.name,
+            render: OffsetRender::new(offset, self.render),
+        }
     }
 
     /// Decorate this control with automatic mirroring.
@@ -538,6 +553,41 @@ mod tests {
         let handled = ctrl.control(&msg, &emitter).unwrap();
         assert!(handled);
         assert!((ctrl.control.val().val() - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_with_offset_shifts_and_clamps() {
+        // Inner renders bipolar over the full 0..255 range (0.0 -> 127).
+        let ctrl = Bipolar::channel("X", 0, 0, 255).with_offset(BipolarFloat::new(0.5));
+        let mut buf = [0u8; 1];
+
+        // 0.0 + 0.5 = 0.5 -> unipolar 0.75 -> 191.
+        ctrl.render.render(&BipolarFloat::ZERO, &mut buf);
+        assert_eq!(buf[0], 191);
+
+        // 0.8 + 0.5 = 1.3, clamped to 1.0 -> unipolar 1.0 -> 255 (not wraparound).
+        ctrl.render.render(&BipolarFloat::new(0.8), &mut buf);
+        assert_eq!(buf[0], 255);
+    }
+
+    #[test]
+    fn test_offset_is_applied_after_the_received_value() {
+        // The offset wraps the render strategy, which runs last, so it is added
+        // to whatever value reaches it — i.e. post-mirror, since `Mirrored`
+        // inverts before calling the render strategy. Render a value and its
+        // inverse to show the offset is applied to each as received, not
+        // inverted along with the signal.
+        let ctrl = Bipolar::channel("X", 0, 0, 255).with_offset(BipolarFloat::new(0.2));
+        let mut received = [0u8; 1];
+        let mut inverted = [0u8; 1];
+
+        // 0.5 + 0.2 = 0.7 -> unipolar 0.85 -> 216.
+        ctrl.render.render(&BipolarFloat::new(0.5), &mut received);
+        assert_eq!(received[0], 216);
+        // (-0.5) + 0.2 = -0.3 -> unipolar 0.35 -> 89. A pre-mirror offset would
+        // instead invert 0.7 to -0.7 -> unipolar 0.15 -> 38.
+        ctrl.render.render(&BipolarFloat::new(-0.5), &mut inverted);
+        assert_eq!(inverted[0], 89);
     }
 
     #[test]

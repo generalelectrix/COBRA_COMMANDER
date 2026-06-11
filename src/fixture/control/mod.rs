@@ -2,6 +2,8 @@
 //! These types are intended to provide both a data model for fixture state,
 //! as well as standardized ways to interact with that state.
 
+use number::{BipolarFloat, UnipolarFloat};
+
 use crate::osc::{EmitScopedOscMessage, OscControlMessage};
 
 mod bipolar;
@@ -90,6 +92,43 @@ pub trait RenderToDmx<T> {
 /// Used for controls which themselves are not rendered directly to DMX.
 impl<T> RenderToDmx<T> for () {
     fn render(&self, _val: &T, _dmx_buf: &mut [u8]) {}
+}
+
+/// Decorates a render strategy with a fixed offset.
+///
+/// The offset is added to the value in its own typed space before the inner
+/// strategy renders it, and the sum is clamped back into the value's range.
+///
+/// Placement matters. This must wrap the base render strategy — the innermost,
+/// terminal render step — so the offset is the last transformation applied,
+/// after any earlier value processing. That makes it a fixed calibration of the
+/// rendered output. An offset applied to an outer value transform would instead
+/// offset the control's input, which a later transform could then alter — not a
+/// stable calibration. Apply it first, before any other decorator.
+#[derive(Debug)]
+pub struct OffsetRender<R> {
+    offset: BipolarFloat,
+    inner: R,
+}
+
+impl<R> OffsetRender<R> {
+    pub fn new(offset: BipolarFloat, inner: R) -> Self {
+        Self { offset, inner }
+    }
+}
+
+impl<R: RenderToDmx<BipolarFloat>> RenderToDmx<BipolarFloat> for OffsetRender<R> {
+    fn render(&self, val: &BipolarFloat, dmx_buf: &mut [u8]) {
+        self.inner
+            .render(&BipolarFloat::new(val.val() + self.offset.val()), dmx_buf);
+    }
+}
+
+impl<R: RenderToDmx<UnipolarFloat>> RenderToDmx<UnipolarFloat> for OffsetRender<R> {
+    fn render(&self, val: &UnipolarFloat, dmx_buf: &mut [u8]) {
+        self.inner
+            .render(&UnipolarFloat::new(val.val() + self.offset.val()), dmx_buf);
+    }
 }
 
 /// The kinds of OSC controls that fixtures can expose.
