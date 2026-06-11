@@ -91,9 +91,12 @@ impl PatchFixture for LilChonker {
             // yoke whose zero is not facing forward; applied post-mirror.
             pan: Bipolar::coarse_fine("Pan", 0)
                 .with_offset(options.pan_offset)
+                .with_detent()
                 .with_mirroring(true),
             // Ch 3/4: tilt coarse + fine (adjacent).
-            tilt: Bipolar::coarse_fine("Tilt", 2).with_mirroring(false),
+            tilt: Bipolar::coarse_fine("Tilt", 2)
+                .with_detent()
+                .with_mirroring(false),
             // Ch 9: focus, near to far. Bipolar center (0.0) = mid focus (~128).
             focus: Bipolar::channel("Focus", 8, 0, 255),
         }
