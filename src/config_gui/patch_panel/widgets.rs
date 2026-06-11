@@ -113,6 +113,8 @@ pub fn build_options_from_form(entries: &[(String, String)]) -> Options {
             serde_yaml::Value::Bool(false)
         } else if let Ok(n) = v.parse::<i64>() {
             serde_yaml::Value::Number(n.into())
+        } else if let Ok(f) = v.parse::<f64>() {
+            serde_yaml::Value::Number(f.into())
         } else {
             serde_yaml::Value::String(v.clone())
         };
@@ -202,5 +204,27 @@ pub fn render_address_map(ui: &mut egui::Ui, wc: &PatchWorkingCopy, addr_map: &A
         }
 
         ui.add_space(4.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use number::BipolarFloat;
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct Opt {
+        #[serde(deserialize_with = "crate::fixture::patch::deserialize_bipolar")]
+        offset: BipolarFloat,
+    }
+
+    #[test]
+    fn float_form_value_serializes_as_number_not_string() {
+        // A fractional form value must become a YAML number so it deserializes
+        // as a float; storing it as a string would fail `BipolarFloat` parsing.
+        let opts = build_options_from_form(&[("offset".to_string(), "0.33".to_string())]);
+        let parsed: Opt = opts.parse().unwrap();
+        assert!((parsed.offset.val() - 0.33).abs() < 1e-9);
     }
 }
