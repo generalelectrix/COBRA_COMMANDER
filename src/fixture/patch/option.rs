@@ -2,7 +2,8 @@
 use std::{fmt::Display, net::SocketAddr};
 
 use anyhow::Error;
-use serde::Deserialize;
+use number::BipolarFloat;
+use serde::{Deserialize, Deserializer, de};
 use strum::IntoEnumIterator;
 use url::Url;
 
@@ -68,6 +69,31 @@ impl AsPatchOption for bool {
     }
 }
 
+impl AsPatchOption for BipolarFloat {
+    fn as_patch_option() -> PatchOption {
+        PatchOption::Bipolar
+    }
+}
+
+/// Deserialize a [`BipolarFloat`], erroring if the value is outside [-1, 1].
+///
+/// `BipolarFloat`'s derived `Deserialize` reads its inner float directly,
+/// bypassing the clamp that normally upholds its range invariant. Use this for
+/// config fields that should reject an out-of-range value up front rather than
+/// silently accept or coerce it.
+pub fn deserialize_bipolar<'de, D>(deserializer: D) -> Result<BipolarFloat, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = f64::deserialize(deserializer)?;
+    if !(-1.0..=1.0).contains(&v) {
+        return Err(de::Error::custom(format!(
+            "value {v} is out of range [-1, 1]"
+        )));
+    }
+    Ok(BipolarFloat::new(v))
+}
+
 impl<T: AsPatchOption> AsPatchOption for Option<T> {
     fn as_patch_option() -> PatchOption {
         // Recursively unwrap any nested Optional to a single Optional(leaf).
@@ -108,6 +134,8 @@ pub enum PatchOption {
     Url,
     /// A boolean option.
     Bool,
+    /// A bipolar float in the range [-1, 1].
+    Bipolar,
     /// An optional value. The inner type describes the value when present.
     Optional(Box<PatchOption>),
 }
@@ -119,6 +147,7 @@ impl PatchOption {
         match self {
             PatchOption::Int => Value::Number(1.into()),
             PatchOption::Bool => Value::Bool(false),
+            PatchOption::Bipolar => Value::Number(0.0.into()),
             PatchOption::Select(opts) => Value::String(opts[0].clone()),
             PatchOption::SocketAddr => Value::String("127.0.0.1:9999".into()),
             PatchOption::Url => Value::String("http://127.0.0.1:9999".into()),
@@ -135,7 +164,44 @@ impl Display for PatchOption {
             Self::SocketAddr => f.write_str("<socket address>"),
             Self::Url => f.write_str("<url>"),
             Self::Bool => f.write_str("true, false"),
+            Self::Bipolar => f.write_str("<bipolar float, -1..1>"),
             Self::Optional(inner) => write!(f, "{inner} (optional)"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct Wrap(#[serde(deserialize_with = "deserialize_bipolar")] BipolarFloat);
+
+    #[test]
+    fn bipolar_as_patch_option() {
+        assert!(matches!(
+            BipolarFloat::as_patch_option(),
+            PatchOption::Bipolar
+        ));
+    }
+
+    #[test]
+    fn deserialize_bipolar_in_range() {
+        let Wrap(v) = serde_yaml::from_str("0.33").unwrap();
+        assert!((v.val() - 0.33).abs() < 1e-9);
+
+        // Boundaries are inclusive.
+        let Wrap(v) = serde_yaml::from_str("-1.0").unwrap();
+        assert_eq!(v, BipolarFloat::new(-1.0));
+    }
+
+    #[test]
+    fn deserialize_bipolar_rejects_out_of_range() {
+        let err = serde_yaml::from_str::<Wrap>("1.5").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("out of range") && msg.contains("1.5"),
+            "unexpected error message: {msg}"
+        );
     }
 }

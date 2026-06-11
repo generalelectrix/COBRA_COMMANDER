@@ -11,6 +11,7 @@ pub fn default_for_option(opt: &PatchOption) -> String {
     match opt {
         PatchOption::Bool => "false".to_string(),
         PatchOption::Int => "0".to_string(),
+        PatchOption::Bipolar => "0".to_string(),
         PatchOption::Select(choices) => choices.first().cloned().unwrap_or_default(),
         PatchOption::Url => String::new(),
         PatchOption::SocketAddr => String::new(),
@@ -25,6 +26,16 @@ pub fn validate_option(opt: &PatchOption, value: &str) -> Result<(), String> {
             .parse::<i64>()
             .map(|_| ())
             .map_err(|_| "must be a number".to_string()),
+        PatchOption::Bipolar => {
+            let parsed = value
+                .parse::<f64>()
+                .map_err(|_| "must be a number".to_string())?;
+            if (-1.0..=1.0).contains(&parsed) {
+                Ok(())
+            } else {
+                Err("must be between -1 and 1".to_string())
+            }
+        }
         PatchOption::Url => url::Url::parse(value)
             .map(|_| ())
             .map_err(|e| format!("invalid URL: {e}")),
@@ -63,7 +74,7 @@ pub fn render_option_widget(ui: &mut egui::Ui, key: &str, opt: &PatchOption, val
                     });
             });
         }
-        PatchOption::Int | PatchOption::Url | PatchOption::SocketAddr => {
+        PatchOption::Int | PatchOption::Bipolar | PatchOption::Url | PatchOption::SocketAddr => {
             ui.horizontal(|ui| {
                 ui.label(&key_with_colon);
                 ui.text_edit_singleline(value);
@@ -102,6 +113,8 @@ pub fn build_options_from_form(entries: &[(String, String)]) -> Options {
             serde_yaml::Value::Bool(false)
         } else if let Ok(n) = v.parse::<i64>() {
             serde_yaml::Value::Number(n.into())
+        } else if let Ok(f) = v.parse::<f64>() {
+            serde_yaml::Value::Number(f.into())
         } else {
             serde_yaml::Value::String(v.clone())
         };
@@ -191,5 +204,27 @@ pub fn render_address_map(ui: &mut egui::Ui, wc: &PatchWorkingCopy, addr_map: &A
         }
 
         ui.add_space(4.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use number::BipolarFloat;
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct Opt {
+        #[serde(deserialize_with = "crate::fixture::patch::deserialize_bipolar")]
+        offset: BipolarFloat,
+    }
+
+    #[test]
+    fn float_form_value_serializes_as_number_not_string() {
+        // A fractional form value must become a YAML number so it deserializes
+        // as a float; storing it as a string would fail `BipolarFloat` parsing.
+        let opts = build_options_from_form(&[("offset".to_string(), "0.33".to_string())]);
+        let parsed: Opt = opts.parse().unwrap();
+        assert!((parsed.offset.val() - 0.33).abs() < 1e-9);
     }
 }

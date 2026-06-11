@@ -1404,6 +1404,19 @@ mod test {
     }
 
     #[test]
+    fn validate_bipolar_option() {
+        assert!(validate_option(&PatchOption::Bipolar, "0.33").is_ok());
+        assert!(validate_option(&PatchOption::Bipolar, "-1").is_ok());
+        assert!(validate_option(&PatchOption::Bipolar, "1").is_ok());
+        assert!(validate_option(&PatchOption::Bipolar, "abc").is_err());
+        // Out of range is rejected.
+        assert_eq!(
+            validate_option(&PatchOption::Bipolar, "1.5"),
+            Err("must be between -1 and 1".to_string())
+        );
+    }
+
+    #[test]
     fn validate_bool_always_ok() {
         assert!(validate_option(&PatchOption::Bool, "anything").is_ok());
     }
