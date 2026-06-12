@@ -143,7 +143,9 @@ pub fn render_address_map(ui: &mut egui::Ui, wc: &PatchWorkingCopy, addr_map: &A
 
         for (ua, names) in &entries {
             let addr = ua.address;
-            let name = &names[0];
+            let Some(name) = names.first() else {
+                continue;
+            };
             let is_collision = names.len() > 1;
 
             if let Some(last) = ranges.last_mut()

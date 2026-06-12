@@ -5,6 +5,7 @@ mod working_copy;
 use std::collections::HashMap;
 
 use eframe::egui;
+use log::error;
 
 use crate::config::{DmxAddrConfig, FixtureGroupConfig, GroupId, GroupName, PatchBlock};
 use crate::control::MetaCommand;
@@ -387,7 +388,9 @@ impl PatchPanel<'_> {
                                 ui.end_row();
 
                                 for i in 0..n {
-                                    let group = &wc.groups[i];
+                                    let Some(group) = wc.groups.get(i) else {
+                                        continue;
+                                    };
                                     let row_top = ui.cursor().top();
 
                                     // Channel number.
@@ -496,7 +499,11 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let cfg = &mut wc.groups[group_idx].config;
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
+            let cfg = &mut group.config;
             ui.horizontal(|ui| {
                 ui.label("Group name:");
                 let mut name = cfg.group.as_ref().map(|k| k.0.clone()).unwrap_or_default();
@@ -515,7 +522,11 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let cfg = &mut wc.groups[group_idx].config;
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
+            let cfg = &mut group.config;
             ui.checkbox(&mut cfg.channel, "Assign To Submaster Channel");
         }
     }
@@ -524,7 +535,11 @@ impl PatchPanel<'_> {
         let Some(wc) = self.state.working_copy.as_ref() else {
             return;
         };
-        let cfg = &wc.groups[group_idx].config;
+        let Some(group) = wc.groups.get(group_idx) else {
+            error!("patch panel: group index {group_idx} out of range");
+            return;
+        };
+        let cfg = &group.config;
         let patcher = self.patchers.iter().find(|p| p.name.0 == cfg.fixture);
         if let Some(patcher) = patcher {
             let group_opts = (patcher.group_options)();
@@ -615,7 +630,11 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_ref() else {
                 return;
             };
-            let fixture_type = &wc.groups[group_idx].config.fixture;
+            let Some(group) = wc.groups.get(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
+            let fixture_type = &group.config.fixture;
             self.patchers
                 .iter()
                 .find(|p| p.name.0 == *fixture_type)
@@ -648,7 +667,10 @@ impl PatchPanel<'_> {
                 let Some(wc) = self.state.working_copy.as_mut() else {
                     return;
                 };
-                let group = &mut wc.groups[group_idx];
+                let Some(group) = wc.groups.get_mut(group_idx) else {
+                    error!("patch panel: group index {group_idx} out of range");
+                    return;
+                };
                 let num_patches = group.config.patches.len();
 
                 egui::Grid::new("fixtures_grid")
@@ -679,7 +701,9 @@ impl PatchPanel<'_> {
                                 fixture_swap = dnd.swap;
                             }
 
-                            let block = &mut group.config.patches[i];
+                            let Some(block) = group.config.patches.get_mut(i) else {
+                                continue;
+                            };
                             let (start, _count) = block.start_count();
                             let mut addr_str = start.map(|a| format!("{a}")).unwrap_or_default();
 
@@ -752,7 +776,10 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let group = &mut wc.groups[group_idx];
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
             group.config.patches.swap(a, b);
             group.channel_counts.swap(a, b);
         }
@@ -761,7 +788,10 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let group = &mut wc.groups[group_idx];
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
             group.config.patches.remove(idx);
             group.channel_counts.remove(idx);
         }
@@ -770,7 +800,10 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let group = &mut wc.groups[group_idx];
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
             group.config.patches.reverse();
             group.channel_counts.reverse();
         }
@@ -910,14 +943,18 @@ impl PatchPanel<'_> {
         let Some(wc) = self.state.working_copy.as_ref() else {
             return;
         };
-        let fixture_type = &wc.groups[group_idx].config.fixture;
+        let Some(group) = wc.groups.get(group_idx) else {
+            error!("patch panel: group index {group_idx} out of range");
+            return;
+        };
+        let fixture_type = &group.config.fixture;
         let patcher = self.patchers.iter().find(|p| p.name.0 == *fixture_type);
         let mut all_valid = true;
 
         let is_dmx_fixture = patcher
             .map(|p| {
                 let opts = build_options_from_form(&form.patch_options);
-                (p.create_patch)(wc.groups[group_idx].config.options.clone(), opts)
+                (p.create_patch)(group.config.options.clone(), opts)
                     .map(|c| c.channel_count > 0)
                     .unwrap_or(true)
             })
@@ -968,8 +1005,7 @@ impl PatchPanel<'_> {
         // Per-fixture channel count for the current option selection.
         if let Some(patcher) = patcher {
             let opts = build_options_from_form(&form.patch_options);
-            if let Ok(cfg) =
-                (patcher.create_patch)(wc.groups[group_idx].config.options.clone(), opts)
+            if let Ok(cfg) = (patcher.create_patch)(group.config.options.clone(), opts)
                 && cfg.channel_count > 0
             {
                 ui.label(format!("Channels: {}", cfg.channel_count));
@@ -1027,7 +1063,10 @@ impl PatchPanel<'_> {
         let Some(wc) = self.state.working_copy.as_mut() else {
             return;
         };
-        let group = &mut wc.groups[group_idx];
+        let Some(group) = wc.groups.get_mut(group_idx) else {
+            error!("patch panel: group index {group_idx} out of range");
+            return;
+        };
         let patcher = self
             .patchers
             .iter()
