@@ -5,6 +5,7 @@ mod working_copy;
 use std::collections::HashMap;
 
 use eframe::egui;
+use log::error;
 
 use crate::config::{DmxAddrConfig, FixtureGroupConfig, GroupId, GroupName, PatchBlock};
 use crate::control::MetaCommand;
@@ -61,6 +62,10 @@ struct AddFixtureForm {
     count: String,
     /// Empty DMX channels left between each fixture when patching several.
     skip: String,
+    /// Assign addresses high→low across the patched count, so the fixtures land
+    /// in the patch list in descending-address order. No effect for a single
+    /// fixture.
+    reverse: bool,
     mirror: bool,
     patch_options: Vec<(String, String)>,
 }
@@ -84,6 +89,7 @@ impl AddFixtureForm {
             universe: "0".to_string(),
             count: "1".to_string(),
             skip: "0".to_string(),
+            reverse: false,
             mirror: false,
             patch_options,
         }
@@ -382,7 +388,9 @@ impl PatchPanel<'_> {
                                 ui.end_row();
 
                                 for i in 0..n {
-                                    let group = &wc.groups[i];
+                                    let Some(group) = wc.groups.get(i) else {
+                                        continue;
+                                    };
                                     let row_top = ui.cursor().top();
 
                                     // Channel number.
@@ -491,7 +499,11 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let cfg = &mut wc.groups[group_idx].config;
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
+            let cfg = &mut group.config;
             ui.horizontal(|ui| {
                 ui.label("Group name:");
                 let mut name = cfg.group.as_ref().map(|k| k.0.clone()).unwrap_or_default();
@@ -510,7 +522,11 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let cfg = &mut wc.groups[group_idx].config;
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
+            let cfg = &mut group.config;
             ui.checkbox(&mut cfg.channel, "Assign To Submaster Channel");
         }
     }
@@ -519,7 +535,11 @@ impl PatchPanel<'_> {
         let Some(wc) = self.state.working_copy.as_ref() else {
             return;
         };
-        let cfg = &wc.groups[group_idx].config;
+        let Some(group) = wc.groups.get(group_idx) else {
+            error!("patch panel: group index {group_idx} out of range");
+            return;
+        };
+        let cfg = &group.config;
         let patcher = self.patchers.iter().find(|p| p.name.0 == cfg.fixture);
         if let Some(patcher) = patcher {
             let group_opts = (patcher.group_options)();
@@ -581,10 +601,9 @@ impl PatchPanel<'_> {
 
         let fixtures_height = ui.available_height();
         ui.horizontal(|ui| {
-            // Left column: fixtures heading + table.
+            // Left column: fixtures header + table.
             ui.vertical(|ui| {
                 ui.set_min_height(fixtures_height);
-                ui.heading("Fixtures In Group");
                 self.render_fixture_grid(ui, group_idx, &addr_map);
             });
 
@@ -610,7 +629,11 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_ref() else {
                 return;
             };
-            let fixture_type = &wc.groups[group_idx].config.fixture;
+            let Some(group) = wc.groups.get(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
+            let fixture_type = &group.config.fixture;
             self.patchers
                 .iter()
                 .find(|p| p.name.0 == *fixture_type)
@@ -620,6 +643,25 @@ impl PatchPanel<'_> {
 
         let mut fixture_swap: Option<(usize, usize)> = None;
         let mut fixture_delete: Option<usize> = None;
+        let mut fixture_reverse = false;
+
+        let num_patches = self
+            .state
+            .working_copy
+            .as_ref()
+            .and_then(|wc| wc.groups.get(group_idx))
+            .map(|g| g.config.patches.len())
+            .unwrap_or(0);
+        ui.horizontal(|ui| {
+            ui.heading("Fixtures");
+            if ui
+                .add_enabled(num_patches > 1, egui::Button::new("Reverse"))
+                .on_hover_text("Reverse the order of the fixtures in this group")
+                .clicked()
+            {
+                fixture_reverse = true;
+            }
+        });
 
         egui::ScrollArea::vertical()
             .id_salt("patch_fixture_list")
@@ -627,7 +669,10 @@ impl PatchPanel<'_> {
                 let Some(wc) = self.state.working_copy.as_mut() else {
                     return;
                 };
-                let group = &mut wc.groups[group_idx];
+                let Some(group) = wc.groups.get_mut(group_idx) else {
+                    error!("patch panel: group index {group_idx} out of range");
+                    return;
+                };
                 let num_patches = group.config.patches.len();
 
                 egui::Grid::new("fixtures_grid")
@@ -658,7 +703,9 @@ impl PatchPanel<'_> {
                                 fixture_swap = dnd.swap;
                             }
 
-                            let block = &mut group.config.patches[i];
+                            let Some(block) = group.config.patches.get_mut(i) else {
+                                continue;
+                            };
                             let (start, _count) = block.start_count();
                             let mut addr_str = start.map(|a| format!("{a}")).unwrap_or_default();
 
@@ -731,7 +778,10 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let group = &mut wc.groups[group_idx];
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
             group.config.patches.swap(a, b);
             group.channel_counts.swap(a, b);
         }
@@ -740,9 +790,24 @@ impl PatchPanel<'_> {
             let Some(wc) = self.state.working_copy.as_mut() else {
                 return;
             };
-            let group = &mut wc.groups[group_idx];
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
             group.config.patches.remove(idx);
             group.channel_counts.remove(idx);
+        }
+
+        if fixture_reverse {
+            let Some(wc) = self.state.working_copy.as_mut() else {
+                return;
+            };
+            let Some(group) = wc.groups.get_mut(group_idx) else {
+                error!("patch panel: group index {group_idx} out of range");
+                return;
+            };
+            group.config.patches.reverse();
+            group.channel_counts.reverse();
         }
     }
 
@@ -880,14 +945,18 @@ impl PatchPanel<'_> {
         let Some(wc) = self.state.working_copy.as_ref() else {
             return;
         };
-        let fixture_type = &wc.groups[group_idx].config.fixture;
+        let Some(group) = wc.groups.get(group_idx) else {
+            error!("patch panel: group index {group_idx} out of range");
+            return;
+        };
+        let fixture_type = &group.config.fixture;
         let patcher = self.patchers.iter().find(|p| p.name.0 == *fixture_type);
         let mut all_valid = true;
 
         let is_dmx_fixture = patcher
             .map(|p| {
                 let opts = build_options_from_form(&form.patch_options);
-                (p.create_patch)(wc.groups[group_idx].config.options.clone(), opts)
+                (p.create_patch)(group.config.options.clone(), opts)
                     .map(|c| c.channel_count > 0)
                     .unwrap_or(true)
             })
@@ -907,6 +976,11 @@ impl PatchPanel<'_> {
             ui.horizontal(|ui| {
                 ui.label("Count:");
                 ui.add(egui::TextEdit::singleline(&mut form.count).desired_width(field_width));
+                ui.checkbox(&mut form.reverse, "Reverse order")
+                    .on_hover_text(
+                        "Assign addresses high→low across the count, so fixtures land in \
+                     descending-address order. No effect for a single fixture.",
+                    );
             });
             ui.horizontal(|ui| {
                 ui.label("Skip:");
@@ -933,8 +1007,7 @@ impl PatchPanel<'_> {
         // Per-fixture channel count for the current option selection.
         if let Some(patcher) = patcher {
             let opts = build_options_from_form(&form.patch_options);
-            if let Ok(cfg) =
-                (patcher.create_patch)(wc.groups[group_idx].config.options.clone(), opts)
+            if let Ok(cfg) = (patcher.create_patch)(group.config.options.clone(), opts)
                 && cfg.channel_count > 0
             {
                 ui.label(format!("Channels: {}", cfg.channel_count));
@@ -987,11 +1060,15 @@ impl PatchPanel<'_> {
         let addr_str = form.addr.clone();
         let count: usize = form.count.parse().unwrap_or(1).max(1);
         let skip: usize = form.skip.parse().unwrap_or(0);
+        let reverse = form.reverse;
 
         let Some(wc) = self.state.working_copy.as_mut() else {
             return;
         };
-        let group = &mut wc.groups[group_idx];
+        let Some(group) = wc.groups.get_mut(group_idx) else {
+            error!("patch panel: group index {group_idx} out of range");
+            return;
+        };
         let patcher = self
             .patchers
             .iter()
@@ -1030,7 +1107,8 @@ impl PatchPanel<'_> {
                 group.channel_counts.push(ch_count);
             } else {
                 for c in 0..count {
-                    let addr = start_addr + c * (ch_count + skip);
+                    let step = if reverse { count - 1 - c } else { c };
+                    let addr = start_addr + step * (ch_count + skip);
                     group.config.patches.push(PatchBlock {
                         addr: Some(DmxAddrConfig::Single(DmxAddr::new(addr))),
                         universe,
@@ -1779,6 +1857,52 @@ mod test {
         );
     }
 
+    /// Clicking "Reverse order" in the fixtures table flips the group's fixture
+    /// list in place: a group patched at [1, 11, 21] becomes [21, 11, 1], with
+    /// channel_counts reversed in step.
+    #[test]
+    fn click_reverse_order_reverses_fixture_list() {
+        let client = auto_respond_client();
+        let patchers = test_patchers();
+        let snapshot = PatchSnapshot {
+            groups: vec![simple_group(Some("Rig"), &[1, 11, 21])].into(),
+        };
+        let mut modal = MessageModal::default();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+        state.working_copy = Some(PatchWorkingCopy::from_snapshot(&snapshot, &patchers));
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+        harness.run();
+
+        harness.get_by_label("Reverse").click();
+        harness.run();
+        drop(harness);
+
+        let group = &state.working_copy.as_ref().unwrap().groups[0];
+        let addrs: Vec<usize> = group
+            .config
+            .patches
+            .iter()
+            .filter_map(|b| b.start_count().0.map(|a| a.dmx_index() + 1))
+            .collect();
+        assert_eq!(addrs, vec![21, 11, 1]);
+        // The 1-channel mock means each count is 1, but the lengths must stay
+        // in sync after the reverse.
+        assert_eq!(group.channel_counts.len(), group.config.patches.len());
+    }
+
     // -----------------------------------------------------------------------
     // Non-DMX fixture tests
     // -----------------------------------------------------------------------
@@ -1897,6 +2021,45 @@ mod test {
             .filter_map(|b| b.start_count().0.map(|a| a.dmx_index() + 1))
             .collect();
         assert_eq!(addrs, vec![10, 13, 16]);
+    }
+
+    // With "reverse order" checked, the same patch lands the fixtures in the
+    // list in descending-address order: the reverse of the forward case above
+    // (10, 13, 16 → 16, 13, 10), so address 16 is fixture row 1.
+    #[test]
+    fn commit_add_fixture_reverse_order() {
+        let patchers = test_patchers();
+        let snapshot = test_snapshot_with_groups();
+        let mut state = PatchPanelState::new();
+        setup_add_fixture(&snapshot, &patchers, 0, &mut state);
+
+        {
+            let form = selected_form_mut(&mut state).expect("form");
+            form.addr = "10".to_string();
+            form.count = "3".to_string();
+            form.skip = "2".to_string();
+            form.reverse = true;
+        }
+
+        let client = auto_respond_client();
+        let mut modal = MessageModal::default();
+        let mut panel = PatchPanel {
+            ctx: GuiContext {
+                modal: &mut modal,
+                client: &client,
+            },
+            state: &mut state,
+            snapshot: &snapshot,
+            patchers: &patchers,
+        };
+        panel.commit_add_fixture(0);
+
+        let group = &panel.state.working_copy.as_ref().unwrap().groups[0];
+        let addrs: Vec<usize> = group.config.patches[1..]
+            .iter()
+            .filter_map(|b| b.start_count().0.map(|a| a.dmx_index() + 1))
+            .collect();
+        assert_eq!(addrs, vec![16, 13, 10]);
     }
 
     /// The add-fixture form for the currently selected group.
