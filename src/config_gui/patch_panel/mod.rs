@@ -601,10 +601,9 @@ impl PatchPanel<'_> {
 
         let fixtures_height = ui.available_height();
         ui.horizontal(|ui| {
-            // Left column: fixtures heading + table.
+            // Left column: fixtures header + table.
             ui.vertical(|ui| {
                 ui.set_min_height(fixtures_height);
-                ui.heading("Fixtures In Group");
                 self.render_fixture_grid(ui, group_idx, &addr_map);
             });
 
@@ -653,13 +652,16 @@ impl PatchPanel<'_> {
             .and_then(|wc| wc.groups.get(group_idx))
             .map(|g| g.config.patches.len())
             .unwrap_or(0);
-        if ui
-            .add_enabled(num_patches > 1, egui::Button::new("Reverse fixture order"))
-            .on_hover_text("Reverse the order of the fixtures in this group")
-            .clicked()
-        {
-            fixture_reverse = true;
-        }
+        ui.horizontal(|ui| {
+            ui.heading("Fixtures");
+            if ui
+                .add_enabled(num_patches > 1, egui::Button::new("Reverse"))
+                .on_hover_text("Reverse the order of the fixtures in this group")
+                .clicked()
+            {
+                fixture_reverse = true;
+            }
+        });
 
         egui::ScrollArea::vertical()
             .id_salt("patch_fixture_list")
@@ -1884,7 +1886,7 @@ mod test {
         });
         harness.run();
 
-        harness.get_by_label("Reverse fixture order").click();
+        harness.get_by_label("Reverse").click();
         harness.run();
         drop(harness);
 
