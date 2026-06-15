@@ -31,11 +31,17 @@ impl PatchFixture for Eyeball {
     fn new(options: Self::GroupOptions) -> Self {
         Self {
             color: Color::for_subcontrol(None, options.control_color_space),
-            pan: Bipolar::coarse_fine("Pan", 0).with_mirroring(true),
-            tilt: Bipolar::coarse_fine("Tilt", 2).with_mirroring(false),
+            pan: Bipolar::coarse_fine("Pan", 0)
+                .with_detent()
+                .with_mirroring(true),
+            tilt: Bipolar::coarse_fine("Tilt", 2)
+                .with_detent()
+                .with_mirroring(false),
             pan_spin: Bipolar::split_channel("PanSpin", 5, 189, 128, 194, 255, 0)
+                .with_detent()
                 .with_mirroring(true),
             tilt_spin: Bipolar::split_channel("TiltSpin", 6, 189, 128, 194, 255, 0)
+                .with_detent()
                 .with_mirroring(false),
         }
     }
@@ -46,7 +52,7 @@ impl PatchFixture for Eyeball {
 
     fn new_patch(_: Self::GroupOptions, _: Self::PatchOptions) -> PatchConfig {
         PatchConfig {
-            channel_count: 14,
+            channel_count: 17,
             render_mode: None,
         }
     }
@@ -77,14 +83,6 @@ impl AnimatedFixture for Eyeball {
             dmx_buf,
         );
         dmx_buf[4] = 0; // pan and tilt movement speed, standard (fast)
-        self.color.render_for_model(
-            ColorRenderModel::Rgbw,
-            group_controls,
-            &animation_vals.subtarget(),
-            dmx_buf,
-        );
-        dmx_buf[5] = 255; // dimmer always at full, brightness set via color control
-        dmx_buf[6] = 0;
         self.pan_spin.render(
             group_controls,
             animation_vals.filter(&AnimationTarget::PanSpin),
@@ -96,13 +94,16 @@ impl AnimatedFixture for Eyeball {
             dmx_buf,
         );
         self.color.render_for_model(
-            ColorRenderModel::Rgb,
+            ColorRenderModel::Rgbw,
             group_controls,
             &animation_vals.subtarget(),
-            &mut dmx_buf[7..10],
+            &mut dmx_buf[7..11],
         );
-        dmx_buf[11] = 0; // disable built-in strobe
+        dmx_buf[11] = 32; // disable built-in strobe, LED on
         dmx_buf[12] = 255; // dimmer at full
         dmx_buf[13] = 0; // disable color-fade macros
+        dmx_buf[14] = 0; // no color preset
+        dmx_buf[15] = 0; // color preset dimmer at 0
+        dmx_buf[16] = 0; // reset channel - could be nice to implement in the future
     }
 }
