@@ -220,7 +220,7 @@ impl AnimatedFixture for Color {
         let model = match Model::model_for_mode(group_controls.render_mode) {
             Ok(m) => m,
             Err(err) => {
-                warn!("failed to render Color: {err}");
+                error!("failed to render Color: {err}");
                 return;
             }
         };

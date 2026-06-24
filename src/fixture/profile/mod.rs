@@ -29,6 +29,7 @@ pub mod rush_wizard;
 pub mod solar_system;
 pub mod starlight;
 pub mod swarmolon;
+pub mod swizzle_stick;
 pub mod triphase;
 pub mod ufo;
 pub mod uv_led_brick;
