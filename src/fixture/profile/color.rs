@@ -1,5 +1,5 @@
 //! Flexible control profile for a single-color fixture.
-use log::{error, warn};
+use log::error;
 use strum_macros::{Display, EnumIter, VariantArray};
 
 use crate::{color::*, fixture::prelude::*, preview::FixturePreviewer};
