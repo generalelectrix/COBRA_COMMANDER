@@ -556,14 +556,10 @@ impl UsedAddrs {
             return true;
         }
         // To correctly patch swizzle sticks, we need to patch the same fixture
-        // rendering to multiple heads, as well as the requisite color channels.
-        // For now, use the affinity system to escape these from address
-        // conflicts.
-        let swiz = [
-            crate::fixture::swizzle_stick::SwizzleStick::NAME,
-            crate::fixture::color::Color::NAME,
-        ];
-        if swiz.contains(&f0) && swiz.contains(&f1) {
+        // rendering to multiple heads.
+        if f0 == crate::fixture::swizzle_stick::SwizzleStick::NAME
+            && f1 == crate::fixture::swizzle_stick::SwizzleStick::NAME
+        {
             return true;
         }
         false

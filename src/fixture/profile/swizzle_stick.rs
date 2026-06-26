@@ -73,7 +73,7 @@ impl PatchFixture for SwizzleStick {
     }
     fn new_patch(_: Self::GroupOptions, options: Self::PatchOptions) -> PatchConfig {
         PatchConfig {
-            channel_count: 47,
+            channel_count: 27,
             render_mode: Some(options.head_index.render_mode()),
         }
     }
