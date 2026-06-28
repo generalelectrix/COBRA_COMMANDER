@@ -80,6 +80,7 @@ impl PatchFixture for SwizzleStick {
 }
 
 register_patcher!(SwizzleStick);
+register_touchosc_template!(SwizzleStick);
 
 impl AnimatedFixture for SwizzleStick {
     type Target = AnimationTarget;
