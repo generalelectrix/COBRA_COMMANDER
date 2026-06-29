@@ -23,11 +23,13 @@ pub struct SwizzleStick {
     #[channel_control]
     #[animate]
     pan: ChannelKnobBipolar<Mirrored<RenderBipolarToCoarseAndFine>>,
+    pan_spin_active: Bool<()>,
     #[channel_control]
     #[animate]
     pan_spin: ChannelKnobBipolar<BipolarSplitChannelMirror>,
     #[animate]
     tilt: Bipolar<RenderBipolarToCoarseAndFine>,
+    tilt_spin_active: Bool<()>,
     #[animate]
     tilt_spin: BipolarSplitChannel,
     #[channel_control]
@@ -42,11 +44,13 @@ impl Default for SwizzleStick {
                 .with_detent()
                 .with_mirroring(true)
                 .with_channel_knob(0),
+            pan_spin_active: Bool::new_off("PanSpinActive", ()),
             pan_spin: Bipolar::split_channel("PanSpin", 2, 129, 255, 1, 127, 128)
                 .with_detent()
                 .with_mirroring(true)
                 .with_channel_knob(1),
             tilt: Bipolar::coarse_fine("Tilt", 0).with_detent(), // DMX buf offset will be set manually for each head
+            tilt_spin_active: Bool::new_off("TiltSpinActive", ()),
             tilt_spin: Bipolar::split_channel("TiltSpin", 0, 129, 255, 1, 127, 128).with_detent(), // DMX buf offset will be set manually for each head
             tilt_macro_speed: Unipolar::full_channel("TiltMacroSpeed", 19).with_channel_knob(2),
         }
@@ -106,11 +110,16 @@ impl AnimatedFixture for SwizzleStick {
                 animation_vals.filter(&AnimationTarget::Pan),
                 dmx_buf,
             );
-            self.pan_spin.render(
-                group_controls,
-                animation_vals.filter(&AnimationTarget::PanSpin),
-                dmx_buf,
-            );
+            if self.pan_spin_active.val() {
+                self.pan_spin.render(
+                    group_controls,
+                    animation_vals.filter(&AnimationTarget::PanSpin),
+                    dmx_buf,
+                );
+            } else {
+                dmx_buf[2] = 0;
+            }
+
             dmx_buf[18] = 0; // TODO tilt macro select
             self.tilt_macro_speed.render(
                 group_controls,
@@ -133,11 +142,15 @@ impl AnimatedFixture for SwizzleStick {
             &mut dmx_buf[tilt_buf_offset..tilt_buf_offset + 2],
         );
         let tilt_spin_buf_offset = 13 + index;
-        self.tilt_spin.render(
-            group_controls,
-            animation_vals.filter(&AnimationTarget::TiltSpin),
-            &mut dmx_buf[tilt_spin_buf_offset..tilt_spin_buf_offset + 1],
-        );
+        if self.tilt_spin_active.val() {
+            self.tilt_spin.render(
+                group_controls,
+                animation_vals.filter(&AnimationTarget::TiltSpin),
+                &mut dmx_buf[tilt_spin_buf_offset..tilt_spin_buf_offset + 1],
+            );
+        } else {
+            dmx_buf[tilt_spin_buf_offset] = 0;
+        }
     }
 }
 
