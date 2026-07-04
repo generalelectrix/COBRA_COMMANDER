@@ -552,7 +552,17 @@ impl UsedAddrs {
     fn have_mutual_affinity(f0: FixtureType, f1: FixtureType) -> bool {
         // TODO: destroy this or generalize it.
         let swarm = crate::fixture::swarmolon::affinity();
-        swarm.contains(&f0) && swarm.contains(&f1)
+        if swarm.contains(&f0) && swarm.contains(&f1) {
+            return true;
+        }
+        // To correctly patch swizzle sticks, we need to patch the same fixture
+        // rendering to multiple heads.
+        if f0 == crate::fixture::swizzle_stick::SwizzleStick::NAME
+            && f1 == crate::fixture::swizzle_stick::SwizzleStick::NAME
+        {
+            return true;
+        }
+        false
     }
 }
 
