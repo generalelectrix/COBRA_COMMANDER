@@ -214,8 +214,6 @@ pub struct RenderUnipolarToCoarseAndFine {
 
 impl RenderToDmx<UnipolarFloat> for RenderUnipolarToCoarseAndFine {
     fn render(&self, val: &UnipolarFloat, dmx_buf: &mut [u8]) {
-        // The value is already in [0, 1] (unlike the bipolar version, no
-        // rescale is needed).
         let [coarse, fine] = crate::util::unipolar_to_coarse_fine(*val);
         dmx_buf[self.dmx_buf_offset] = coarse;
         dmx_buf[self.dmx_buf_offset + 1] = fine;
