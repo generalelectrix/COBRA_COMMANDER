@@ -137,6 +137,38 @@ impl Color {
         }
     }
 
+    /// Read the hue, saturation, and level controls with their animations and
+    /// any strobe override applied.
+    fn animated_hsv<A>(
+        &self,
+        group_controls: &FixtureGroupControls,
+        animation_vals: &A,
+    ) -> AnimatedHsv
+    where
+        A: TargetedAnimationValues<AnimationTarget>,
+    {
+        let mut hue = self.hue.control.val().val();
+        let mut sat = self.sat.control.val().val();
+        let mut val = self.val.control.val().val();
+        for (anim_val, target) in animation_vals.iter() {
+            use AnimationTarget::*;
+            match target {
+                Hue => hue += anim_val,
+                // FIXME: might want to do something nicer for unipolar values
+                Sat => sat += anim_val,
+                Val => val += anim_val,
+            }
+        }
+        if let Some(strobe_intensity) = group_controls.strobe_intensity() {
+            val = strobe_intensity.val();
+        }
+        AnimatedHsv {
+            hue: Phase::new(hue),
+            sat: UnipolarFloat::new(sat),
+            level: UnipolarFloat::new(val),
+        }
+    }
+
     /// Render this color into a DMX output buffer with an explicit color model.
     ///
     /// This method is useful for fixtures that embed a Color as a full sub-
@@ -158,53 +190,85 @@ impl Color {
             return;
         }
 
-        let mut hue = self.hue.control.val().val();
-        let mut sat = self.sat.control.val().val();
-        let mut val = self.val.control.val().val();
-        for (anim_val, target) in animation_vals.iter() {
-            use AnimationTarget::*;
-            match target {
-                Hue => hue += anim_val,
-                // FIXME: might want to do something nicer for unipolar values
-                Sat => sat += anim_val,
-                Val => val += anim_val,
-            }
-        }
-
-        if let Some(strobe_intensity) = group_controls.strobe_intensity() {
-            val = strobe_intensity.val();
-        }
+        let AnimatedHsv { hue, sat, level } = self.animated_hsv(group_controls, animation_vals);
 
         match self.space {
             ColorSpace::Hsv => {
                 let c = Hsv {
-                    hue: Phase::new(hue),
-                    sat: UnipolarFloat::new(sat),
-                    val: UnipolarFloat::new(val),
+                    hue,
+                    sat,
+                    val: level,
                 };
                 model.render(dmx_buf, &c);
                 group_controls.preview.color_lazy(|| c.rgb());
             }
             ColorSpace::Hsi => {
                 let c = Hsi {
-                    hue: Phase::new(hue),
-                    sat: UnipolarFloat::new(sat),
-                    intensity: UnipolarFloat::new(val),
+                    hue,
+                    sat,
+                    intensity: level,
                 };
                 model.render(dmx_buf, &c);
                 group_controls.preview.color_lazy(|| c.rgb());
             }
             ColorSpace::Hsluv => {
                 let c = Hsluv {
-                    hue: Phase::new(hue),
-                    sat: UnipolarFloat::new(sat),
-                    lightness: self.hsluv_lightness() * UnipolarFloat::new(val),
+                    hue,
+                    sat,
+                    lightness: self.hsluv_lightness() * level,
                 };
                 model.render(dmx_buf, &c);
                 group_controls.preview.color_lazy(|| c.rgb());
             }
         }
     }
+
+    /// Compute the subtractive CMY flag + dimmer drive for this (HSLuv) color:
+    /// hue/saturation → the CMY flags, brightness (`Val`, plus any strobe) → the
+    /// dimmer. Because brightness drives only the dimmer, the flags — and thus the
+    /// hue — hold steady through fades and strobes.
+    pub fn cmy_dimmer<A>(
+        &self,
+        model: &dyn ChromaToCmy,
+        group_controls: &FixtureGroupControls,
+        animation_vals: &A,
+    ) -> CmyDimmer
+    where
+        A: TargetedAnimationValues<AnimationTarget>,
+    {
+        let AnimatedHsv {
+            hue,
+            sat,
+            level: dimmer,
+        } = self.animated_hsv(group_controls, animation_vals);
+        let reference_lightness = self.hsluv_lightness();
+
+        let [cyan, magenta, yellow] = hsluv_cmy_flags(hue, sat, reference_lightness, model);
+
+        group_controls.preview.color_lazy(|| {
+            Hsluv {
+                hue,
+                sat,
+                lightness: reference_lightness * dimmer,
+            }
+            .rgb()
+        });
+
+        CmyDimmer {
+            cyan,
+            magenta,
+            yellow,
+            dimmer,
+        }
+    }
+}
+
+/// The hue, saturation, and level of a [`Color`], incorporating animations and
+/// any strobe override.
+struct AnimatedHsv {
+    hue: Phase,
+    sat: UnipolarFloat,
+    level: UnipolarFloat,
 }
 
 impl AnimatedFixture for Color {

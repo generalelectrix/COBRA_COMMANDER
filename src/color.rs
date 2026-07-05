@@ -205,6 +205,137 @@ impl Hsluv {
 /// at the brightness equivalent to blue at maximum output.
 pub const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.3225);
 
+pub use cmy::*;
+
+pub mod cmy {
+    //! # Rendering an HSLuv color onto a subtractive CMY moving head (dimmer + flags)
+    //!
+    //! A CMY head is a fixed white arc lamp → a **dimmer** (attenuates total flux,
+    //! roughly spectrally flat) → three **dichroic flags** that each subtract one
+    //! primary (Cyan−red, Magenta−green, Yellow−blue), progressively inserted. In
+    //! linear light the emitted color is `dimmer · (1−c, 1−m, 1−y)`. Reproducing a
+    //! target is three equations in four unknowns `(c, m, y, dimmer)`: one
+    //! brightness degree of freedom, since dimming is achievable either through the
+    //! dimmer or by closing all three flags together.
+    //!
+    //! That degree of freedom is spent by separating **chromaticity** (which flags,
+    //! how deep) from **luminance** (the dimmer) — the CIE *xyY* split:
+    //!
+    //! - **Flags carry chromaticity only.** [`hsluv_cmy_flags`] samples hue and
+    //!   saturation at a *reference lightness*, normalizes the sRGB by its max
+    //!   channel (so at least one flag is fully open), and inverts: `flag = 1 −
+    //!   chroma`. At most two of the three flags ever insert — the maximum-throughput
+    //!   two-filter scheme. As a function of hue and saturation alone (independent of
+    //!   the brightness/level command), a dim or a strobe leaves the hue stable, and,
+    //!   unlike routing HSLuv *L* through the flags, a fade preserves saturation
+    //!   (HSLuv saturation is lightness-relative, an effect deliberately excluded from
+    //!   the brightness axis).
+    //! - **The dimmer carries luminance only** (the fixture level, with strobe riding
+    //!   it). At `sat = 0` all flags open for maximum output.
+    //! - **A higher reference lightness** (raised by a lightness-boost knob)
+    //!   desaturates the sampled chromaticity toward white, opening the flags —
+    //!   trading saturation for lumens. This is the physical CMY gamut limit
+    //!   (saturated colors emit fewer lumens) expressed as a control.
+    //!
+    //! ## Prior art
+    //! - **US 11,221,125 B2, "Color control in subtractive color mixing system,"**
+    //!   J. Gadegaard / Harman Professional Denmark (maker of the MAC 700): defines
+    //!   the target in **CIE 1931 (x,y)**, treats the filter-setpoint→emitted-color
+    //!   relationship as **non-linear** and **calibrated by measurement**
+    //!   (spectrometer + integrating sphere), builds a **point-set mesh**
+    //!   (triangulation, or a two-filter quadrilateral with an analytical bilinear
+    //!   solve) of measured points, and renders a target by locating its mesh cell
+    //!   and **interpolating** to filter setpoints. Only **two of three filters**
+    //!   insert for any chromaticity — the invariant the max-normalization reproduces.
+    //! - **ETC Eos / grandMA3**: CIE-xy color engines with per-fixture measured gamut
+    //!   calibration.
+    //! - **QLC+** (open source): the naive `cmy = 255 − rgb`, the floor this improves on.
+    //! - **HARMAN, "additive vs subtractive"**: saturated CMY loses lumens (more
+    //!   wavelengths filtered), so flags stay maximally open and luminance rides the
+    //!   dimmer.
+    //!
+    //! ## Fidelity level and calibrated extension
+    //! [`AnalyticalCmy`] is the analytical, tune-by-eye model — the patent's
+    //! *theoretical* two-filter form. Its approximations: real dichroic insertion is
+    //! non-linear with cross-talk; chromaticity is computed in the additive path's
+    //! gamma-encoded **sRGB** space (so RGB and CMY fixtures agree on an HSLuv color)
+    //! rather than the fixture's actual CMY primaries (so hues are approximate); and
+    //! the dimmer→light and flag-DMX→attenuation curves are treated as linear.
+    //!
+    //! A calibrated model implements the same [`ChromaToCmy`] trait, backed by a
+    //! measured DMX→CIE-xy table for the head (spectrometer + integrating sphere per
+    //! the patent, or published data): a CIE-xy gamut mesh with inverse interpolation
+    //! target → flag setpoints, gamut mapping of out-of-range targets toward the
+    //! boundary (with the color wheel / CTC slots for extremes), and a measured
+    //! dimmer response curve for perceptual luminance → dimmer.
+
+    use number::{Phase, UnipolarFloat};
+
+    use super::Hsluv;
+
+    /// The drive for a subtractive CMY + dimmer head: three flag fractions plus
+    /// an overall dimmer level, as an intermediate representation independent of
+    /// how those four values are rendered onto DMX channels.
+    #[derive(Debug, Clone, Copy)]
+    pub struct CmyDimmer {
+        pub cyan: UnipolarFloat,
+        pub magenta: UnipolarFloat,
+        pub yellow: UnipolarFloat,
+        pub dimmer: UnipolarFloat,
+    }
+
+    /// Map a chromaticity (normalized linear RGB, max component == 1) to CMY
+    /// subtractive flag fractions `[c, m, y]` (`0` = flag open / no subtraction,
+    /// `1` = flag fully inserted).
+    pub trait ChromaToCmy {
+        fn flags(&self, chroma_lin_rgb: [UnipolarFloat; 3]) -> [UnipolarFloat; 3];
+    }
+
+    /// Analytical CMY model: `flag = 1 − chroma`. With a normalized chromaticity
+    /// (max component `1`), exactly one flag is `0`, so at most two flags insert.
+    #[derive(Debug, Clone, Copy)]
+    pub struct AnalyticalCmy;
+
+    impl ChromaToCmy for AnalyticalCmy {
+        fn flags(&self, chroma_lin_rgb: [UnipolarFloat; 3]) -> [UnipolarFloat; 3] {
+            chroma_lin_rgb.map(|c| c.invert())
+        }
+    }
+
+    /// Compute CMY flag fractions for an HSLuv hue/saturation sampled at
+    /// `reference_lightness`, via `model`. A higher `reference_lightness`
+    /// desaturates the sampled chromaticity toward white, opening the flags. Below
+    /// a floor luminance the chromaticity is treated as white (all flags open).
+    pub fn hsluv_cmy_flags(
+        hue: Phase,
+        sat: UnipolarFloat,
+        reference_lightness: UnipolarFloat,
+        model: &dyn ChromaToCmy,
+    ) -> [UnipolarFloat; 3] {
+        // Work in the same (gamma-encoded) sRGB space the additive color path
+        // drives — `Hsluv::rgb` sends these values straight to DMX — so a CMY head
+        // and an RGB fixture agree on a given HSLuv color. The dichroic flag
+        // response is nonlinear regardless; fitting that curve is v2 calibration.
+        let (r, g, b) = Hsluv {
+            hue,
+            sat,
+            lightness: reference_lightness,
+        }
+        .linear_rgb();
+        let m = r.max(g).max(b);
+        let chroma = if m < 1e-6 {
+            [UnipolarFloat::ONE; 3]
+        } else {
+            [
+                UnipolarFloat::new(r / m),
+                UnipolarFloat::new(g / m),
+                UnipolarFloat::new(b / m),
+            ]
+        };
+        model.flags(chroma)
+    }
+}
+
 /// W diode luminous output relative to a single chromatic LED, expressed in
 /// chromatic-channel-units.
 ///
@@ -375,4 +506,104 @@ fn linear_rgb_to_rgbw((r, g, b): (f64, f64, f64)) -> ColorRgbw {
 
 fn unit_to_u8(v: f64) -> u8 {
     (255. * v).round() as u8
+}
+
+#[cfg(test)]
+mod cmy_tests {
+    use number::{Phase, UnipolarFloat};
+
+    use super::cmy::*;
+
+    fn uf(v: f64) -> UnipolarFloat {
+        UnipolarFloat::new(v)
+    }
+
+    fn flag_vals(f: [UnipolarFloat; 3]) -> [f64; 3] {
+        f.map(|c| c.val())
+    }
+
+    fn flag_total(f: [UnipolarFloat; 3]) -> f64 {
+        f.iter().map(|c| c.val()).sum()
+    }
+
+    #[test]
+    fn analytical_flags_are_inverse_chroma() {
+        // `flag = 1 - chroma`: subtract the complementary channel.
+        let f = |c: [f64; 3]| flag_vals(AnalyticalCmy.flags(c.map(uf)));
+        assert_eq!(f([1.0, 1.0, 1.0]), [0.0, 0.0, 0.0]); // white → all open
+        assert_eq!(f([1.0, 0.0, 0.0]), [0.0, 1.0, 1.0]); // red → cyan open
+        assert_eq!(f([0.0, 1.0, 0.0]), [1.0, 0.0, 1.0]); // green → magenta open
+        assert_eq!(f([0.0, 0.0, 1.0]), [1.0, 1.0, 0.0]); // blue → yellow open
+    }
+
+    #[test]
+    fn achromatic_opens_all_flags() {
+        for hue in [0.0, 0.25, 0.5, 0.75] {
+            for lref in [0.2, 0.3225, 0.6, 1.0] {
+                let f = hsluv_cmy_flags(Phase::new(hue), uf(0.0), uf(lref), &AnalyticalCmy);
+                assert!(
+                    flag_vals(f).iter().all(|c| c.abs() < 1e-6),
+                    "sat=0 should open all flags, got {f:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn at_most_two_flags_insert() {
+        // At full saturation, every hue leaves at least one flag fully open.
+        for i in 0..36 {
+            let hue = i as f64 / 36.0;
+            let f = hsluv_cmy_flags(Phase::new(hue), uf(1.0), uf(0.3225), &AnalyticalCmy);
+            let min = flag_vals(f).iter().copied().fold(f64::INFINITY, f64::min);
+            assert!(min < 1e-6, "hue {hue}: expected an open flag, got {f:?}");
+        }
+    }
+
+    #[test]
+    fn saturation_deepens_flags() {
+        let hue = Phase::new(0.1);
+        let total = |s: f64| flag_total(hsluv_cmy_flags(hue, uf(s), uf(0.3225), &AnalyticalCmy));
+        let (zero, half, full) = (total(0.0), total(0.5), total(1.0));
+        assert!(
+            zero <= half + 1e-9 && half <= full + 1e-9,
+            "flag insertion should grow with saturation: {zero} {half} {full}"
+        );
+        assert!(full > zero + 1e-6, "full saturation inserts more than none");
+    }
+
+    #[test]
+    fn higher_reference_lightness_opens_flags() {
+        // Raising the reference lightness desaturates toward white → opens flags.
+        let hue = Phase::new(0.1);
+        let total = |lref: f64| flag_total(hsluv_cmy_flags(hue, uf(1.0), uf(lref), &AnalyticalCmy));
+        assert!(
+            total(0.9) < total(0.3225),
+            "higher reference lightness should open flags"
+        );
+    }
+
+    #[test]
+    fn open_flag_tracks_dominant_channel() {
+        // End-to-end through the HSLuv pipeline: the flag that subtracts the
+        // dominant color channel is fully open (cyan↔red, magenta↔green,
+        // yellow↔blue). At secondary hues two channels tie and both flags open.
+        use super::{Hsluv, RenderColor};
+        for i in 0..12 {
+            let hue = Phase::new(i as f64 / 12.0);
+            let rgb = Hsluv {
+                hue,
+                sat: uf(1.0),
+                lightness: uf(0.3225),
+            }
+            .rgb();
+            let flags = flag_vals(hsluv_cmy_flags(hue, uf(1.0), uf(0.3225), &AnalyticalCmy));
+            let max_ch = (0..3).max_by_key(|&j| rgb[j]).unwrap();
+            assert!(
+                flags[max_ch] < 1e-5,
+                "hue {}: the dominant channel {max_ch}'s flag should be open; rgb={rgb:?} flags={flags:?}",
+                hue.val()
+            );
+        }
+    }
 }
