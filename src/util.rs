@@ -16,6 +16,13 @@ pub fn unipolar_to_range(start: u8, end: u8, value: UnipolarFloat) -> u8 {
     }
 }
 
+/// Scale a unipolar value across a 16-bit coarse/fine channel pair, returned as
+/// `[coarse (MSB), fine (LSB)]`.
+#[inline(always)]
+pub fn unipolar_to_coarse_fine(value: UnipolarFloat) -> [u8; 2] {
+    ((value.val() * u16::MAX as f64).round() as u16).to_be_bytes()
+}
+
 /// Coerce the bottom 5% of the fader range to be a hard 0, and rescale the rest.
 #[inline(always)]
 pub fn unipolar_fader_with_detent(v: UnipolarFloat) -> UnipolarFloat {

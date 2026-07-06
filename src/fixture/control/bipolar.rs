@@ -275,8 +275,7 @@ pub struct RenderBipolarToCoarseAndFine {
 
 impl RenderToDmx<BipolarFloat> for RenderBipolarToCoarseAndFine {
     fn render(&self, val: &BipolarFloat, dmx_buf: &mut [u8]) {
-        let uni = val.rescale_as_unipolar();
-        let [coarse, fine] = ((uni.val() * u16::MAX as f64).round() as u16).to_be_bytes();
+        let [coarse, fine] = crate::util::unipolar_to_coarse_fine(val.rescale_as_unipolar());
         dmx_buf[self.dmx_buf_offset] = coarse;
         dmx_buf[self.dmx_buf_offset + 1] = fine;
     }

@@ -101,6 +101,15 @@ impl Unipolar<RenderUnipolarToRange> {
     }
 }
 
+impl Unipolar<RenderUnipolarToCoarseAndFine> {
+    /// Initialize a unipolar control that renders to a two-channel coarse/fine
+    /// (16-bit) setup, writing the MSB at `dmx_buf_offset` and the LSB at
+    /// `dmx_buf_offset + 1`.
+    pub fn coarse_fine<S: Into<String>>(name: S, dmx_buf_offset: usize) -> Self {
+        Self::new(name, RenderUnipolarToCoarseAndFine { dmx_buf_offset })
+    }
+}
+
 impl<R: RenderToDmx<UnipolarFloat>> OscControl<UnipolarFloat> for Unipolar<R> {
     fn control_direct(
         &mut self,
@@ -193,6 +202,21 @@ pub struct RenderUnipolarToRange {
 impl RenderToDmx<UnipolarFloat> for RenderUnipolarToRange {
     fn render(&self, val: &UnipolarFloat, dmx_buf: &mut [u8]) {
         dmx_buf[self.dmx_buf_offset] = unipolar_to_range(self.start, self.end, *val);
+    }
+}
+
+/// Render a unipolar float to two channels interpreted as coarse and fine
+/// (16-bit), MSB at `dmx_buf_offset` and LSB at `dmx_buf_offset + 1`.
+#[derive(Debug)]
+pub struct RenderUnipolarToCoarseAndFine {
+    pub dmx_buf_offset: usize,
+}
+
+impl RenderToDmx<UnipolarFloat> for RenderUnipolarToCoarseAndFine {
+    fn render(&self, val: &UnipolarFloat, dmx_buf: &mut [u8]) {
+        let [coarse, fine] = crate::util::unipolar_to_coarse_fine(*val);
+        dmx_buf[self.dmx_buf_offset] = coarse;
+        dmx_buf[self.dmx_buf_offset + 1] = fine;
     }
 }
 
@@ -291,5 +315,23 @@ mod tests {
         assert_eq!(buf[0], 200);
         render.render(&UnipolarFloat::ZERO, &mut buf);
         assert_eq!(buf[0], 100);
+    }
+
+    #[test]
+    fn test_render_unipolar_to_coarse_fine() {
+        let render = RenderUnipolarToCoarseAndFine { dmx_buf_offset: 0 };
+        let mut buf = [0u8; 2];
+
+        render.render(&UnipolarFloat::new(0.5), &mut buf);
+        assert_eq!(
+            u16::from_be_bytes([buf[0], buf[1]]),
+            (0.5 * u16::MAX as f64).round() as u16
+        );
+
+        render.render(&UnipolarFloat::ONE, &mut buf);
+        assert_eq!([buf[0], buf[1]], [255, 255]);
+
+        render.render(&UnipolarFloat::ZERO, &mut buf);
+        assert_eq!([buf[0], buf[1]], [0, 0]);
     }
 }

@@ -24,6 +24,7 @@ pub mod leko;
 pub mod lil_chonker;
 pub mod lumasphere;
 pub mod lumitone;
+pub mod mac_700;
 pub mod quadphase;
 pub mod radiance;
 pub mod rotosphere_q3;

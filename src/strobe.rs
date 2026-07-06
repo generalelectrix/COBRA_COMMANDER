@@ -188,6 +188,18 @@ impl Default for StrobeClock {
     }
 }
 
+#[cfg(test)]
+impl StrobeClock {
+    /// Construct a clock with a fixed flash intensity and run state, for tests.
+    pub(crate) fn for_test(intensity: UnipolarFloat, strobe_on: bool) -> Self {
+        Self {
+            intensity,
+            strobe_on,
+            ..Default::default()
+        }
+    }
+}
+
 impl StrobeClock {
     /// Set the actual rate used by the inner clock.
     ///
