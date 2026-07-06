@@ -4,7 +4,6 @@ use crate::fixture::prelude::*;
 #[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 1]
 #[strobe(Long)]
-#[patch_notes = "Set the fixture/dimmer pack to a single DMX channel controlling intensity."]
 pub struct Dimmer {
     #[channel_control]
     #[animate]

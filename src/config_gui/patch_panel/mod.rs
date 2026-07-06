@@ -345,7 +345,7 @@ impl PatchPanel<'_> {
         let mut swap: Option<(usize, usize)> = None;
 
         // Group list (left) + selected group detail (right).
-        ui.horizontal(|ui| {
+        let split = ui.horizontal(|ui| {
             // Left column: group table + Add Group button.
             ui.vertical(|ui| {
                 // 8 data rows + 1 header row, scaled to current font.
@@ -439,10 +439,15 @@ impl PatchPanel<'_> {
                 }
             });
 
-            // Grow the divider down to meet the horizontal rule that closes
-            // the section (egui sizes it to content height, leaving a gap).
-            let grow = ui.spacing().item_spacing.y + 3.0;
-            ui.add(egui::Separator::default().vertical().grow(grow));
+            // Divider between the columns. A vertical Separator only spans the
+            // height known when it is added (the left column), so capture its x
+            // and repaint it full-height once both columns have laid out — see
+            // after this block.
+            let divider_x = ui
+                .add(egui::Separator::default().vertical())
+                .rect
+                .center()
+                .x;
 
             // Right column: selected group detail.
             ui.vertical(|ui| {
@@ -473,7 +478,17 @@ impl PatchPanel<'_> {
                     }
                 }
             });
+            divider_x
         });
+
+        // Repaint the column divider at full height: extend it down the taller
+        // (right) column to meet the horizontal rule that closes the section.
+        let divider_bottom = split.response.rect.bottom() + ui.spacing().item_spacing.y;
+        ui.painter().vline(
+            split.inner,
+            egui::Rangef::new(split.response.rect.top(), divider_bottom),
+            ui.visuals().widgets.noninteractive.bg_stroke,
+        );
 
         // Apply swap.
         if let Some((a, b)) = swap {
@@ -574,12 +589,21 @@ impl PatchPanel<'_> {
         }
     }
 
-    /// Render a chip that reveals the fixture type's patch notes on hover, if it
-    /// declares any.
+    /// Render a collapsing section that reveals the fixture type's patch notes,
+    /// if it declares any. Collapsed by default.
     fn render_detail_patch_notes(&self, ui: &mut egui::Ui, patcher: Option<&Patcher>) {
         if let Some(notes) = patcher.and_then(|p| (p.patch_notes)()) {
             ui.add_space(4.0);
-            ui.button("Setup notes").on_hover_text(notes);
+            ui.scope(|ui| {
+                // Drop the indent guide line egui draws down the left of a
+                // collapsing body.
+                ui.visuals_mut().indent_has_left_vline = false;
+                egui::CollapsingHeader::new("Patch notes")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.label(notes);
+                    });
+            });
         }
     }
 
@@ -1714,6 +1738,36 @@ mod test {
             &mut state,
             "patch_panel_with_groups",
         );
+    }
+
+    #[test]
+    fn render_patch_notes_expanded() {
+        // The "Simple" fixture type declares patch notes; selecting one of its
+        // groups shows a collapsed "Patch notes" header. Click it and confirm
+        // the note text is revealed below.
+        let snapshot = test_snapshot_with_groups();
+        let patchers = test_patchers();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+        let client = auto_respond_client();
+        let mut modal = MessageModal::default();
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.get_by_label("Patch notes").click();
+        harness.run();
+        harness.snapshot("patch_panel_notes_expanded");
     }
 
     #[test]

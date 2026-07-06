@@ -75,10 +75,6 @@ impl PatchFixture for Color {
     type GroupOptions = GroupOptions;
     type PatchOptions = PatchOptions;
 
-    fn patch_notes() -> Option<&'static str> {
-        Some("Set the fixture to the DMX personality matching the patched channel count.")
-    }
-
     fn new(options: Self::GroupOptions) -> Self {
         Self::for_subcontrol(None, options.control_color_space)
     }
