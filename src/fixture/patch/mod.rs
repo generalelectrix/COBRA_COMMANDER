@@ -1177,6 +1177,28 @@ mod test {
         );
     }
 
+    #[test]
+    fn patch_notes_thread_through_registry() {
+        let patcher = |name: &str| {
+            PATCHERS
+                .iter()
+                .find(|p| p.name.0 == name)
+                .unwrap_or_else(|| panic!("no patcher registered for {name}"))
+        };
+        // Derived fixture: value supplied via the #[patch_notes = ...] attribute.
+        assert_eq!(
+            (patcher("Dimmer").patch_notes)(),
+            Some("Set the fixture/dimmer pack to a single DMX channel controlling intensity.")
+        );
+        // Manual impl: value supplied by overriding the trait method.
+        assert_eq!(
+            (patcher("Color").patch_notes)(),
+            Some("Set the fixture to the DMX personality matching the patched channel count.")
+        );
+        // Derived fixture without the attribute falls back to the trait default.
+        assert_eq!((patcher("Relay").patch_notes)(), None);
+    }
+
     /// Expand an OscControlDescription into the set of address suffixes
     /// that would appear in a template (relative to the group prefix).
     fn expand_control_addresses(control: &OscControlDescription) -> Vec<String> {

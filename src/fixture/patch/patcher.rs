@@ -26,6 +26,7 @@ pub struct Patcher {
     pub group_options: fn() -> Vec<(String, PatchOption)>,
     pub create_patch: fn(group_options: Options, patch_options: Options) -> Result<PatchConfig>,
     pub patch_options: fn() -> Vec<(String, PatchOption)>,
+    pub patch_notes: fn() -> Option<&'static str>,
 }
 
 impl Display for Patcher {
@@ -91,6 +92,12 @@ pub trait PatchFixture: Sized + 'static {
         <Self as PatchFixture>::GroupOptions: OptionsMenu,
     {
         Self::GroupOptions::menu()
+    }
+
+    /// Optional setup instructions for this fixture type, such as which onboard
+    /// DMX mode the physical fixture must be set to.
+    fn patch_notes() -> Option<&'static str> {
+        None
     }
 
     /// Create a new instance of the fixture from parsed options.

@@ -93,6 +93,7 @@ fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
             group_options: #ident::group_options,
             create_patch: #ident::create_patch,
             patch_options: #ident::patch_options,
+            patch_notes: #ident::patch_notes,
         };
     }
 }
@@ -122,7 +123,14 @@ fn register_template_impl(ident: &Ident) -> proc_macro2::TokenStream {
 ///
 /// If the fixture is capable of using global strobing, annotate the struct with
 /// the #[strobe(Short)] or #[strobe(Long)] attribute.
-#[proc_macro_derive(PatchFixture, attributes(channel_count, strobe, no_touchosc_template))]
+///
+/// Use the #[patch_notes = ...] attribute to provide operator setup
+/// instructions. The value is any expression evaluating to `&'static str` (a
+/// string literal for short notes, or a `const` for longer ones).
+#[proc_macro_derive(
+    PatchFixture,
+    attributes(channel_count, strobe, no_touchosc_template, patch_notes)
+)]
 pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
     let DeriveInput { ident, attrs, .. } = parse_macro_input!(input as DeriveInput);
 
@@ -145,12 +153,23 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
         quote!(None)
     };
 
+    let patch_notes = match get_attr_expr(&attrs, "patch_notes") {
+        Some(expr) => quote! {
+            fn patch_notes() -> Option<&'static str> {
+                Some(#expr)
+            }
+        },
+        None => quote! {},
+    };
+
     quote! {
         impl crate::fixture::patch::PatchFixture for #ident {
             const NAME: FixtureType = FixtureType(#name);
 
             type GroupOptions = crate::fixture::patch::NoOptions;
             type PatchOptions = crate::fixture::patch::NoOptions;
+
+            #patch_notes
 
             fn new(_options: Self::GroupOptions) -> Self {
                 Self::default()
@@ -532,6 +551,22 @@ fn get_attr_and_payload(attrs: &[Attribute], ident: &str) -> Option<String> {
             Some(s.value())
         })
         .next()
+}
+
+/// Extract the value of a name/value attribute as an expression, e.g. the `EXPR`
+/// in `#[ident = EXPR]`. Accepts any expression, not just a string literal, so a
+/// const path can stand in for a long inline value.
+fn get_attr_expr(attrs: &[Attribute], ident: &str) -> Option<proc_macro2::TokenStream> {
+    attrs
+        .iter()
+        .find(|attr| attr.meta.path().is_ident(ident))
+        .map(|attr| {
+            let Meta::NameValue(nm) = &attr.meta else {
+                panic!("attribute {ident} must be name/value, not {:?}", attr.meta);
+            };
+            let value = &nm.value;
+            quote!(#value)
+        })
 }
 
 fn get_attr_and_list_payload(attrs: &[Attribute], ident: &str) -> Option<Vec<String>> {
