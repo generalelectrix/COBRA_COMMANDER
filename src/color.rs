@@ -332,14 +332,17 @@ pub mod cmy {
     pub fn rgb_to_cmy_dimmer(rgb: [UnipolarFloat; 3], model: &impl ChromaToCmy) -> CmyDimmer {
         let [r, g, b] = rgb.map(|c| c.val());
         let m = r.max(g).max(b);
-        let chroma = if m < 1e-6 {
-            [UnipolarFloat::ONE; 3]
-        } else {
+        // Normalize by the brightest channel to separate chromaticity from
+        // brightness. Each channel is <= m, so the ratios already land in [0, 1];
+        // only true black (m == 0) is undefined, and there every flag opens.
+        let chroma = if m > 0.0 {
             [
                 UnipolarFloat::new(r / m),
                 UnipolarFloat::new(g / m),
                 UnipolarFloat::new(b / m),
             ]
+        } else {
+            [UnipolarFloat::ONE; 3]
         };
         let [cyan, magenta, yellow] = model.flags(chroma);
         CmyDimmer {

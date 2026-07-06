@@ -123,15 +123,15 @@ impl Color {
         }
     }
 
-    /// The HSLuv lightness scale from the lightness-boost knob: the offset when
-    /// there is no boost control (spaces other than HSLuv), rising to full with
-    /// the knob. Does not include the rescaling from the overall level fader.
+    /// The HSLuv lightness scale from the lightness-boost knob, excluding the
+    /// overall level fader. Logs an error and returns zero when no boost control is
+    /// configured.
     fn hsluv_lightness(&self) -> UnipolarFloat {
-        let boost = self
-            .lightness_boost
-            .as_ref()
-            .map_or(UnipolarFloat::ZERO, |b| b.control.val());
-        HSLUV_LIGHTNESS_OFFSET + HSLUV_LIGHTNESS_OFFSET.invert() * boost
+        let Some(lightness_boost) = &self.lightness_boost else {
+            error!("No lightness boost control configured for HSLuv color.");
+            return UnipolarFloat::ZERO;
+        };
+        HSLUV_LIGHTNESS_OFFSET + HSLUV_LIGHTNESS_OFFSET.invert() * lightness_boost.control.val()
     }
 
     pub fn render_without_animations(
@@ -198,8 +198,6 @@ impl Color {
         }
 
         let AnimatedHsv { hue, sat, level } = self.animated_hsv(animation_vals);
-        // An additive fixture has no mechanical color mixer, so the strobe flashes
-        // the whole color: it rides the level, through the same lightness curve.
         let level = group_controls.strobe_intensity().unwrap_or(level);
         with_control_color!(self, hue, sat, level, |color| {
             model.render(dmx_buf, &color);
