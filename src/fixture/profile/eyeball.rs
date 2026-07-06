@@ -28,6 +28,8 @@ impl PatchFixture for Eyeball {
 
     type PatchOptions = NoOptions;
 
+    const PATCH_NOTES: &'static str = "Set fixture to 17-channel Standard mode.";
+
     fn new(options: Self::GroupOptions) -> Self {
         Self {
             color: Color::for_subcontrol(None, options.control_color_space),

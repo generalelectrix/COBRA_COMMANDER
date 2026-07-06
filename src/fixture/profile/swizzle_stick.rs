@@ -69,6 +69,11 @@ impl PatchFixture for SwizzleStick {
     type GroupOptions = NoOptions;
     type PatchOptions = PatchOptions;
 
+    const PATCH_NOTES: &'static str = "Mechanical control only. \
+        Set fixture to single control mode, Advanced 47-channel personality. \
+        Patch one fixture for each head, setting the head index for each. \
+        Create a second Color group, patch five RGBW colors starting at the fixture's address plus 27 \
+        (eg if addressed at 1, start Color addresses at 28.";
     fn new(_: Self::GroupOptions) -> Self {
         Self::default()
     }

@@ -18,6 +18,7 @@ use crate::fixture::{color::Color, prelude::*};
 #[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
 #[channel_count = 31]
 #[strobe(Long)]
+#[patch_notes = "Set fixture to 16-bit Extended mode."]
 pub struct Mac700 {
     // Ch2-9: CMY color mixing + the 16-bit dimmer, both rendered from this HSLuv
     // color. Declared first so it claims hardware knobs 0=Hue, 1=Sat,

@@ -26,6 +26,7 @@ pub struct Patcher {
     pub group_options: fn() -> Vec<(String, PatchOption)>,
     pub create_patch: fn(group_options: Options, patch_options: Options) -> Result<PatchConfig>,
     pub patch_options: fn() -> Vec<(String, PatchOption)>,
+    pub patch_notes: &'static str,
 }
 
 impl Display for Patcher {
@@ -81,6 +82,10 @@ pub struct PatchConfig {
 
 pub trait PatchFixture: Sized + 'static {
     const NAME: FixtureType;
+
+    /// Setup instructions for this fixture type, such as which onboard DMX mode
+    /// the physical fixture must be set to. Empty when there are none.
+    const PATCH_NOTES: &'static str = "";
 
     type GroupOptions;
     type PatchOptions;

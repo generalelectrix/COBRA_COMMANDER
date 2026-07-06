@@ -345,7 +345,7 @@ impl PatchPanel<'_> {
         let mut swap: Option<(usize, usize)> = None;
 
         // Group list (left) + selected group detail (right).
-        ui.horizontal(|ui| {
+        let split = ui.horizontal(|ui| {
             // Left column: group table + Add Group button.
             ui.vertical(|ui| {
                 // 8 data rows + 1 header row, scaled to current font.
@@ -439,10 +439,15 @@ impl PatchPanel<'_> {
                 }
             });
 
-            // Grow the divider down to meet the horizontal rule that closes
-            // the section (egui sizes it to content height, leaving a gap).
-            let grow = ui.spacing().item_spacing.y + 3.0;
-            ui.add(egui::Separator::default().vertical().grow(grow));
+            // Divider between the columns. A vertical Separator only spans the
+            // height known when it is added (the left column), so capture its x
+            // and repaint it full-height once both columns have laid out — see
+            // after this block.
+            let divider_x = ui
+                .add(egui::Separator::default().vertical())
+                .rect
+                .center()
+                .x;
 
             // Right column: selected group detail.
             ui.vertical(|ui| {
@@ -453,7 +458,18 @@ impl PatchPanel<'_> {
                     };
                     if sel < wc.groups.len() {
                         self.render_detail_editable_fields(ui, sel);
-                        self.render_detail_group_options(ui, sel);
+                        // Look the patcher up once and share it between the
+                        // group-options and patch-notes renderers.
+                        let patcher = self
+                            .state
+                            .working_copy
+                            .as_ref()
+                            .and_then(|wc| wc.groups.get(sel))
+                            .and_then(|g| {
+                                self.patchers.iter().find(|p| p.name.0 == g.config.fixture)
+                            });
+                        self.render_detail_group_options(ui, sel, patcher);
+                        self.render_detail_patch_notes(ui, patcher);
 
                         ui.add_space(8.0);
                         if cancel_button(ui, "Delete Group") {
@@ -462,7 +478,17 @@ impl PatchPanel<'_> {
                     }
                 }
             });
+            divider_x
         });
+
+        // Repaint the column divider at full height: extend it down the taller
+        // (right) column to meet the horizontal rule that closes the section.
+        let divider_bottom = split.response.rect.bottom() + ui.spacing().item_spacing.y;
+        ui.painter().vline(
+            split.inner,
+            egui::Rangef::new(split.response.rect.top(), divider_bottom),
+            ui.visuals().widgets.noninteractive.bg_stroke,
+        );
 
         // Apply swap.
         if let Some((a, b)) = swap {
@@ -531,7 +557,12 @@ impl PatchPanel<'_> {
         }
     }
 
-    fn render_detail_group_options(&mut self, ui: &mut egui::Ui, group_idx: usize) {
+    fn render_detail_group_options(
+        &self,
+        ui: &mut egui::Ui,
+        group_idx: usize,
+        patcher: Option<&Patcher>,
+    ) {
         let Some(wc) = self.state.working_copy.as_ref() else {
             return;
         };
@@ -540,7 +571,6 @@ impl PatchPanel<'_> {
             return;
         };
         let cfg = &group.config;
-        let patcher = self.patchers.iter().find(|p| p.name.0 == cfg.fixture);
         if let Some(patcher) = patcher {
             let group_opts = (patcher.group_options)();
             if !group_opts.is_empty() {
@@ -556,6 +586,25 @@ impl PatchPanel<'_> {
                         }
                     });
             }
+        }
+    }
+
+    /// Render a collapsing section that reveals the fixture type's patch notes,
+    /// if it declares any. Collapsed by default.
+    fn render_detail_patch_notes(&self, ui: &mut egui::Ui, patcher: Option<&Patcher>) {
+        let notes = patcher.map_or("", |p| p.patch_notes);
+        if !notes.is_empty() {
+            ui.add_space(4.0);
+            ui.scope(|ui| {
+                // Drop the indent guide line egui draws down the left of a
+                // collapsing body.
+                ui.visuals_mut().indent_has_left_vline = false;
+                egui::CollapsingHeader::new("Patch notes")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.label(notes);
+                    });
+            });
         }
     }
 
@@ -1162,6 +1211,7 @@ mod test {
     fn mock_simple_patcher() -> Patcher {
         Patcher {
             name: FixtureType("Simple"),
+            patch_notes: "Set fixture to 7-channel mode",
             create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, _| {
@@ -1178,6 +1228,7 @@ mod test {
     fn mock_group_opts_patcher() -> Patcher {
         Patcher {
             name: FixtureType("GroupOpts"),
+            patch_notes: "",
             create_group: |_, _, _| unimplemented!(),
             group_options: || {
                 vec![
@@ -1209,6 +1260,7 @@ mod test {
     fn mock_patch_opts_patcher() -> Patcher {
         Patcher {
             name: FixtureType("PatchOpts"),
+            patch_notes: "",
             create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, opts| {
@@ -1238,6 +1290,7 @@ mod test {
     fn mock_non_dmx_patcher() -> Patcher {
         Patcher {
             name: FixtureType("NonDmx"),
+            patch_notes: "",
             create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, _| {
@@ -1686,6 +1739,36 @@ mod test {
             &mut state,
             "patch_panel_with_groups",
         );
+    }
+
+    #[test]
+    fn render_patch_notes_expanded() {
+        // The "Simple" fixture type declares patch notes; selecting one of its
+        // groups shows a collapsed "Patch notes" header. Click it and confirm
+        // the note text is revealed below.
+        let snapshot = test_snapshot_with_groups();
+        let patchers = test_patchers();
+        let mut state = PatchPanelState::new();
+        state.selected_group = Some(0);
+        let client = auto_respond_client();
+        let mut modal = MessageModal::default();
+
+        let mut harness = Harness::new_ui(|ui| {
+            PatchPanel {
+                ctx: GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                state: &mut state,
+                snapshot: &snapshot,
+                patchers: &patchers,
+            }
+            .ui(ui);
+        });
+        harness.run();
+        harness.get_by_label("Patch notes").click();
+        harness.run();
+        harness.snapshot("patch_panel_notes_expanded");
     }
 
     #[test]
