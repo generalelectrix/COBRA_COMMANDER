@@ -131,7 +131,9 @@ impl Default for Mac700 {
                 .with_mirroring(true)
                 .with_channel_knob(4),
             // Ch20: 0-199 open→closed; the 200-255 pulse band is dropped.
-            iris: Unipolar::channel("Iris", 19, 0, 199).with_channel_knob(5),
+            iris: Unipolar::channel("Iris", 19, 199, 0)
+                .at_full()
+                .with_channel_knob(5),
             focus: Bipolar::coarse_fine("Focus", 21),
             zoom: Unipolar::coarse_fine("Zoom", 23).with_channel_knob(6),
             pan: Bipolar::coarse_fine("Pan", 25)
