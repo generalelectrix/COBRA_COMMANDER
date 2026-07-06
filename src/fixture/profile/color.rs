@@ -4,6 +4,41 @@ use strum_macros::{Display, EnumIter, VariantArray};
 
 use crate::{color::*, fixture::prelude::*, preview::FixturePreviewer};
 
+/// Build the concrete color for `$this`'s [`ColorSpace`] from a hue, saturation,
+/// and level, bind it to the given identifier, and run the body — statically
+/// dispatched, one arm per space. This is the single place mapping a control
+/// color space to its color type; the body sees a concrete color (no `dyn`).
+macro_rules! with_control_color {
+    ($this:expr, $hue:expr, $sat:expr, $level:expr, |$color:ident| $body:block) => {
+        match $this.space {
+            ColorSpace::Hsv => {
+                let $color = Hsv {
+                    hue: $hue,
+                    sat: $sat,
+                    val: $level,
+                };
+                $body
+            }
+            ColorSpace::Hsi => {
+                let $color = Hsi {
+                    hue: $hue,
+                    sat: $sat,
+                    intensity: $level,
+                };
+                $body
+            }
+            ColorSpace::Hsluv => {
+                let $color = Hsluv {
+                    hue: $hue,
+                    sat: $sat,
+                    lightness: $this.hsluv_lightness() * $level,
+                };
+                $body
+            }
+        }
+    };
+}
+
 #[derive(Debug, Control, DescribeControls, EmitState, Update)]
 pub struct Color {
     #[channel_control]
@@ -88,16 +123,15 @@ impl Color {
         }
     }
 
-    /// Return a lightness value for HSLuv.
-    /// Return 0 if we unexpectedly don't have a lightness boost control configured.
-    /// This does NOT include the rescaling from the overall level fader.
+    /// The HSLuv lightness scale from the lightness-boost knob: the offset when
+    /// there is no boost control (spaces other than HSLuv), rising to full with
+    /// the knob. Does not include the rescaling from the overall level fader.
     fn hsluv_lightness(&self) -> UnipolarFloat {
-        let Some(lightness_boost) = &self.lightness_boost else {
-            error!("No lightness boost control configured for HSLuv color.");
-            return UnipolarFloat::ZERO;
-        };
-
-        HSLUV_LIGHTNESS_OFFSET + (HSLUV_LIGHTNESS_OFFSET.invert()) * lightness_boost.control.val()
+        let boost = self
+            .lightness_boost
+            .as_ref()
+            .map_or(UnipolarFloat::ZERO, |b| b.control.val());
+        HSLUV_LIGHTNESS_OFFSET + HSLUV_LIGHTNESS_OFFSET.invert() * boost
     }
 
     pub fn render_without_animations(
@@ -106,44 +140,20 @@ impl Color {
         model: Model,
         dmx_buf: &mut [u8],
     ) {
-        match self.space {
-            ColorSpace::Hsv => {
-                let c = Hsv {
-                    hue: self.hue.control.val(),
-                    sat: self.sat.control.val(),
-                    val: self.val.control.val(),
-                };
-                model.render(dmx_buf, &c);
-                preview.color_lazy(|| c.rgb());
+        with_control_color!(
+            self,
+            self.hue.control.val(),
+            self.sat.control.val(),
+            self.val.control.val(),
+            |color| {
+                model.render(dmx_buf, &color);
+                preview.color_lazy(|| color.rgb());
             }
-            ColorSpace::Hsi => {
-                let c = Hsi {
-                    hue: self.hue.control.val(),
-                    sat: self.sat.control.val(),
-                    intensity: self.val.control.val(),
-                };
-                model.render(dmx_buf, &c);
-                preview.color_lazy(|| c.rgb());
-            }
-            ColorSpace::Hsluv => {
-                let c = Hsluv {
-                    hue: self.hue.control.val(),
-                    sat: self.sat.control.val(),
-                    lightness: self.hsluv_lightness() * self.val.control.val(),
-                };
-                model.render(dmx_buf, &c);
-                preview.color_lazy(|| c.rgb());
-            }
-        }
+        );
     }
 
-    /// Read the hue, saturation, and level controls with their animations and
-    /// any strobe override applied.
-    fn animated_hsv<A>(
-        &self,
-        group_controls: &FixtureGroupControls,
-        animation_vals: &A,
-    ) -> AnimatedHsv
+    /// Read the hue, saturation, and level controls with their animations applied.
+    fn animated_hsv<A>(&self, animation_vals: &A) -> AnimatedHsv
     where
         A: TargetedAnimationValues<AnimationTarget>,
     {
@@ -158,9 +168,6 @@ impl Color {
                 Sat => sat += anim_val,
                 Val => val += anim_val,
             }
-        }
-        if let Some(strobe_intensity) = group_controls.strobe_intensity() {
-            val = strobe_intensity.val();
         }
         AnimatedHsv {
             hue: Phase::new(hue),
@@ -190,81 +197,49 @@ impl Color {
             return;
         }
 
-        let AnimatedHsv { hue, sat, level } = self.animated_hsv(group_controls, animation_vals);
-
-        match self.space {
-            ColorSpace::Hsv => {
-                let c = Hsv {
-                    hue,
-                    sat,
-                    val: level,
-                };
-                model.render(dmx_buf, &c);
-                group_controls.preview.color_lazy(|| c.rgb());
-            }
-            ColorSpace::Hsi => {
-                let c = Hsi {
-                    hue,
-                    sat,
-                    intensity: level,
-                };
-                model.render(dmx_buf, &c);
-                group_controls.preview.color_lazy(|| c.rgb());
-            }
-            ColorSpace::Hsluv => {
-                let c = Hsluv {
-                    hue,
-                    sat,
-                    lightness: self.hsluv_lightness() * level,
-                };
-                model.render(dmx_buf, &c);
-                group_controls.preview.color_lazy(|| c.rgb());
-            }
-        }
+        let AnimatedHsv { hue, sat, level } = self.animated_hsv(animation_vals);
+        // An additive fixture has no mechanical color mixer, so the strobe flashes
+        // the whole color: it rides the level, through the same lightness curve.
+        let level = group_controls.strobe_intensity().unwrap_or(level);
+        with_control_color!(self, hue, sat, level, |color| {
+            model.render(dmx_buf, &color);
+            group_controls.preview.color_lazy(|| color.rgb());
+        });
     }
 
-    /// Compute the subtractive CMY flag + dimmer drive for this (HSLuv) color:
-    /// hue/saturation → the CMY flags, brightness (`Val`, plus any strobe) → the
-    /// dimmer. Because brightness drives only the dimmer, the flags — and thus the
-    /// hue — hold steady through fades and strobes.
+    /// Compute the subtractive CMY flag + dimmer drive for this color, honoring
+    /// whichever [`ColorSpace`] it is configured for: the color at its actual level
+    /// is decomposed into the flags (chromaticity) and the dimmer (brightness), so
+    /// the color space's own lightness curve does the perceptual work. A strobe
+    /// rides the dimmer alone — the mechanical flags cannot slew at strobe rate, so
+    /// they hold the steady chromaticity while the dimmer flashes at the flash
+    /// lightness, where `max(rgb)` still supplies the per-hue brightness compensation.
     pub fn cmy_dimmer<A>(
         &self,
-        model: &dyn ChromaToCmy,
+        model: &impl ChromaToCmy,
         group_controls: &FixtureGroupControls,
         animation_vals: &A,
     ) -> CmyDimmer
     where
         A: TargetedAnimationValues<AnimationTarget>,
     {
-        let AnimatedHsv {
-            hue,
-            sat,
-            level: dimmer,
-        } = self.animated_hsv(group_controls, animation_vals);
-        let reference_lightness = self.hsluv_lightness();
-
-        let [cyan, magenta, yellow] = hsluv_cmy_flags(hue, sat, reference_lightness, model);
-
-        group_controls.preview.color_lazy(|| {
-            Hsluv {
-                hue,
-                sat,
-                lightness: reference_lightness * dimmer,
-            }
-            .rgb()
+        let AnimatedHsv { hue, sat, level } = self.animated_hsv(animation_vals);
+        let mut cmy = with_control_color!(self, hue, sat, level, |color| {
+            group_controls.preview.color_lazy(|| color.rgb());
+            rgb_to_cmy_dimmer(color.rgb_float(), model)
         });
-
-        CmyDimmer {
-            cyan,
-            magenta,
-            yellow,
-            dimmer,
+        // The flags hold the steady color; only the dimmer flashes, rederived at the
+        // flash lightness so it keeps the `max(rgb)` per-hue brightness compensation.
+        if let Some(strobe) = group_controls.strobe_intensity() {
+            cmy.dimmer = with_control_color!(self, hue, sat, strobe, |color| {
+                rgb_to_cmy_dimmer(color.rgb_float(), model).dimmer
+            });
         }
+        cmy
     }
 }
 
-/// The hue, saturation, and level of a [`Color`], incorporating animations and
-/// any strobe override.
+/// The hue, saturation, and level of a [`Color`], incorporating animations.
 struct AnimatedHsv {
     hue: Phase,
     sat: UnipolarFloat,
@@ -290,6 +265,107 @@ impl AnimatedFixture for Color {
         };
 
         self.render_for_model(model, group_controls, animation_vals, dmx_buf);
+    }
+}
+
+#[cfg(test)]
+mod strobe_tests {
+    use number::UnipolarFloat;
+
+    use crate::color::{AnalyticalCmy, CmyDimmer, ColorSpace};
+    use crate::fixture::FixtureGroupControls;
+    use crate::fixture::animation_target::AnimationSlice;
+    use crate::fixture::control::OscControl;
+    use crate::master::MasterControls;
+    use crate::osc::MockEmitter;
+    use crate::preview::FixturePreviewer;
+    use crate::strobe::StrobeClock;
+
+    use super::{AnimationTarget, Color};
+
+    /// A saturated HSLuv color (hue and saturation at their defaults, boost 0) at
+    /// the given level.
+    fn color_at(val: f64) -> Color {
+        let emitter = MockEmitter::new();
+        let mut c = Color::for_subcontrol(None, ColorSpace::Hsluv);
+        c.val
+            .control
+            .control_direct(UnipolarFloat::new(val), &emitter)
+            .expect("set level");
+        c
+    }
+
+    fn flags(c: &CmyDimmer) -> [UnipolarFloat; 3] {
+        [c.cyan, c.magenta, c.yellow]
+    }
+
+    /// Decompose `color` under the given master + strobe frame state.
+    fn cmy(
+        color: &Color,
+        master: &MasterControls,
+        strobe_enabled: bool,
+        flash_on: bool,
+    ) -> CmyDimmer {
+        let preview = FixturePreviewer::Off;
+        let gc = FixtureGroupControls {
+            master_controls: master,
+            mirror: false,
+            render_mode: None,
+            color: None,
+            strobe_enabled,
+            flash_on,
+            preview: &preview,
+            positioner_offset: None,
+        };
+        color.cmy_dimmer(&AnalyticalCmy, &gc, &AnimationSlice::<AnimationTarget>(&[]))
+    }
+
+    #[test]
+    fn strobe_holds_flags_and_flashes_only_the_dimmer() {
+        let dim = color_at(0.5);
+        let no_strobe = MasterControls::default();
+
+        // Baselines: the set color, and the same color at full level (the flash
+        // brightness), both with no strobe.
+        let set = cmy(&dim, &no_strobe, false, false);
+        let full = cmy(&color_at(1.0), &no_strobe, false, false);
+        assert!(
+            flags(&set).iter().any(|f| *f > UnipolarFloat::ZERO),
+            "the test color must insert at least one flag for this to be meaningful"
+        );
+
+        // A flash frame at full intensity: the mechanical flags stay at the set
+        // color, while the dimmer jumps to the flash lightness — keeping the
+        // max(rgb) per-hue brightness compensation, not the raw strobe value.
+        let flash =
+            MasterControls::with_strobe_clock(StrobeClock::for_test(UnipolarFloat::ONE, true));
+        let flashed = cmy(&dim, &flash, true, true);
+        assert_eq!(flags(&flashed), flags(&set), "flags held during the flash");
+        assert_eq!(
+            flashed.dimmer, full.dimmer,
+            "dimmer flashes at the flash lightness"
+        );
+        assert!(
+            flashed.dimmer > set.dimmer,
+            "the flash is brighter than the dim set level"
+        );
+
+        // A dark frame between flashes (strobe running, not flashing → intensity 0):
+        // flags still held, dimmer black.
+        let dark =
+            MasterControls::with_strobe_clock(StrobeClock::for_test(UnipolarFloat::ONE, true));
+        let dimmed = cmy(&dim, &dark, true, false);
+        assert_eq!(flags(&dimmed), flags(&set), "flags held on the dark frame");
+        assert_eq!(
+            dimmed.dimmer,
+            UnipolarFloat::ZERO,
+            "dimmer is black on the dark frame"
+        );
+
+        // Strobe disabled: identical to the plain faithful decomposition.
+        let unstrobed = cmy(&dim, &flash, false, false);
+        assert_eq!(flags(&unstrobed), flags(&set));
+        assert_eq!(unstrobed.dimmer, set.dimmer);
     }
 }
 

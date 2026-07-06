@@ -33,6 +33,9 @@ pub trait RenderColor {
     fn rgb(&self) -> ColorRgb;
     fn rgbw(&self) -> ColorRgbw;
     fn hsv(&self) -> ColorHsv;
+    /// The (gamma-encoded) sRGB value, i.e. [`rgb`](Self::rgb) before 8-bit
+    /// quantization — for consumers that need the full precision.
+    fn rgb_float(&self) -> [UnipolarFloat; 3];
 }
 
 /// A color in the HSV color space.
@@ -61,6 +64,14 @@ impl RenderColor for Hsv {
             unit_to_u8(shifted_hue.val()),
             unit_to_u8(self.sat.val()),
             unit_to_u8(self.val.val()),
+        ]
+    }
+    fn rgb_float(&self) -> [UnipolarFloat; 3] {
+        let (r, g, b) = self.linear_rgb();
+        [
+            UnipolarFloat::new(r),
+            UnipolarFloat::new(g),
+            UnipolarFloat::new(b),
         ]
     }
 }
@@ -101,6 +112,14 @@ impl RenderColor for Hsi {
     fn hsv(&self) -> ColorHsv {
         unimplemented!("conversion from HSI to HSV is not implemented");
     }
+    fn rgb_float(&self) -> [UnipolarFloat; 3] {
+        let (r, g, b) = hsi_to_linear_rgb(self.hue, self.sat, self.intensity);
+        [
+            UnipolarFloat::new(r),
+            UnipolarFloat::new(g),
+            UnipolarFloat::new(b),
+        ]
+    }
 }
 
 /// A color in the HSLuv color space, with green at hue = 0.
@@ -128,6 +147,15 @@ impl RenderColor for Hsluv {
     fn hsv(&self) -> ColorHsv {
         debug!("HSV output rendering is not implemented for HSLuv");
         [0, 0, 0]
+    }
+
+    fn rgb_float(&self) -> [UnipolarFloat; 3] {
+        let (r, g, b) = self.linear_rgb();
+        [
+            UnipolarFloat::new(r),
+            UnipolarFloat::new(g),
+            UnipolarFloat::new(b),
+        ]
     }
 }
 
@@ -208,34 +236,31 @@ pub const HSLUV_LIGHTNESS_OFFSET: UnipolarFloat = UnipolarFloat::new(0.3225);
 pub use cmy::*;
 
 pub mod cmy {
-    //! # Rendering an HSLuv color onto a subtractive CMY moving head (dimmer + flags)
+    //! # Rendering a color onto a subtractive CMY moving head (dimmer + flags)
     //!
     //! A CMY head is a fixed white arc lamp → a **dimmer** (attenuates total flux,
     //! roughly spectrally flat) → three **dichroic flags** that each subtract one
     //! primary (Cyan−red, Magenta−green, Yellow−blue), progressively inserted. In
-    //! linear light the emitted color is `dimmer · (1−c, 1−m, 1−y)`. Reproducing a
-    //! target is three equations in four unknowns `(c, m, y, dimmer)`: one
-    //! brightness degree of freedom, since dimming is achievable either through the
-    //! dimmer or by closing all three flags together.
+    //! linear light the emitted color is `dimmer · (1−c, 1−m, 1−y)`.
     //!
-    //! That degree of freedom is spent by separating **chromaticity** (which flags,
-    //! how deep) from **luminance** (the dimmer) — the CIE *xyY* split:
+    //! [`rgb_to_cmy_dimmer`] reproduces a target RGB color by decomposing it:
+    //! **`dimmer = max(r, g, b)`** and **`flags = 1 − rgb/max`** (the max-normalized
+    //! chromaticity, through a [`ChromaToCmy`] model), so `dimmer · (1 − flags) = rgb`
+    //! — the beam *is* the target color. Two properties fall out:
     //!
-    //! - **Flags carry chromaticity only.** [`hsluv_cmy_flags`] samples hue and
-    //!   saturation at a *reference lightness*, normalizes the sRGB by its max
-    //!   channel (so at least one flag is fully open), and inverts: `flag = 1 −
-    //!   chroma`. At most two of the three flags ever insert — the maximum-throughput
-    //!   two-filter scheme. As a function of hue and saturation alone (independent of
-    //!   the brightness/level command), a dim or a strobe leaves the hue stable, and,
-    //!   unlike routing HSLuv *L* through the flags, a fade preserves saturation
-    //!   (HSLuv saturation is lightness-relative, an effect deliberately excluded from
-    //!   the brightness axis).
-    //! - **The dimmer carries luminance only** (the fixture level, with strobe riding
-    //!   it). At `sat = 0` all flags open for maximum output.
-    //! - **A higher reference lightness** (raised by a lightness-boost knob)
-    //!   desaturates the sampled chromaticity toward white, opening the flags —
-    //!   trading saturation for lumens. This is the physical CMY gamut limit
-    //!   (saturated colors emit fewer lumens) expressed as a control.
+    //! - **At most two of the three flags ever insert**: the max channel's flag is
+    //!   `0` (fully open), the maximum-throughput two-filter scheme.
+    //! - **Chromaticity lands in the flags and brightness in the dimmer, per hue,
+    //!   automatically.** The dimmer is the max channel, so at equal perceived
+    //!   lightness a saturated red (one dominant channel, luminance-poor) takes a
+    //!   high dimmer while yellow (two channels, luminance-rich) takes a low one —
+    //!   the two emerge at equal brightness. The perceptual work is left to the
+    //!   color space feeding this (e.g. HSLuv's lightness curve): pass the full
+    //!   color at its actual level.
+    //!
+    //! The decomposition runs in the additive path's (gamma-encoded) sRGB space and
+    //! in float, so a CMY head and an RGB fixture agree on a given color and the
+    //! 16-bit output keeps its full resolution.
     //!
     //! ## Prior art
     //! - **US 11,221,125 B2, "Color control in subtractive color mixing system,"**
@@ -269,9 +294,7 @@ pub mod cmy {
     //! boundary (with the color wheel / CTC slots for extremes), and a measured
     //! dimmer response curve for perceptual luminance → dimmer.
 
-    use number::{Phase, UnipolarFloat};
-
-    use super::Hsluv;
+    use number::UnipolarFloat;
 
     /// The drive for a subtractive CMY + dimmer head: three flag fractions plus
     /// an overall dimmer level, as an intermediate representation independent of
@@ -284,11 +307,11 @@ pub mod cmy {
         pub dimmer: UnipolarFloat,
     }
 
-    /// Map a chromaticity (normalized linear RGB, max component == 1) to CMY
+    /// Map a chromaticity (max-normalized RGB, max component == 1) to CMY
     /// subtractive flag fractions `[c, m, y]` (`0` = flag open / no subtraction,
     /// `1` = flag fully inserted).
     pub trait ChromaToCmy {
-        fn flags(&self, chroma_lin_rgb: [UnipolarFloat; 3]) -> [UnipolarFloat; 3];
+        fn flags(&self, chroma_rgb: [UnipolarFloat; 3]) -> [UnipolarFloat; 3];
     }
 
     /// Analytical CMY model: `flag = 1 − chroma`. With a normalized chromaticity
@@ -297,31 +320,17 @@ pub mod cmy {
     pub struct AnalyticalCmy;
 
     impl ChromaToCmy for AnalyticalCmy {
-        fn flags(&self, chroma_lin_rgb: [UnipolarFloat; 3]) -> [UnipolarFloat; 3] {
-            chroma_lin_rgb.map(|c| c.invert())
+        fn flags(&self, chroma_rgb: [UnipolarFloat; 3]) -> [UnipolarFloat; 3] {
+            chroma_rgb.map(|c| c.invert())
         }
     }
 
-    /// Compute CMY flag fractions for an HSLuv hue/saturation sampled at
-    /// `reference_lightness`, via `model`. A higher `reference_lightness`
-    /// desaturates the sampled chromaticity toward white, opening the flags. Below
-    /// a floor luminance the chromaticity is treated as white (all flags open).
-    pub fn hsluv_cmy_flags(
-        hue: Phase,
-        sat: UnipolarFloat,
-        reference_lightness: UnipolarFloat,
-        model: &dyn ChromaToCmy,
-    ) -> [UnipolarFloat; 3] {
-        // Work in the same (gamma-encoded) sRGB space the additive color path
-        // drives — `Hsluv::rgb` sends these values straight to DMX — so a CMY head
-        // and an RGB fixture agree on a given HSLuv color. The dichroic flag
-        // response is nonlinear regardless; fitting that curve is v2 calibration.
-        let (r, g, b) = Hsluv {
-            hue,
-            sat,
-            lightness: reference_lightness,
-        }
-        .linear_rgb();
+    /// Decompose a float sRGB color into a CMY + dimmer drive that reproduces it:
+    /// the dimmer is the max channel, and the flags come from `model` applied to
+    /// the max-normalized chromaticity, so `dimmer · (1 − flags) = rgb`. A black
+    /// input yields a zero dimmer with fully open flags.
+    pub fn rgb_to_cmy_dimmer(rgb: [UnipolarFloat; 3], model: &impl ChromaToCmy) -> CmyDimmer {
+        let [r, g, b] = rgb.map(|c| c.val());
         let m = r.max(g).max(b);
         let chroma = if m < 1e-6 {
             [UnipolarFloat::ONE; 3]
@@ -332,7 +341,13 @@ pub mod cmy {
                 UnipolarFloat::new(b / m),
             ]
         };
-        model.flags(chroma)
+        let [cyan, magenta, yellow] = model.flags(chroma);
+        CmyDimmer {
+            cyan,
+            magenta,
+            yellow,
+            dimmer: UnipolarFloat::new(m),
+        }
     }
 }
 
@@ -398,6 +413,11 @@ fn hsv_to_linear_rgb(hue: Phase, sat: UnipolarFloat, val: UnipolarFloat) -> (f64
 ///
 /// Ported from https://blog.saikoled.com/post/43693602826/why-every-led-light-should-be-using-hsi
 pub fn hsi_to_rgb(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> ColorRgb {
+    let (r, g, b) = hsi_to_linear_rgb(hue, sat, intensity);
+    [unit_to_u8(r), unit_to_u8(g), unit_to_u8(b)]
+}
+
+fn hsi_to_linear_rgb(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> (f64, f64, f64) {
     let hue = hue + 1. / 3.;
     let (rv, gv, bv) = if hue.val() < 1. / 3. {
         let hue_rad = 2. * PI * hue.val();
@@ -422,11 +442,7 @@ pub fn hsi_to_rgb(hue: Phase, sat: UnipolarFloat, intensity: UnipolarFloat) -> C
         )
     };
     let i_scale = intensity.val() / 3.0;
-    [
-        unit_to_u8(i_scale * rv),
-        unit_to_u8(i_scale * gv),
-        unit_to_u8(i_scale * bv),
-    ]
+    (i_scale * rv, i_scale * gv, i_scale * bv)
 }
 
 /// Convert unit-scaled HSI into a 32-bit RGBW color.
@@ -518,18 +534,14 @@ mod cmy_tests {
         UnipolarFloat::new(v)
     }
 
-    fn flag_vals(f: [UnipolarFloat; 3]) -> [f64; 3] {
-        f.map(|c| c.val())
-    }
-
-    fn flag_total(f: [UnipolarFloat; 3]) -> f64 {
-        f.iter().map(|c| c.val()).sum()
+    fn flags_of(c: &CmyDimmer) -> [f64; 3] {
+        [c.cyan.val(), c.magenta.val(), c.yellow.val()]
     }
 
     #[test]
     fn analytical_flags_are_inverse_chroma() {
         // `flag = 1 - chroma`: subtract the complementary channel.
-        let f = |c: [f64; 3]| flag_vals(AnalyticalCmy.flags(c.map(uf)));
+        let f = |c: [f64; 3]| AnalyticalCmy.flags(c.map(uf)).map(|x| x.val());
         assert_eq!(f([1.0, 1.0, 1.0]), [0.0, 0.0, 0.0]); // white → all open
         assert_eq!(f([1.0, 0.0, 0.0]), [0.0, 1.0, 1.0]); // red → cyan open
         assert_eq!(f([0.0, 1.0, 0.0]), [1.0, 0.0, 1.0]); // green → magenta open
@@ -537,50 +549,43 @@ mod cmy_tests {
     }
 
     #[test]
-    fn achromatic_opens_all_flags() {
-        for hue in [0.0, 0.25, 0.5, 0.75] {
-            for lref in [0.2, 0.3225, 0.6, 1.0] {
-                let f = hsluv_cmy_flags(Phase::new(hue), uf(0.0), uf(lref), &AnalyticalCmy);
+    fn decomposition_reproduces_color_and_separates_hue_from_brightness() {
+        let cmy = |rgb: [f64; 3]| rgb_to_cmy_dimmer(rgb.map(uf), &AnalyticalCmy);
+        for rgb in [
+            [0.8, 0.3, 0.1],
+            [0.1, 0.9, 0.5],
+            [1.0, 1.0, 0.0],
+            [0.4, 0.0, 0.0],
+        ] {
+            let c = cmy(rgb);
+            let d = c.dimmer.val();
+            let flags = flags_of(&c);
+            // dimmer · (1 - flags) reproduces the target color.
+            for i in 0..3 {
                 assert!(
-                    flag_vals(f).iter().all(|c| c.abs() < 1e-6),
-                    "sat=0 should open all flags, got {f:?}"
+                    (d * (1.0 - flags[i]) - rgb[i]).abs() < 1e-9,
+                    "reproduce {rgb:?}"
                 );
             }
+            // dimmer is the max channel; at most two flags insert.
+            assert!((d - rgb.iter().copied().fold(0.0, f64::max)).abs() < 1e-9);
+            assert!(flags.iter().any(|f| *f < 1e-9), "one flag open: {flags:?}");
         }
+        // Same hue at different brightness → identical flags; dimmer tracks brightness.
+        let full = cmy([1.0, 0.0, 0.0]);
+        let dim = cmy([0.4, 0.0, 0.0]);
+        assert_eq!(flags_of(&full), flags_of(&dim));
+        assert!((full.dimmer.val() - 1.0).abs() < 1e-9);
+        assert!((dim.dimmer.val() - 0.4).abs() < 1e-9);
     }
 
     #[test]
-    fn at_most_two_flags_insert() {
-        // At full saturation, every hue leaves at least one flag fully open.
-        for i in 0..36 {
-            let hue = i as f64 / 36.0;
-            let f = hsluv_cmy_flags(Phase::new(hue), uf(1.0), uf(0.3225), &AnalyticalCmy);
-            let min = flag_vals(f).iter().copied().fold(f64::INFINITY, f64::min);
-            assert!(min < 1e-6, "hue {hue}: expected an open flag, got {f:?}");
-        }
-    }
-
-    #[test]
-    fn saturation_deepens_flags() {
-        let hue = Phase::new(0.1);
-        let total = |s: f64| flag_total(hsluv_cmy_flags(hue, uf(s), uf(0.3225), &AnalyticalCmy));
-        let (zero, half, full) = (total(0.0), total(0.5), total(1.0));
-        assert!(
-            zero <= half + 1e-9 && half <= full + 1e-9,
-            "flag insertion should grow with saturation: {zero} {half} {full}"
-        );
-        assert!(full > zero + 1e-6, "full saturation inserts more than none");
-    }
-
-    #[test]
-    fn higher_reference_lightness_opens_flags() {
-        // Raising the reference lightness desaturates toward white → opens flags.
-        let hue = Phase::new(0.1);
-        let total = |lref: f64| flag_total(hsluv_cmy_flags(hue, uf(1.0), uf(lref), &AnalyticalCmy));
-        assert!(
-            total(0.9) < total(0.3225),
-            "higher reference lightness should open flags"
-        );
+    fn decomposition_edge_cases() {
+        let white = rgb_to_cmy_dimmer([0.6, 0.6, 0.6].map(uf), &AnalyticalCmy);
+        assert_eq!(flags_of(&white), [0.0, 0.0, 0.0]); // all flags open
+        assert!((white.dimmer.val() - 0.6).abs() < 1e-9);
+        let black = rgb_to_cmy_dimmer([0.0, 0.0, 0.0].map(uf), &AnalyticalCmy);
+        assert_eq!(black.dimmer.val(), 0.0); // dark
     }
 
     #[test]
@@ -596,9 +601,11 @@ mod cmy_tests {
                 sat: uf(1.0),
                 lightness: uf(0.3225),
             }
-            .rgb();
-            let flags = flag_vals(hsluv_cmy_flags(hue, uf(1.0), uf(0.3225), &AnalyticalCmy));
-            let max_ch = (0..3).max_by_key(|&j| rgb[j]).unwrap();
+            .rgb_float();
+            let flags = flags_of(&rgb_to_cmy_dimmer(rgb, &AnalyticalCmy));
+            let max_ch = (0..3)
+                .max_by(|&a, &b| rgb[a].val().total_cmp(&rgb[b].val()))
+                .unwrap();
             assert!(
                 flags[max_ch] < 1e-5,
                 "hue {}: the dominant channel {max_ch}'s flag should be open; rgb={rgb:?} flags={flags:?}",

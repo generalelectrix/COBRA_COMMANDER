@@ -16,6 +16,17 @@ pub struct MasterControls {
     pub audio_envelope: UnipolarFloat,
 }
 
+#[cfg(test)]
+impl MasterControls {
+    /// Construct with a specific strobe clock, for tests.
+    pub(crate) fn with_strobe_clock(strobe_clock: StrobeClock) -> Self {
+        Self {
+            strobe_clock,
+            ..Default::default()
+        }
+    }
+}
+
 impl MasterControls {
     pub fn update(&mut self, delta_t: Duration, emitter: &dyn EmitControlMessage) {
         let emitter = &ScopedControlEmitter {

@@ -4,8 +4,10 @@
 //! embedded HSLuv color and rendered to the 16-bit dimmer and CMY channels), a
 //! dichroic color wheel,
 //! a rotating gobo wheel plus its spin, a static gobo wheel, a prism, iris,
-//! focus, zoom, and 16-bit pan/tilt. Brightness is the 16-bit dimmer, and strobe
-//! rides it, so hue/saturation stay steady through fades and strobes.
+//! focus, zoom, and 16-bit pan/tilt. Each color reproduces its HSLuv value
+//! faithfully as `dimmer × CMY` — chromaticity in the flags, brightness on the
+//! 16-bit dimmer. The mechanical flags cannot slew at strobe rate, so a strobe
+//! flashes only the dimmer and holds the flags, keeping hue and saturation steady.
 //!
 //! The onboard strobe, macros, animation wheel, and pan/tilt/effects speed
 //! channels are pinned to safe values — Cobra strobes globally via the dimmer,
