@@ -592,7 +592,8 @@ impl PatchPanel<'_> {
     /// Render a collapsing section that reveals the fixture type's patch notes,
     /// if it declares any. Collapsed by default.
     fn render_detail_patch_notes(&self, ui: &mut egui::Ui, patcher: Option<&Patcher>) {
-        if let Some(notes) = patcher.and_then(|p| (p.patch_notes)()) {
+        let notes = patcher.map_or("", |p| p.patch_notes);
+        if !notes.is_empty() {
             ui.add_space(4.0);
             ui.scope(|ui| {
                 // Drop the indent guide line egui draws down the left of a
@@ -1210,7 +1211,7 @@ mod test {
     fn mock_simple_patcher() -> Patcher {
         Patcher {
             name: FixtureType("Simple"),
-            patch_notes: || Some("Set fixture to 7-channel mode"),
+            patch_notes: "Set fixture to 7-channel mode",
             create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, _| {
@@ -1227,7 +1228,7 @@ mod test {
     fn mock_group_opts_patcher() -> Patcher {
         Patcher {
             name: FixtureType("GroupOpts"),
-            patch_notes: || None,
+            patch_notes: "",
             create_group: |_, _, _| unimplemented!(),
             group_options: || {
                 vec![
@@ -1259,7 +1260,7 @@ mod test {
     fn mock_patch_opts_patcher() -> Patcher {
         Patcher {
             name: FixtureType("PatchOpts"),
-            patch_notes: || None,
+            patch_notes: "",
             create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, opts| {
@@ -1289,7 +1290,7 @@ mod test {
     fn mock_non_dmx_patcher() -> Patcher {
         Patcher {
             name: FixtureType("NonDmx"),
-            patch_notes: || None,
+            patch_notes: "",
             create_group: |_, _, _| unimplemented!(),
             group_options: || vec![],
             create_patch: |_, _| {

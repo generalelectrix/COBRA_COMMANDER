@@ -93,7 +93,7 @@ fn register_patcher_impl(ident: &Ident) -> proc_macro2::TokenStream {
             group_options: #ident::group_options,
             create_patch: #ident::create_patch,
             patch_options: #ident::patch_options,
-            patch_notes: #ident::patch_notes,
+            patch_notes: #ident::PATCH_NOTES,
         };
     }
 }
@@ -155,9 +155,7 @@ pub fn derive_patch_animated_fixture(input: TokenStream) -> TokenStream {
 
     let patch_notes = match get_attr_expr(&attrs, "patch_notes") {
         Some(expr) => quote! {
-            fn patch_notes() -> Option<&'static str> {
-                Some(#expr)
-            }
+            const PATCH_NOTES: &'static str = #expr;
         },
         None => quote! {},
     };
