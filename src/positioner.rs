@@ -284,6 +284,7 @@ impl Positioner {
 
             addr::PREV_FIXTURE => self.handle_nudge_fixture(msg, Sign::Minus, emitter),
             addr::NEXT_FIXTURE => self.handle_nudge_fixture(msg, Sign::Plus, emitter),
+            addr::COPY_TO_NEXT => self.handle_copy_to_next(msg, emitter),
 
             c if c == addr::PRESET_SELECT.control => {
                 self.handle_preset_select(msg, &addr::PRESET_SELECT, emitter)
@@ -405,11 +406,63 @@ impl Positioner {
             Sign::Minus => -1,
         };
         let new = (self.selected_fixture as isize + delta).rem_euclid(self.fixture_count as isize);
-        self.selected_fixture = new as usize;
+        self.select_fixture(new as usize, emitter);
+        Ok(true)
+    }
+
+    /// Move the editing selection to `index` and push the resulting Positioner
+    /// tab state (fixture label and the three offset faders).
+    fn select_fixture(&mut self, index: usize, emitter: &FixtureStateEmitter) {
+        self.selected_fixture = index;
         let scoped = emitter.scoped(addr::GROUP);
         self.emit_fixture_label(&scoped);
         self.emit_selected_axes(&scoped);
-        Ok(false)
+    }
+
+    /// Copy the selected fixture's offset (in the active preset) into the next
+    /// fixture, then advance the selection to it. No-op when the selected
+    /// fixture is the last one (no wraparound) or when the group has no
+    /// fixtures.
+    fn handle_copy_to_next(
+        &mut self,
+        msg: &OscControlMessage,
+        emitter: &FixtureStateEmitter,
+    ) -> Result<bool> {
+        if !msg.get_bool()? {
+            return Ok(false);
+        }
+        let src_index = self.selected_fixture;
+        let dst_index = src_index + 1;
+        // No-op at the last fixture (and on an empty group): never wrap, which
+        // would silently clobber the first fixture's offset.
+        if dst_index >= self.fixture_count {
+            return Ok(false);
+        }
+        let active = self.active;
+        let preset = self.presets.slots.get_mut(active).ok_or_else(|| {
+            positioner_inconsistency(
+                "PO-001",
+                format!("active preset slot {active} out of range (max {N_POSITIONER_SLOTS})"),
+            )
+        })?;
+        let len = preset.offsets.len();
+        // Copy the source out by value (PositionOffset is Copy) to release the
+        // borrow before taking a mutable borrow of the destination.
+        let src = *preset.offsets.get(src_index).ok_or_else(|| {
+            positioner_inconsistency(
+                "PO-002",
+                format!("selected fixture index {src_index} out of range (fixture_count {len})"),
+            )
+        })?;
+        let dst = preset.offsets.get_mut(dst_index).ok_or_else(|| {
+            positioner_inconsistency(
+                "PO-002",
+                format!("next fixture index {dst_index} out of range (fixture_count {len})"),
+            )
+        })?;
+        *dst = src;
+        self.select_fixture(dst_index, emitter);
+        Ok(true)
     }
 
     fn handle_preset_select(
@@ -699,6 +752,7 @@ mod tests {
             "BumpStep",
             "XBumpUp",
             "FocusBumpDown",
+            "CopyToNext",
         ] {
             let msg = make_msg(&format!("/MyFixture/{ctrl}"), OscType::Float(1.0));
             let result = p.control_osc_per_group(&msg, &emitter);
@@ -760,6 +814,80 @@ mod tests {
         let msg = make_msg("/Positioner/XBumpUp", OscType::Float(0.0));
         p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
         assert_eq!(p.presets[0].offsets[0].x.val(), 0.5);
+    }
+
+    #[test]
+    fn copy_to_next_copies_active_offset_and_advances() {
+        let mut p = Positioner::default_for(3);
+        // Distinctive offset on fixture 0 of the active preset (slot 0).
+        p.presets[0].offsets[0] = PositionOffset {
+            x: BipolarFloat::new(0.3),
+            y: BipolarFloat::new(-0.2),
+            focus: BipolarFloat::new(0.1),
+        };
+        // Sentinel on a non-active preset to prove the copy is preset-scoped.
+        p.presets[1].offsets[1].x = BipolarFloat::new(0.9);
+
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+        let msg = make_msg("/Positioner/CopyToNext", OscType::Float(1.0));
+        p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
+
+        // Destination (fixture 1) mirrors fixture 0 on all three axes.
+        assert_eq!(p.presets[0].offsets[1].x.val(), 0.3);
+        assert_eq!(p.presets[0].offsets[1].y.val(), -0.2);
+        assert_eq!(p.presets[0].offsets[1].focus.val(), 0.1);
+        // Selection advanced to the destination.
+        assert_eq!(p.selected_fixture, 1);
+        // Source is unchanged; the untouched fixture stays zero.
+        assert_eq!(p.presets[0].offsets[0].x.val(), 0.3);
+        assert_eq!(p.presets[0].offsets[2].x.val(), 0.0);
+        // The non-active preset is unaffected.
+        assert_eq!(p.presets[1].offsets[1].x.val(), 0.9);
+        assert_eq!(p.presets[1].offsets[0].x.val(), 0.0);
+    }
+
+    #[test]
+    fn copy_to_next_no_ops_at_last_fixture_and_on_release() {
+        let mut p = Positioner::default_for(3);
+        p.selected_fixture = 2; // last fixture
+        p.presets[0].offsets[0].x = BipolarFloat::new(0.7); // fixture 0 sentinel
+
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+
+        // Press on the last fixture must not wrap and clobber fixture 0.
+        let press = make_msg("/Positioner/CopyToNext", OscType::Float(1.0));
+        p.control_osc_positioner_scoped(&press, &emitter).unwrap();
+        assert_eq!(
+            p.selected_fixture, 2,
+            "selection must not advance past the last fixture",
+        );
+        assert_eq!(
+            p.presets[0].offsets[0].x.val(),
+            0.7,
+            "fixture 0 must not be overwritten by wraparound",
+        );
+
+        // The release of a momentary press is a no-op even on a valid fixture.
+        p.selected_fixture = 0;
+        let release = make_msg("/Positioner/CopyToNext", OscType::Float(0.0));
+        p.control_osc_positioner_scoped(&release, &emitter).unwrap();
+        assert_eq!(
+            p.presets[0].offsets[1].x.val(),
+            0.0,
+            "release must not copy"
+        );
+        assert_eq!(p.selected_fixture, 0, "release must not advance");
+    }
+
+    #[test]
+    fn copy_to_next_on_empty_group_is_silent_noop() {
+        let mut p = Positioner::default_for(0);
+        let name = crate::config::GroupName("Test".to_string());
+        let emitter = null_fixture_emitter(&name);
+        let msg = make_msg("/Positioner/CopyToNext", OscType::Float(1.0));
+        p.control_osc_positioner_scoped(&msg, &emitter).unwrap();
     }
 
     /// A press handler with `selected_fixture` out of range relative to

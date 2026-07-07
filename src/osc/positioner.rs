@@ -49,6 +49,10 @@ pub const BUMP_STEP_SELECT: RadioButton = RadioButton {
 pub const PREV_FIXTURE: &str = "Prev";
 pub const NEXT_FIXTURE: &str = "Next";
 
+/// Copy the selected fixture's offset (in the active preset) into the next
+/// fixture and advance the selection to it.
+pub const COPY_TO_NEXT: &str = "CopyToNext";
+
 /// Read-only label showing `"{selected_fixture + 1} / {fixture_count}"`.
 pub const FIXTURE_LABEL: &str = "FixtureLabel";
 
