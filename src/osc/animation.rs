@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use tunnels::clock_bank::{ClockIdxExt, N_CLOCKS};
+use tunnels::clock_bank::{ClockIdx, MAX_CLOCKS};
 
 use crate::animation::AnimationUIState;
 use crate::animation::ControlMessage as AnimationControlMessage;
@@ -54,7 +54,7 @@ const N_PERIODS_SELECT: RadioButton = RadioButton {
 
 const CLOCK_SOURCE: RadioButton = RadioButton {
     control: "ClockSource",
-    n: N_CLOCKS + 1,
+    n: MAX_CLOCKS + 1,
     x_primary_coordinate: false,
 };
 
@@ -87,7 +87,7 @@ impl AnimationUIState {
             if v == 0 {
                 WrapAnimation(SetClockSource(None))
             } else {
-                WrapAnimation(SetClockSource(Some(ClockIdxExt(v - 1))))
+                WrapAnimation(SetClockSource(Some(ClockIdx(v - 1))))
             }
         });
         PULSE.map_trigger(map, || WrapAnimation(TogglePulse));
@@ -174,11 +174,9 @@ impl AnimationUIState {
             Smoothing(v) => emitter.emit_float(SMOOTHING, v.into()),
 
             NPeriods(v) => N_PERIODS_SELECT.set(v as usize, false, emitter),
-            ClockSource(maybe_clock) => CLOCK_SOURCE.set(
-                maybe_clock.map(|v| usize::from(v) + 1).unwrap_or(0),
-                false,
-                emitter,
-            ),
+            ClockSource(maybe_clock) => {
+                CLOCK_SOURCE.set(maybe_clock.map(|v| v.0 + 1).unwrap_or(0), false, emitter)
+            }
 
             Pulse(v) => PULSE.send(v, emitter),
             Standing(v) => STANDING.send(v, emitter),

@@ -4,7 +4,7 @@ use midi_harness::{InitMidiDevice, Output};
 use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
-    clock_bank::ClockIdxExt,
+    clock_bank::ClockIdx,
     midi::{Event, EventType, cc, event, note_on},
     midi_controls::{
         MidiDevice,
@@ -207,7 +207,7 @@ impl MidiHandler for BehringerCmdMM1 {
         use CmdMM1ControlEvent::*;
         Some(match self.parse(event)? {
             Channel { channel, event } => ShowControlMessage::Clock(ClockBankControlMessage {
-                channel: ClockIdxExt(channel as usize),
+                channel: ClockIdx(channel as usize),
                 msg: match event {
                     Fader(val) => ClockControlMessage::Set(ClockStateChange::SubmasterLevel(
                         unipolar_from_midi(val),
@@ -259,7 +259,7 @@ impl MidiHandler for BehringerCmdMM1 {
     }
 
     fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut dyn Output) {
-        let channel: usize = msg.channel.into();
+        let channel: usize = msg.channel.0;
         match msg.change {
             ClockStateChange::OneShot(v) => {
                 self.set_led(channel, CmdMM1ChannelButton::One, v, output)

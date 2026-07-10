@@ -1,6 +1,6 @@
 //! Maintain UI state for animations.
 use anyhow::bail;
-use log::debug;
+use log::{debug, error};
 use std::collections::HashMap;
 use tunnels::animation::{Animation, EmitStateChange as EmitAnimationStateChange};
 
@@ -54,16 +54,30 @@ impl AnimationUIState {
         Self::emit_osc_state_change(StateChange::TargetLabels(ta.target_labels()), emitter);
     }
 
-    /// Handle a control message.
+    /// Handle a control message. A clock-source selection outside `n_clocks` (the
+    /// number of available clocks) is logged and dropped.
     pub fn control(
         &mut self,
         msg: ControlMessage,
+        n_clocks: usize,
         channel: ChannelId,
         group: &mut FixtureGroup,
         emitter: &dyn EmitScopedControlMessage,
     ) -> anyhow::Result<()> {
         match msg {
             ControlMessage::Animation(msg) => {
+                // Reject a clock-source selection for a clock that doesn't exist, so
+                // an inconsistent press surfaces an error rather than silently
+                // deadening the animation (which would read a neutral, inert clock).
+                if let tunnels::animation::ControlMessage::SetClockSource(Some(clock_id)) = &msg
+                    && clock_id.0 >= n_clocks
+                {
+                    error!(
+                        "clock ID {} out of range, only {n_clocks} clocks are configured",
+                        clock_id.0
+                    );
+                    return Ok(());
+                }
                 let Some(anim) = self.current_animation(channel, group) else {
                     // Selected group is not animated. Ignore.
                     return Ok(());
@@ -131,10 +145,11 @@ impl AnimationUIState {
         Ok(())
     }
 
-    /// Handle a control message.
+    /// Handle a control message parsed from OSC. See [`Self::control`] for `n_clocks`.
     pub fn control_osc(
         &mut self,
         msg: &OscControlMessage,
+        n_clocks: usize,
         channel: ChannelId,
         group: &mut FixtureGroup,
         emitter: &dyn EmitScopedControlMessage,
@@ -142,7 +157,7 @@ impl AnimationUIState {
         let Some((ctl, _)) = self.controls.handle(msg)? else {
             return Ok(());
         };
-        self.control(ctl, channel, group, emitter)
+        self.control(ctl, n_clocks, channel, group, emitter)
     }
 
     fn current_animation_with_index_mut<'a>(

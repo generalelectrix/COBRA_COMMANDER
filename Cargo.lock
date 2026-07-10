@@ -315,6 +315,9 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "artnet_protocol"
@@ -770,7 +773,6 @@ dependencies = [
 [[package]]
 name = "bonsoir"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "if-addrs",
@@ -2404,7 +2406,6 @@ dependencies = [
 [[package]]
 name = "gui_common"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "chrono",
  "eframe",
@@ -3355,7 +3356,6 @@ dependencies = [
 [[package]]
 name = "midi_harness"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "coremidi-hotplug-notification",
@@ -3418,7 +3418,6 @@ dependencies = [
 [[package]]
 name = "minusmq"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "log",
@@ -5794,10 +5793,10 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "arc-swap",
+ "arrayvec",
  "bitflags 2.11.0",
  "derive_more 2.1.1",
  "eframe",
@@ -5819,7 +5818,6 @@ dependencies = [
 [[package]]
 name = "tunnels_audio"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "atomic_enum",
@@ -5835,7 +5833,6 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -7451,7 +7448,6 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
 dependencies = [
  "anyhow",
  "bonsoir",
