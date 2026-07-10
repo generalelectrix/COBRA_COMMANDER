@@ -1,3 +1,4 @@
+mod clock_grid;
 mod generate;
 mod model;
 mod parse;
@@ -5,6 +6,7 @@ mod serialize;
 pub mod serve;
 mod templates;
 
+pub use clock_grid::set_clock_source_grid;
 pub use generate::{GroupEntry, assemble_layout};
 pub use model::*;
 #[cfg(test)]

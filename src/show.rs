@@ -432,8 +432,10 @@ impl Show {
                     return Ok(StateDirty::CLEAN);
                 };
                 let group = self.patch.channel_group_mut(channel)?;
+                let n_clocks = self.master_controls.clock_state.0.len();
                 self.animation_ui_state.control(
                     msg,
+                    n_clocks,
                     channel,
                     group,
                     &ScopedControlEmitter {
@@ -489,8 +491,10 @@ impl Show {
                     return Ok(StateDirty::CLEAN);
                 };
                 let group = self.patch.channel_group_mut(channel)?;
+                let n_clocks = self.master_controls.clock_state.0.len();
                 self.animation_ui_state.control_osc(
                     msg,
+                    n_clocks,
                     channel,
                     group,
                     &ScopedControlEmitter {

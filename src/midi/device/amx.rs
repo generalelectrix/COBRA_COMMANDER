@@ -12,7 +12,7 @@ use midi_harness::{InitMidiDevice, Output};
 use number::UnipolarFloat;
 use strum_macros::Display;
 use tunnels::{
-    clock_bank::ClockIdxExt,
+    clock_bank::ClockIdx,
     midi::{Event, EventType, cc, event, note_on},
     midi_controls::{MidiDevice, bipolar_from_midi, unipolar_from_midi},
 };
@@ -226,7 +226,7 @@ impl MidiHandler for AkaiAmx {
         use AmxControlEvent::*;
         Some(ShowControlMessage::Clock(match self.parse(event)? {
             Channel { channel, event } => ClockBankControlMessage {
-                channel: ClockIdxExt(channel as usize),
+                channel: ClockIdx(channel as usize),
                 msg: match event {
                     Fader(val) => ClockControlMessage::Set(ClockStateChange::SubmasterLevel(
                         unipolar_from_midi(val),
@@ -256,7 +256,7 @@ impl MidiHandler for AkaiAmx {
     }
 
     fn emit_clock_control(&self, msg: &ClockBankStateChange, output: &mut dyn Output) {
-        let channel: usize = msg.channel.into();
+        let channel: usize = msg.channel.0;
         match msg.change {
             ClockStateChange::OneShot(v) => self.set_led(channel, AmxChannelButton::Cue, v, output),
             ClockStateChange::Ticked(v) => self.set_led(channel, AmxChannelButton::Sync, v, output),

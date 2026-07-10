@@ -118,7 +118,6 @@ impl Control {
     }
 
     /// Get the decoded OSC address, if present.
-    #[cfg_attr(not(test), expect(unused))]
     pub fn osc_address(&self) -> Option<&str> {
         self.mid_attrs
             .iter()

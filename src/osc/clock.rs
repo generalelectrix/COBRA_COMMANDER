@@ -2,7 +2,7 @@
 use anyhow::Result;
 use tunnels::clock::ControlMessage::*;
 use tunnels::clock::StateChange::*;
-use tunnels::clock_bank::{ClockIdxExt, ControlMessage, StateChange};
+use tunnels::clock_bank::{ClockIdx, ControlMessage, StateChange};
 
 use crate::osc::prelude::*;
 
@@ -36,7 +36,7 @@ pub fn emit_osc_state_change<S>(sc: &StateChange, emitter: &S)
 where
     S: crate::osc::EmitScopedOscMessage + ?Sized,
 {
-    let channel: usize = sc.channel.into();
+    let channel: usize = sc.channel.0;
     match sc.change {
         Rate(v) => RATE.set(channel, v, emitter),
         RateFine(v) => RATE_FINE.set(channel, v, emitter),
@@ -54,7 +54,7 @@ fn channel_control<T>(
     move |i: usize, v: T| {
         let control = proc(v);
         Ok(ControlMessage {
-            channel: ClockIdxExt(i),
+            channel: ClockIdx(i),
             msg: control,
         })
     }
@@ -66,7 +66,7 @@ fn channel_button(
     move |i: usize| {
         let control = proc();
         ControlMessage {
-            channel: ClockIdxExt(i),
+            channel: ClockIdx(i),
             msg: control,
         }
     }

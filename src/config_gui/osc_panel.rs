@@ -6,9 +6,14 @@ use eframe::egui;
 use crate::config::FixtureGroupConfig;
 use crate::control::MetaCommand;
 use crate::osc::OscClientId;
+use tunnels::clock_bank::{CLOCKS_PER_WING, MAX_CLOCKS};
+
 use crate::touchosc::serve::LayoutServer;
 use crate::touchosc::{GroupEntry, assemble_layout};
 use crate::ui_util::GuiContext;
+
+/// The largest number of clock wings a generated layout can be sized for.
+const MAX_CLOCK_WINGS: usize = MAX_CLOCKS / CLOCKS_PER_WING;
 
 pub struct OscPanelState {
     sync_server: Option<LayoutServer>,
@@ -16,6 +21,8 @@ pub struct OscPanelState {
     receive_port: u16,
     /// Text shown in the editable receive-port field.
     port_text: String,
+    /// Number of clock wings to size the generated clock-source selector for.
+    clock_wings: usize,
 }
 
 impl OscPanelState {
@@ -24,6 +31,7 @@ impl OscPanelState {
             sync_server: None,
             receive_port,
             port_text: receive_port.to_string(),
+            clock_wings: 1,
         }
     }
 }
@@ -127,7 +135,7 @@ impl OscPanel<'_> {
             });
         }
 
-        // Template buttons at the bottom.
+        // Template controls at the bottom.
         ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Save Template").clicked() {
@@ -136,6 +144,17 @@ impl OscPanel<'_> {
                 if ui.button("Send Template To Device").clicked() {
                     self.start_sync_server();
                 }
+            });
+            // (bottom-up layout: this row renders above the buttons.)
+            ui.horizontal(|ui| {
+                ui.label("Clock wings:");
+                ui.add(
+                    egui::DragValue::new(&mut self.state.clock_wings).range(1..=MAX_CLOCK_WINGS),
+                );
+                ui.label(format!(
+                    "({} clocks)",
+                    self.state.clock_wings * CLOCKS_PER_WING
+                ));
             });
         });
     }
@@ -156,15 +175,23 @@ impl OscPanel<'_> {
                 fixture_type: &cfg.fixture,
             })
             .collect();
-        match assemble_layout(entries.into_iter()) {
-            Ok(layout) => Some(layout),
+        let mut layout = match assemble_layout(entries.into_iter()) {
+            Ok(layout) => layout,
             Err(e) => {
                 self.ctx
                     .modal
                     .show("Template Generation Failed", format!("{e:#}"));
-                None
+                return None;
             }
+        };
+        let n_clocks = self.state.clock_wings * CLOCKS_PER_WING;
+        if let Err(e) = crate::touchosc::set_clock_source_grid(&mut layout, n_clocks) {
+            self.ctx
+                .modal
+                .show("Template Generation Failed", format!("{e:#}"));
+            return None;
         }
+        Some(layout)
     }
 
     fn save_template(&mut self) {
