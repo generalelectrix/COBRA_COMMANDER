@@ -773,6 +773,7 @@ dependencies = [
 [[package]]
 name = "bonsoir"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "anyhow",
  "if-addrs",
@@ -2406,6 +2407,7 @@ dependencies = [
 [[package]]
 name = "gui_common"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "chrono",
  "eframe",
@@ -3356,6 +3358,7 @@ dependencies = [
 [[package]]
 name = "midi_harness"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "anyhow",
  "coremidi-hotplug-notification",
@@ -3418,6 +3421,7 @@ dependencies = [
 [[package]]
 name = "minusmq"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "anyhow",
  "log",
@@ -5305,7 +5309,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stage_theme"
 version = "0.1.0"
-source = "git+https://github.com/generalelectrix/tunnels?branch=main#3635ae8b3a1e4d22a190a91547279122bedff5b2"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "eframe",
 ]
@@ -5793,6 +5797,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 [[package]]
 name = "tunnels"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -5818,6 +5823,7 @@ dependencies = [
 [[package]]
 name = "tunnels_audio"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "anyhow",
  "atomic_enum",
@@ -5833,6 +5839,7 @@ dependencies = [
 [[package]]
 name = "tunnels_lib"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -7448,6 +7455,7 @@ dependencies = [
 [[package]]
 name = "zero_configure"
 version = "0.1.0"
+source = "git+https://github.com/generalelectrix/tunnels?branch=main#a839168ebc29cb95d4ee9807420e3d52b5981985"
 dependencies = [
  "anyhow",
  "bonsoir",
