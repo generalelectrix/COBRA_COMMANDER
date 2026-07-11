@@ -35,6 +35,7 @@ pub struct SwizzleStick {
     #[channel_control]
     #[animate]
     tilt_macro_speed: ChannelKnobUnipolar<UnipolarChannel>,
+    tilt_macro: TiltMacroSelect,
 }
 
 impl Default for SwizzleStick {
@@ -53,6 +54,7 @@ impl Default for SwizzleStick {
             tilt_spin_active: Bool::new_off("TiltSpinActive", ()),
             tilt_spin: Bipolar::split_channel("TiltSpin", 0, 129, 255, 1, 127, 128).with_detent(), // DMX buf offset will be set manually for each head
             tilt_macro_speed: Unipolar::full_channel("TiltMacroSpeed", 19).with_channel_knob(2),
+            tilt_macro: TiltMacroSelect::default(),
         }
     }
 }
@@ -125,7 +127,7 @@ impl AnimatedFixture for SwizzleStick {
                 dmx_buf[2] = 0;
             }
 
-            dmx_buf[18] = 0; // TODO tilt macro select
+            self.tilt_macro.render(dmx_buf); // Ch19 (buf 18): tilt macro select
             self.tilt_macro_speed.render(
                 group_controls,
                 animation_vals.filter(&AnimationTarget::TiltMacroSpeed),
@@ -183,5 +185,195 @@ impl HeadIndex {
             Self::Four => 3,
             Self::Five => 4,
         }
+    }
+}
+
+const TILT_MACRO_SELECT_LABEL: LabelArray = LabelArray {
+    control: "TiltMacroLabel",
+    n: 1,
+    empty_label: "",
+};
+
+/// Discrete tilt-macro selector: a unipolar fader picks one of 27 bands
+/// (index 0 = "no function", 1..=26 = tilt macros), rendering the DMX value at
+/// the center of the selected band and reporting the selected index as a numeric
+/// read-out label. Models `freedom_fries::ProgramControl`.
+#[derive(Debug, DescribeControls)]
+struct TiltMacroSelect {
+    select: Unipolar<()>,
+    #[skip_control]
+    selected: usize,
+}
+
+impl Default for TiltMacroSelect {
+    fn default() -> Self {
+        Self {
+            select: Unipolar::new("TiltMacro", ()),
+            selected: 0,
+        }
+    }
+}
+
+impl TiltMacroSelect {
+    /// Index 0 (no function) plus 26 tilt macros.
+    const COUNT: usize = 27;
+    const DMX_BUF_OFFSET: usize = 18;
+
+    /// DMX value at the center of the selected band. Index 0 renders 0 (in the
+    /// 0-47 "no function" band); index `k` in 1..=26 renders `48 + (k-1)*8 + 4`,
+    /// the center of macro `k`'s 8-wide band (max 252 at k=26).
+    fn dmx_val(&self) -> u8 {
+        if self.selected == 0 {
+            0
+        } else {
+            (44 + self.selected * 8) as u8
+        }
+    }
+
+    fn render(&self, dmx_buf: &mut [u8]) {
+        dmx_buf[Self::DMX_BUF_OFFSET] = self.dmx_val();
+    }
+
+    fn emit_label(&self, emitter: &dyn crate::osc::EmitScopedOscMessage) {
+        let label = if self.selected == 0 {
+            "off".to_string()
+        } else {
+            self.selected.to_string()
+        };
+        TILT_MACRO_SELECT_LABEL.set([label].into_iter(), emitter);
+    }
+}
+
+impl OscControl<()> for TiltMacroSelect {
+    fn control_direct(
+        &mut self,
+        _val: (),
+        _emitter: &dyn crate::osc::EmitScopedOscMessage,
+    ) -> anyhow::Result<()> {
+        bail!("direct control is not implemented for TiltMacroSelect");
+    }
+
+    fn emit_state(&self, emitter: &dyn crate::osc::EmitScopedOscMessage) {
+        self.select.emit_state(emitter);
+        self.emit_label(emitter);
+    }
+
+    fn control(
+        &mut self,
+        msg: &OscControlMessage,
+        emitter: &dyn crate::osc::EmitScopedOscMessage,
+    ) -> anyhow::Result<bool> {
+        if self.select.control(msg, emitter)? {
+            // unipolar_to_range(0, 26, ..) is always in 0..=26; clamp anyway so
+            // the fader can never index past the last band.
+            self.selected = (unipolar_to_range(0, (Self::COUNT - 1) as u8, self.select.val())
+                as usize)
+                .min(Self::COUNT - 1);
+            self.select.emit_state(emitter);
+            self.emit_label(emitter);
+            return Ok(true);
+        }
+        Ok(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rosc::{OscMessage, OscType};
+
+    use crate::osc::{MockEmitter, OscClientId, OscControlMessage};
+
+    use super::*;
+
+    fn make_msg(addr: &str, arg: OscType) -> OscControlMessage {
+        OscControlMessage::new(
+            OscMessage {
+                addr: addr.to_string(),
+                args: vec![arg],
+            },
+            OscClientId::example(),
+        )
+        .unwrap()
+    }
+
+    /// Every selected index renders a DMX value inside that macro's band:
+    /// index 0 -> 0 (no-function band 0-47); index k in 1..=26 -> the center of
+    /// macro k's 8-wide band.
+    #[test]
+    fn dmx_val_lands_in_each_band() {
+        let mut ctrl = TiltMacroSelect::default();
+        assert_eq!(ctrl.dmx_val(), 0);
+        for k in 1..TiltMacroSelect::COUNT {
+            ctrl.selected = k;
+            let v = ctrl.dmx_val();
+            let lo = 48 + (k as u8 - 1) * 8;
+            assert!(
+                (lo..=lo + 7).contains(&v),
+                "index {k} rendered {v}, outside band {lo}..={}",
+                lo + 7
+            );
+        }
+        // Spot-check the first two centers and the top of the range.
+        for (idx, expected) in [(1usize, 52u8), (2, 60), (26, 252)] {
+            ctrl.selected = idx;
+            assert_eq!(ctrl.dmx_val(), expected);
+        }
+    }
+
+    /// The fader maps to a band index, and the emitted read-out label is that
+    /// index as a number. Boundaries: 0.0 -> off, 0.5 -> 13, 1.0 -> 26.
+    #[test]
+    fn fader_selects_band_and_emits_numeric_label() {
+        for (arg, idx) in [(0.5, 13), (1.0, 26)] {
+            let mut ctrl = TiltMacroSelect::default();
+            let emitter = MockEmitter::new();
+            let handled = ctrl
+                .control(&make_msg("/g/TiltMacro", OscType::Float(arg)), &emitter)
+                .unwrap();
+            assert!(handled);
+            assert_eq!(ctrl.selected, idx);
+            let msgs = emitter.take();
+            let label = msgs
+                .iter()
+                .find(|(c, _)| c == "TiltMacroLabel/0")
+                .expect("a TiltMacroLabel/0 message");
+            assert_eq!(label.1, OscType::String(idx.to_string()));
+        }
+    }
+
+    /// Sweeping the full fader range never errors and never selects past the last
+    /// band — the no-panic / fuzz-safety guarantee.
+    #[test]
+    fn full_sweep_never_errs() {
+        let mut ctrl = TiltMacroSelect::default();
+        let emitter = MockEmitter::new();
+        for i in 0..=1000 {
+            let handled = ctrl
+                .control(
+                    &make_msg("/g/TiltMacro", OscType::Float(i as f32 / 1000.0)),
+                    &emitter,
+                )
+                .unwrap();
+            assert!(handled);
+            assert!(ctrl.selected < TiltMacroSelect::COUNT);
+        }
+    }
+
+    /// emit_state broadcasts both the fader value and the numeric read-out label.
+    #[test]
+    fn emit_state_emits_fader_and_label() {
+        let ctrl = TiltMacroSelect {
+            selected: 5,
+            ..Default::default()
+        };
+        let emitter = MockEmitter::new();
+        ctrl.emit_state(&emitter);
+        let msgs = emitter.take();
+        assert!(msgs.iter().any(|(c, _)| c == "TiltMacro"));
+        assert!(
+            msgs.iter()
+                .any(|(c, a)| c == "TiltMacroLabel/0" && *a == OscType::String("5".to_string())),
+            "expected TiltMacroLabel/0 = \"5\", got {msgs:?}"
+        );
     }
 }

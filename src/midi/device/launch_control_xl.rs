@@ -1,5 +1,5 @@
 //! Device model for the Novation Launch Control XL.
-use log::{debug, error, warn};
+use log::{debug, warn};
 use midi_harness::{InitMidiDevice, Output};
 use tunnels::{
     midi::{Event, EventType},
@@ -144,7 +144,7 @@ impl NovationLaunchControlXL {
             Channel { channel, state } => match state {
                 Knob { row, state } => {
                     if row > 2 {
-                        error!("Launch Control XL knob index {row} out of range.");
+                        // Ignore out-of-range-kob updates.
                         return;
                     }
                     set_led((row * 8) + channel, state, output);

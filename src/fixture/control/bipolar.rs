@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    Bool, ChannelControl, ChannelKnobBipolar, ChannelKnobHandler, OffsetRender, OscControl,
-    RenderToDmx, RenderToDmxWithAnimations,
+    Bool, ChannelControl, ChannelKnobBipolar, ChannelKnobHandler, InvertRender, OffsetRender,
+    OscControl, RenderToDmx, RenderToDmxWithAnimations,
 };
 
 /// A bipolar value, with controls.
@@ -68,6 +68,21 @@ impl<R: RenderToDmx<BipolarFloat>> Bipolar<R> {
             virtual_detent: self.virtual_detent,
             name: self.name,
             render: OffsetRender::new(offset, self.render),
+        }
+    }
+
+    /// Invert this control's handedness: negate the value before rendering, so
+    /// the same input drives the opposite direction.
+    ///
+    /// Like [`Self::with_offset`], this wraps the base render strategy — apply
+    /// it first, before any other decorator — so the negation lands on the
+    /// final rendered output as a fixed property of the control.
+    pub fn invert(self) -> Bipolar<InvertRender<R>> {
+        Bipolar {
+            val: self.val,
+            virtual_detent: self.virtual_detent,
+            name: self.name,
+            render: InvertRender::new(self.render),
         }
     }
 
@@ -553,6 +568,33 @@ mod tests {
         let handled = ctrl.control(&msg, &emitter).unwrap();
         assert!(handled);
         assert!((ctrl.control.val().val() - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_invert_reverses_handedness() {
+        let plain = RenderBipolarToCoarseAndFine { dmx_buf_offset: 0 };
+        let inverted = Bipolar::coarse_fine("X", 0).invert();
+        let (mut a, mut b) = ([0u8; 2], [0u8; 2]);
+
+        // For any input, the inverted render equals the plain render of its
+        // negation — reversing handedness. Composed with `Mirrored`'s own
+        // invert_if, this is a second negation, so a mirror pair still renders
+        // symmetric opposites {v, -v}; only each fixture's sign flips.
+        let v = BipolarFloat::new(0.5);
+        inverted.render.render(&v, &mut a);
+        plain.render(&v.invert(), &mut b);
+        assert_eq!(a, b);
+        assert_eq!(
+            u16::from_be_bytes([a[0], a[1]]),
+            (0.25 * u16::MAX as f64).round() as u16,
+        );
+
+        // Center is a fixed point of inversion.
+        inverted.render.render(&BipolarFloat::ZERO, &mut a);
+        assert_eq!(
+            u16::from_be_bytes([a[0], a[1]]),
+            (0.5 * u16::MAX as f64).round() as u16,
+        );
     }
 
     #[test]

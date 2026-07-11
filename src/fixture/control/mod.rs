@@ -131,6 +131,30 @@ impl<R: RenderToDmx<BipolarFloat>> RenderToDmx<BipolarFloat> for OffsetRender<R>
     }
 }
 
+/// Reverses a bipolar control's handedness by negating the value before
+/// delegating to the wrapped render strategy, so the same input drives the
+/// opposite direction.
+///
+/// Like [`OffsetRender`], this wraps the base render strategy — the innermost,
+/// terminal render step — so the negation is a fixed property of the rendered
+/// output rather than an input transform a later decorator could alter.
+#[derive(Debug)]
+pub struct InvertRender<R> {
+    inner: R,
+}
+
+impl<R> InvertRender<R> {
+    pub fn new(inner: R) -> Self {
+        Self { inner }
+    }
+}
+
+impl<R: RenderToDmx<BipolarFloat>> RenderToDmx<BipolarFloat> for InvertRender<R> {
+    fn render(&self, val: &BipolarFloat, dmx_buf: &mut [u8]) {
+        self.inner.render(&val.invert(), dmx_buf);
+    }
+}
+
 /// The kinds of OSC controls that fixtures can expose.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OscControlType {

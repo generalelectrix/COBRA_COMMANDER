@@ -19,6 +19,23 @@ use crate::fixture::{color::Color, prelude::*};
 #[channel_count = 31]
 #[strobe(Long)]
 #[patch_notes = "Set fixture to 16-bit Extended mode."]
+// Parameter-select slot order — only the first 8 are reachable. Listed
+// explicitly so it is independent of the field/channel order below; the derive
+// requires every animation target to appear here exactly once. Slots 1-8:
+// Val, Hue, Pan, Tilt, GoboRotation, PrismRotation, Zoom, Iris; Sat and Focus
+// stay animatable past the last slot.
+#[animation_target_order(
+    Val,
+    Hue,
+    Pan,
+    Tilt,
+    GoboRotation,
+    PrismRotation,
+    Zoom,
+    Iris,
+    Sat,
+    Focus
+)]
 pub struct Mac700 {
     // Ch2-9: CMY color mixing + the 16-bit dimmer, both rendered from this HSLuv
     // color. Declared first so it claims hardware knobs 0=Hue, 1=Sat,
@@ -62,9 +79,10 @@ pub struct Mac700 {
     #[animate]
     zoom: ChannelKnobUnipolar<Unipolar<RenderUnipolarToCoarseAndFine>>,
 
-    // Ch26/27 & 28/29: 16-bit pan/tilt.
+    // Ch26/27 & 28/29: 16-bit pan/tilt. Pan handedness is inverted so the
+    // control drives the opposite direction from the fixture's raw mapping.
     #[animate]
-    pan: Mirrored<RenderBipolarToCoarseAndFine>,
+    pan: Mirrored<InvertRender<RenderBipolarToCoarseAndFine>>,
     #[animate]
     tilt: Mirrored<RenderBipolarToCoarseAndFine>,
 }
@@ -138,6 +156,7 @@ impl Default for Mac700 {
             focus: Bipolar::coarse_fine("Focus", 21),
             zoom: Unipolar::coarse_fine("Zoom", 23).with_channel_knob(6),
             pan: Bipolar::coarse_fine("Pan", 25)
+                .invert()
                 .with_detent()
                 .with_mirroring(true),
             tilt: Bipolar::coarse_fine("Tilt", 27)
@@ -239,5 +258,35 @@ impl AnimatedFixture for Mac700 {
 
         dmx_buf[29] = 0; // Ch30: pan/tilt speed — tracking (fast)
         dmx_buf[30] = 0; // Ch31: effects speed — tracking
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use strum::IntoEnumIterator;
+
+    /// The parameter-select UI exposes the first `N_ANIM_TARGET` (8) animation
+    /// targets in enum order, which the `#[animation_target_order(...)]` on the
+    /// struct fixes explicitly. Lock that order so the reachable slots can't
+    /// silently change.
+    #[test]
+    fn animation_target_slot_order() {
+        let order: Vec<String> = AnimationTarget::iter().map(|t| t.to_string()).collect();
+        assert_eq!(
+            order,
+            [
+                "Val",
+                "Hue",
+                "Pan",
+                "Tilt",
+                "GoboRotation",
+                "PrismRotation",
+                "Zoom",
+                "Iris",
+                "Sat",
+                "Focus",
+            ],
+        );
     }
 }

@@ -261,6 +261,12 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
 /// arguments. This will also automatically derive the Subtarget trait, so that
 /// the animation values can be easily passed into the subfixture.
 ///
+/// AnimationTarget variants are ordered by field declaration order (with each
+/// field's subtargets grouped together). To decouple the variant order — and
+/// thus the parameter-select slot order — from field layout, annotate the
+/// struct with #[animation_target_order(A, B, ...)], listing every animation
+/// target exactly once in the desired order. A mismatch is a compile error.
+///
 /// Fields may declare a named method on the implementing struct to call when
 /// a change happens to the control.
 ///
@@ -273,12 +279,15 @@ pub fn derive_emit_state(input: TokenStream) -> TokenStream {
         channel_control,
         animate,
         animate_subtarget,
+        animation_target_order,
         on_change,
         optional,
     )
 )]
 pub fn derive_control(input: TokenStream) -> TokenStream {
-    let DeriveInput { ident, data, .. } = parse_macro_input!(input as DeriveInput);
+    let DeriveInput {
+        ident, data, attrs, ..
+    } = parse_macro_input!(input as DeriveInput);
 
     let Data::Struct(struct_data) = data else {
         panic!("Can only derive Control for structs.");
@@ -347,9 +356,43 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
         }
     }
 
+    // The AnimationTarget variants are emitted in field declaration order by
+    // default (with each field's subtargets grouped together). A struct-level
+    // `#[animation_target_order(A, B, ...)]` overrides this with an explicit
+    // order — decoupling the enum, and thus the parameter-select slot order,
+    // from struct field layout. The override must name every animation target
+    // exactly once; a mismatch is a compile error so the two can't drift.
+    let ordered_target_idents =
+        match get_attr_and_list_payload(&attrs, "animation_target_order") {
+            Some(order) => {
+                let mut expected = animate_target_idents.clone();
+                expected.sort();
+                let mut got = order.clone();
+                got.sort();
+                if expected != got {
+                    let missing: Vec<_> = animate_target_idents
+                        .iter()
+                        .filter(|t| !order.contains(t))
+                        .cloned()
+                        .collect();
+                    let unknown: Vec<_> = order
+                        .iter()
+                        .filter(|t| !animate_target_idents.contains(t))
+                        .cloned()
+                        .collect();
+                    panic!(
+                        "animation_target_order must list every animation target exactly once \
+                         (targets: {animate_target_idents:?}). missing: {missing:?}, unknown: {unknown:?}"
+                    );
+                }
+                order
+            }
+            None => animate_target_idents.clone(),
+        };
+
     let mut anim_target_enum = quote! {};
-    if !animate_target_idents.is_empty() {
-        for ident in animate_target_idents {
+    if !ordered_target_idents.is_empty() {
+        for ident in ordered_target_idents {
             let ident = format_ident!("{ident}");
             anim_target_enum = quote! {
                 #anim_target_enum
