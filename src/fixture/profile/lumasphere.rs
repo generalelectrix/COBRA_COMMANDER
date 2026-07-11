@@ -30,6 +30,7 @@ const MAX_ROTATION_SPEED: u8 = 100;
 /// 9: lamp 2 dimmer
 #[derive(Debug, PatchFixture, Control, EmitState, DescribeControls)]
 #[channel_count = 9]
+#[patch_notes = "Address the two dimmer channels as the fixture address plus 7. If the ball is address 1, that's channels 8 and 9."]
 pub struct Lumasphere {
     #[animate]
     lamp_1_intensity: UnipolarChannel,
