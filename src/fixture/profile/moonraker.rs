@@ -11,9 +11,22 @@
 //! tilt throw is dynamically remapped to keep the lowest beam at or above a
 //! configurable elevation floor. See the calibration block and `rescaled_tilt`.
 //!
-//! Motor speed, built-in strobe, and the FX channels are pinned to safe values —
-//! Cobra strobes globally via the master, and macro/FX behavior is antithetical
-//! to live control.
+//! Motor speed drives pan and tilt as well as the roll axis, so engaging or
+//! releasing a slow spin would also make the head crawl to its safety-clamped
+//! tilt. Rotation therefore runs as a phase cycle (see `RotationPhase`): the head
+//! is driven to the safe tilt at tracking speed before the spin engages, and the
+//! conservative clamp is held until it has settled again afterwards.
+//!
+//! The roll command is slew-limited to the head's physical roll rate, so it
+//! tracks where the fan actually is. A snap between the roll extremes sweeps the
+//! fan through vertical even though both ends are flat, and the clamp has to see
+//! that sweep to raise tilt out of the way.
+//!
+//! The built-in strobe and the FX channels are pinned to safe values — Cobra
+//! strobes globally via the master, and macro/FX behavior is antithetical to
+//! live control.
+use std::time::Duration;
+
 use crate::fixture::prelude::*;
 
 // ---------------------------------------------------------------------------
@@ -48,10 +61,30 @@ const ELEV_SPAN_DEG: f64 = ELEV_AT_CENTER_DEG - ELEV_AT_EXTREME_DEG;
 const ROLL_PHASE_DEG: f64 = 0.0;
 const ROLL_SPAN_DEG: f64 = 180.0;
 
+/// How fast the head rolls, in `Roll` fader units (the full 0..1 sweep) per
+/// second. The commanded roll is ramped no faster than this so that it tracks
+/// where the head physically is: a snap between the extremes sweeps the fan
+/// through vertical, and the tilt clamp has to see that sweep as it happens.
+/// MEASURE / TUNE ON HARDWARE.
+const ROLL_SLEW_PER_SEC: f64 = 0.4;
+
 /// Extra headroom added to the required axis elevation, degrees, for physical
 /// pointing slop and rounding. The fan geometry itself is exact, so this is not
 /// load-bearing for the model. MEASURE / TUNE ON HARDWARE.
 const TILT_FLOOR_MARGIN_DEG: f64 = 0.0;
+
+/// How long the head is held at tracking speed, not yet spinning, after Rotation
+/// is requested — long enough for tilt to reach its safety-clamped position at
+/// full speed before the spin engages. Motor speed governs pan and tilt as well
+/// as the roll axis, so a slow spin rate also slows the tilt correction.
+/// MEASURE / TUNE ON HARDWARE: it must exceed the head's worst-case tilt travel.
+const ROTATION_ARM: Duration = Duration::from_millis(750);
+
+/// How long the head keeps moving after Rotation mode ends: it must spin down,
+/// then home back to its commanded roll. Its true fan orientation is unknown for
+/// this long, so the tilt clamp holds the worst-case (spinning) margin until the
+/// window elapses. MEASURE / TUNE ON HARDWARE.
+const ROTATION_SETTLE: Duration = Duration::from_secs(3);
 
 /// Index -> (R, G, B) on/off triple for the 8 fixed beam colors.
 /// {Off, R, G, B, C, M, Y, W}. Each byte renders as 0 (off) or 255 (on).
@@ -113,6 +146,75 @@ impl RollState {
     }
 }
 
+/// Ramp the commanded roll toward `target`, moving no faster than the head can
+/// physically travel. Lands exactly on the target once it is within reach.
+fn ramp_roll(current: UnipolarFloat, target: UnipolarFloat, dt: Duration) -> UnipolarFloat {
+    let max_step = ROLL_SLEW_PER_SEC * dt.as_secs_f64();
+    let delta = target.val() - current.val();
+    if delta.abs() <= max_step {
+        target
+    } else {
+        UnipolarFloat::new(current.val() + max_step.copysign(delta))
+    }
+}
+
+/// Where the head is in the rotation engage/release cycle.
+///
+/// Only a settled park leaves the fan at a known orientation reached at a known
+/// tilt; every other phase has the head spinning, spinning up, or coasting down,
+/// so the clamp must assume the worst case.
+#[derive(Debug, Clone, Copy)]
+enum RotationPhase {
+    /// Parked and settled at the indexed roll angle.
+    Parked,
+    /// Rotation requested: tilt is being driven to the safe position at tracking
+    /// speed, with the spin not yet engaged.
+    Arming(Duration),
+    /// Spinning at the selected rate.
+    Spinning,
+    /// Rotation released: the head is spinning down and homing back.
+    Settling(Duration),
+}
+
+impl RotationPhase {
+    /// Advance one frame, given whether rotation is requested.
+    fn tick(self, spin_requested: bool, dt: Duration) -> Self {
+        match (self, spin_requested) {
+            (Self::Parked, false) => Self::Parked,
+            (Self::Parked, true) => Self::Arming(ROTATION_ARM),
+            (Self::Arming(left), true) => match left.saturating_sub(dt) {
+                left if left.is_zero() => Self::Spinning,
+                left => Self::Arming(left),
+            },
+            // Released before the spin engaged: the head never left the park
+            // angle, so the relaxed margin is immediately safe again.
+            (Self::Arming(_), false) => Self::Parked,
+            (Self::Spinning, true) => Self::Spinning,
+            (Self::Spinning, false) => Self::Settling(ROTATION_SETTLE),
+            (Self::Settling(left), false) => match left.saturating_sub(dt) {
+                left if left.is_zero() => Self::Parked,
+                left => Self::Settling(left),
+            },
+            // Re-requested mid-settle: the head may still be moving, so arm again
+            // rather than snapping straight back into a spin.
+            (Self::Settling(_), true) => Self::Arming(ROTATION_ARM),
+        }
+    }
+
+    /// Whether the spin is engaged this frame.
+    fn spinning(self) -> bool {
+        matches!(self, Self::Spinning)
+    }
+
+    /// The roll state the tilt clamp must assume.
+    fn safety_roll(self, parked: UnipolarFloat) -> RollState {
+        match self {
+            Self::Parked => RollState::Parked(parked),
+            _ => RollState::Spinning,
+        }
+    }
+}
+
 /// Beam-elevation floor from the group scale factor.
 /// scale = 1 -> 0 (true horizon); scale < 1 -> raised safety cone.
 fn beam_elevation_floor_deg(scale: UnipolarFloat) -> f64 {
@@ -159,7 +261,7 @@ fn beam_rgb(index: usize) -> [u8; 3] {
 // Fixture
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, EmitState, Control, DescribeControls, Update)]
+#[derive(Debug, EmitState, Control, DescribeControls)]
 pub struct Moonraker {
     // Offset 0: pan. Standard bipolar knob, mirrored, unclamped.
     #[channel_control]
@@ -187,9 +289,10 @@ pub struct Moonraker {
     rotate: Bool<()>,
 
     /// Indexed roll (park) angle of the beam fan.
-    // OSC "Roll"; drives offset 2 (0..128) in Roll mode via a hand write under
-    // the gate. Animatable — the clamp reads its post-animation value each frame.
-    #[animate]
+    // OSC "Roll"; drives offset 2 when parked, via a hand write under the gate.
+    // NOT animatable: the command is slew-limited to the head's real roll rate so
+    // the clamp can track the fan through vertical, and an animation would drive
+    // it faster than the head (and the clamp) could follow.
     roll: Unipolar<()>,
 
     // Offset 4: all-beams master on/off (255/0 only). Carries the global strobe
@@ -216,6 +319,19 @@ pub struct Moonraker {
     #[skip_control]
     #[skip_emit]
     tilt_range_scale: UnipolarFloat,
+
+    /// Where the head is in the rotation engage/release cycle.
+    // Not an OSC control (hence the skips); advanced in `Update`.
+    #[skip_control]
+    #[skip_emit]
+    rotation_phase: RotationPhase,
+
+    /// The roll the head is actually being driven to: the `Roll` command, ramped
+    /// at the head's physical slew rate.
+    // Not an OSC control (hence the skips); advanced in `Update`.
+    #[skip_control]
+    #[skip_emit]
+    roll_actual: UnipolarFloat,
 }
 
 /// One validated group option: the tilt-throw scale.
@@ -269,6 +385,9 @@ impl PatchFixture for Moonraker {
             beam5: IndexedSelect::new("Beam5", 8, false, ()),
             beam6: IndexedSelect::new("Beam6", 8, false, ()),
             tilt_range_scale: options.tilt_range_scale,
+            // Start conservative: the head's roll is unknown until it has homed.
+            rotation_phase: RotationPhase::Settling(ROTATION_SETTLE),
+            roll_actual: UnipolarFloat::ZERO,
         }
     }
 
@@ -281,6 +400,13 @@ impl PatchFixture for Moonraker {
             channel_count: 27,
             render_mode: None,
         }
+    }
+}
+
+impl Update for Moonraker {
+    fn update(&mut self, _: FixtureGroupUpdate, dt: Duration) {
+        self.rotation_phase = self.rotation_phase.tick(self.rotate.val(), dt);
+        self.roll_actual = ramp_roll(self.roll_actual, self.roll.val(), dt);
     }
 }
 
@@ -313,17 +439,17 @@ impl AnimatedFixture for Moonraker {
             dmx_buf,
         );
 
-        // Post-animation roll state. The safety clamp MUST use the post-animation
-        // Roll value: an animated roll sweeps the fan plane, so the safe tilt
-        // floor tracks it frame-by-frame (each frame stays safe).
-        let roll = if self.rotate.val() {
-            RollState::Spinning
-        } else {
-            RollState::Parked(
-                self.roll
-                    .val_with_anim(animation_vals.filter(&AnimationTarget::Roll)),
-            )
-        };
+        // Post-animation roll. The clamp MUST use the post-animation Roll value:
+        // an animated roll sweeps the fan plane, so the safe tilt floor tracks it
+        // frame-by-frame. It also holds the worst case through the settle window
+        // after Rotation ends — the head is still spinning down and homing then,
+        // so its true orientation is unknown even though the DMX below already
+        // commands the park angle.
+        // The ramped roll is where the head actually is (the raw `Roll` command is
+        // slew-limited toward it), so both the clamp and the DMX use it.
+        let phase = self.rotation_phase;
+        let parked_roll = self.roll_actual;
+        let safety_roll = phase.safety_roll(parked_roll);
 
         // Offset 1: tilt — manual, safety rescaled. `self.tilt.control`'s
         // `val_with_anim` applies detent + animation + positioner Y offset; we
@@ -333,21 +459,26 @@ impl AnimatedFixture for Moonraker {
             .tilt
             .control
             .val_with_anim(animation_vals.filter(&AnimationTarget::Tilt));
-        let tilt_hw = rescaled_tilt(tilt_norm, self.tilt_range_scale, &roll);
+        let tilt_hw = rescaled_tilt(tilt_norm, self.tilt_range_scale, &safety_roll);
         dmx_buf[1] = unipolar_to_range(0, 255, tilt_hw.rescale_as_unipolar());
 
-        // Offset 2: shared roll channel. Spinning -> continuous 129..255; Parked
-        // -> indexed 0..128 at the post-animation roll value.
-        match &roll {
-            RollState::Spinning => {
-                dmx_buf[2] = 255;
-                self.rotation.render(
-                    group_controls,
-                    animation_vals.filter(&AnimationTarget::Rotation),
-                    dmx_buf,
-                );
-            }
-            RollState::Parked(r) => dmx_buf[2] = unipolar_to_range(0, 105, *r),
+        // Offsets 2/3: the roll channel and motor speed. Only an engaged spin
+        // commands rotation and the selected rate; while arming or settling the
+        // head stays parked at tracking speed, so tilt reaches (or leaves) its
+        // safety-clamped position at full speed rather than crawling.
+        if phase.spinning() {
+            dmx_buf[2] = 255;
+            self.rotation.render(
+                group_controls,
+                animation_vals.filter(&AnimationTarget::Rotation),
+                dmx_buf,
+            );
+        } else {
+            dmx_buf[2] = unipolar_to_range(0, 105, parked_roll);
+            // Motor speed: tracking. Must be written here too — the show loop
+            // never clears the DMX buffer, so an unwritten channel would keep the
+            // last spin speed and drag out every pan/tilt move.
+            dmx_buf[3] = 0;
         }
 
         // Offset 4: master, 255/0 only; flashes with the global strobe.
@@ -487,6 +618,102 @@ mod safety_tests {
                 );
             }
         }
+    }
+
+    /// The engage/release cycle. Motor speed drives pan and tilt as well as roll,
+    /// so the head must reach its safety-clamped tilt at tracking speed BEFORE the
+    /// spin engages, and must keep the conservative clamp until it settles after.
+    #[test]
+    fn rotation_phase_cycle() {
+        let flat = UnipolarFloat::ZERO; // parked flat fan: the LEAST conservative state
+        let tick = Duration::from_millis(25);
+        let relaxed = |p: RotationPhase| matches!(p.safety_roll(flat), RollState::Parked(_));
+
+        // Settled park: relaxed clamp, not spinning.
+        let mut p = RotationPhase::Parked;
+        assert!(relaxed(p) && !p.spinning());
+
+        // Request rotation: we arm first — the clamp goes worst-case immediately
+        // (so the safe tilt is commanded) but the spin must NOT engage until the
+        // head has had the full arming window to get there.
+        p = p.tick(true, tick);
+        let mut arming = Duration::ZERO;
+        while !p.spinning() {
+            assert!(!relaxed(p), "clamp relaxed while arming");
+            p = p.tick(true, tick);
+            arming += tick;
+        }
+        assert_eq!(arming, ROTATION_ARM);
+
+        // Spinning: worst case, and stays engaged while requested.
+        assert!(p.spinning() && !relaxed(p));
+        p = p.tick(true, tick);
+        assert!(p.spinning());
+
+        // Release: the spin drops immediately (so the head homes at tracking
+        // speed) but the clamp stays worst-case for the whole settle window.
+        p = p.tick(false, tick);
+        assert!(!p.spinning() && !relaxed(p));
+        let mut settling = Duration::ZERO;
+        while !relaxed(p) {
+            assert!(!p.spinning(), "still commanding spin while settling");
+            p = p.tick(false, tick);
+            settling += tick;
+        }
+        assert_eq!(settling, ROTATION_SETTLE);
+        assert!(relaxed(p) && !p.spinning());
+
+        // Releasing mid-arm returns straight to parked: the head never spun and
+        // never left the park angle.
+        let aborted = RotationPhase::Arming(ROTATION_ARM).tick(false, tick);
+        assert!(relaxed(aborted) && !aborted.spinning());
+
+        // Re-requesting mid-settle re-arms rather than snapping back into a spin.
+        let requeued = RotationPhase::Settling(ROTATION_SETTLE).tick(true, tick);
+        assert!(matches!(requeued, RotationPhase::Arming(_)) && !requeued.spinning());
+    }
+
+    /// A snap between roll extremes sweeps the fan through vertical even though
+    /// both ends are flat. Ramping the command at the head's slew rate keeps it a
+    /// faithful model of where the fan is, so the clamp sees the sweep.
+    #[test]
+    fn roll_ramps_at_head_slew_rate() {
+        let tick = Duration::from_millis(25);
+        let max_step = ROLL_SLEW_PER_SEC * tick.as_secs_f64();
+
+        // Snap the command from one extreme to the other: the ramp crosses the
+        // whole range at the head's rate, never faster.
+        let mut roll = UnipolarFloat::ZERO;
+        let mut elapsed = Duration::ZERO;
+        while roll.val() < 1.0 {
+            let next = ramp_roll(roll, UnipolarFloat::ONE, tick);
+            assert!(
+                next.val() - roll.val() <= max_step + 1e-9,
+                "roll moved faster than the head can travel"
+            );
+            roll = next;
+            elapsed += tick;
+            assert!(elapsed < Duration::from_secs(5), "ramp never converged");
+        }
+        assert_eq!(roll.val(), 1.0);
+        // The full sweep takes about the head's travel time (~1s).
+        assert!(
+            (elapsed.as_secs_f64() - 1.0).abs() < 0.05,
+            "full sweep took {elapsed:?}"
+        );
+
+        // Crucially, mid-sweep the command is still near vertical rather than
+        // having jumped to the (flat, permissive) far end.
+        let mid = ramp_roll(UnipolarFloat::new(0.45), UnipolarFloat::ONE, tick);
+        assert!(mid.val() < 0.55, "ramp skipped past vertical");
+
+        // Ramps down as well as up, and small moves land exactly (no overshoot).
+        let down = ramp_roll(UnipolarFloat::ONE, UnipolarFloat::ZERO, tick);
+        assert!(down.val() < 1.0 && down.val() > 1.0 - max_step - 1e-9);
+        assert_eq!(
+            ramp_roll(UnipolarFloat::new(0.5), UnipolarFloat::new(0.51), tick).val(),
+            0.51
+        );
     }
 
     #[test]
