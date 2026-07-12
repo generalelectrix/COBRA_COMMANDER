@@ -12,6 +12,7 @@ pub fn default_for_option(opt: &PatchOption) -> String {
         PatchOption::Bool => "false".to_string(),
         PatchOption::Int => "0".to_string(),
         PatchOption::Bipolar => "0".to_string(),
+        PatchOption::Unipolar => "1".to_string(),
         PatchOption::Select(choices) => choices.first().cloned().unwrap_or_default(),
         PatchOption::Url => String::new(),
         PatchOption::SocketAddr => String::new(),
@@ -34,6 +35,16 @@ pub fn validate_option(opt: &PatchOption, value: &str) -> Result<(), String> {
                 Ok(())
             } else {
                 Err("must be between -1 and 1".to_string())
+            }
+        }
+        PatchOption::Unipolar => {
+            let parsed = value
+                .parse::<f64>()
+                .map_err(|_| "must be a number".to_string())?;
+            if (0.0..=1.0).contains(&parsed) {
+                Ok(())
+            } else {
+                Err("must be between 0 and 1".to_string())
             }
         }
         PatchOption::Url => url::Url::parse(value)
@@ -74,7 +85,11 @@ pub fn render_option_widget(ui: &mut egui::Ui, key: &str, opt: &PatchOption, val
                     });
             });
         }
-        PatchOption::Int | PatchOption::Bipolar | PatchOption::Url | PatchOption::SocketAddr => {
+        PatchOption::Int
+        | PatchOption::Bipolar
+        | PatchOption::Unipolar
+        | PatchOption::Url
+        | PatchOption::SocketAddr => {
             ui.horizontal(|ui| {
                 ui.label(&key_with_colon);
                 ui.text_edit_singleline(value);
