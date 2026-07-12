@@ -23,7 +23,8 @@ pub use patcher::{
 };
 
 pub use option::{
-    AsPatchOption, NoOptions, OptionsMenu, PatchOption, deserialize_bipolar, enum_patch_option,
+    AsPatchOption, NoOptions, OptionsMenu, PatchOption, deserialize_bipolar, deserialize_unipolar,
+    enum_patch_option,
 };
 
 /// Build an [`anyhow::Error`] describing an internal patch inconsistency.

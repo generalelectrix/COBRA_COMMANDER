@@ -2,7 +2,7 @@
 use std::{fmt::Display, net::SocketAddr};
 
 use anyhow::Error;
-use number::BipolarFloat;
+use number::{BipolarFloat, UnipolarFloat};
 use serde::{Deserialize, Deserializer, de};
 use strum::IntoEnumIterator;
 use url::Url;
@@ -75,6 +75,12 @@ impl AsPatchOption for BipolarFloat {
     }
 }
 
+impl AsPatchOption for UnipolarFloat {
+    fn as_patch_option() -> PatchOption {
+        PatchOption::Unipolar
+    }
+}
+
 /// Deserialize a [`BipolarFloat`], erroring if the value is outside [-1, 1].
 ///
 /// `BipolarFloat`'s derived `Deserialize` reads its inner float directly,
@@ -92,6 +98,25 @@ where
         )));
     }
     Ok(BipolarFloat::new(v))
+}
+
+/// Deserialize a [`UnipolarFloat`], erroring if the value is outside [0, 1].
+///
+/// `UnipolarFloat`'s derived `Deserialize` reads its inner float directly,
+/// bypassing the clamp that upholds its range invariant. Use this for config
+/// fields that should reject an out-of-range value up front rather than silently
+/// clamp it.
+pub fn deserialize_unipolar<'de, D>(deserializer: D) -> Result<UnipolarFloat, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = f64::deserialize(deserializer)?;
+    if !(0.0..=1.0).contains(&v) {
+        return Err(de::Error::custom(format!(
+            "value {v} is out of range [0, 1]"
+        )));
+    }
+    Ok(UnipolarFloat::new(v))
 }
 
 impl<T: AsPatchOption> AsPatchOption for Option<T> {
@@ -136,6 +161,8 @@ pub enum PatchOption {
     Bool,
     /// A bipolar float in the range [-1, 1].
     Bipolar,
+    /// A unipolar float in the range [0, 1].
+    Unipolar,
     /// An optional value. The inner type describes the value when present.
     Optional(Box<PatchOption>),
 }
@@ -148,6 +175,7 @@ impl PatchOption {
             PatchOption::Int => Value::Number(1.into()),
             PatchOption::Bool => Value::Bool(false),
             PatchOption::Bipolar => Value::Number(0.0.into()),
+            PatchOption::Unipolar => Value::Number(1.0.into()),
             PatchOption::Select(opts) => Value::String(opts[0].clone()),
             PatchOption::SocketAddr => Value::String("127.0.0.1:9999".into()),
             PatchOption::Url => Value::String("http://127.0.0.1:9999".into()),
@@ -165,6 +193,7 @@ impl Display for PatchOption {
             Self::Url => f.write_str("<url>"),
             Self::Bool => f.write_str("true, false"),
             Self::Bipolar => f.write_str("<bipolar float, -1..1>"),
+            Self::Unipolar => f.write_str("<unipolar float, 0..1>"),
             Self::Optional(inner) => write!(f, "{inner} (optional)"),
         }
     }
@@ -176,6 +205,9 @@ mod tests {
 
     #[derive(Debug, Deserialize)]
     struct Wrap(#[serde(deserialize_with = "deserialize_bipolar")] BipolarFloat);
+
+    #[derive(Debug, Deserialize)]
+    struct WrapUni(#[serde(deserialize_with = "deserialize_unipolar")] UnipolarFloat);
 
     #[test]
     fn bipolar_as_patch_option() {
@@ -199,6 +231,43 @@ mod tests {
     fn deserialize_bipolar_rejects_out_of_range() {
         let err = serde_yaml::from_str::<Wrap>("1.5").unwrap_err();
         let msg = err.to_string();
+        assert!(
+            msg.contains("out of range") && msg.contains("1.5"),
+            "unexpected error message: {msg}"
+        );
+    }
+
+    #[test]
+    fn unipolar_as_patch_option() {
+        assert!(matches!(
+            UnipolarFloat::as_patch_option(),
+            PatchOption::Unipolar
+        ));
+    }
+
+    #[test]
+    fn deserialize_unipolar_validates_range() {
+        // In range, including both inclusive bounds.
+        let WrapUni(v) = serde_yaml::from_str("0.7").unwrap();
+        assert!((v.val() - 0.7).abs() < 1e-9);
+        let WrapUni(v) = serde_yaml::from_str("0.0").unwrap();
+        assert_eq!(v.val(), 0.0);
+        let WrapUni(v) = serde_yaml::from_str("1.0").unwrap();
+        assert_eq!(v.val(), 1.0);
+
+        // Below zero is rejected.
+        let msg = serde_yaml::from_str::<WrapUni>("-0.1")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg.contains("out of range") && msg.contains("-0.1"),
+            "unexpected error message: {msg}"
+        );
+
+        // Above one is rejected.
+        let msg = serde_yaml::from_str::<WrapUni>("1.5")
+            .unwrap_err()
+            .to_string();
         assert!(
             msg.contains("out of range") && msg.contains("1.5"),
             "unexpected error message: {msg}"
