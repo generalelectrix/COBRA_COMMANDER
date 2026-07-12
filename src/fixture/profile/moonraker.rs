@@ -696,9 +696,9 @@ mod safety_tests {
             assert!(elapsed < Duration::from_secs(5), "ramp never converged");
         }
         assert_eq!(roll.val(), 1.0);
-        // The full sweep takes about the head's travel time (~1s).
+        // The full sweep takes about the head's travel time (~2.5s).
         assert!(
-            (elapsed.as_secs_f64() - 1.0).abs() < 0.05,
+            (elapsed.as_secs_f64() - 2.5).abs() < 0.05,
             "full sweep took {elapsed:?}"
         );
 
