@@ -252,8 +252,8 @@ impl PatchFixture for Moonraker {
                 .with_channel_knob(0),
             // Offset 1: tilt, state-only (`()`), detented, knob 1. Rendered by hand.
             tilt: Bipolar::new("Tilt", ()).with_detent().with_channel_knob(1),
-            // Offset 2 (Rotation mode): spin speed 129..255, knob 2.
-            rotation: Unipolar::channel("Rotation", 2, 129, 255).with_channel_knob(2),
+            // Offset 2 (Rotation mode): spin speed 128..255, knob 2.
+            rotation: Unipolar::channel("Rotation", 3, 255, 0).with_channel_knob(2),
             // Off = Roll (indexed), on = Rotation (continuous).
             rotate: Bool::new_off("Rotate", ()),
             // Offset 2 (Roll mode): park angle 0..128, TouchOSC fader.
@@ -339,15 +339,16 @@ impl AnimatedFixture for Moonraker {
         // Offset 2: shared roll channel. Spinning -> continuous 129..255; Parked
         // -> indexed 0..128 at the post-animation roll value.
         match &roll {
-            RollState::Spinning => self.rotation.render(
-                group_controls,
-                animation_vals.filter(&AnimationTarget::Rotation),
-                dmx_buf,
-            ),
-            RollState::Parked(r) => dmx_buf[2] = unipolar_to_range(0, 128, *r),
+            RollState::Spinning => {
+                dmx_buf[2] = 255;
+                self.rotation.render(
+                    group_controls,
+                    animation_vals.filter(&AnimationTarget::Rotation),
+                    dmx_buf,
+                );
+            }
+            RollState::Parked(r) => dmx_buf[2] = unipolar_to_range(0, 105, *r),
         }
-
-        dmx_buf[3] = 0; // Offset 3: motor speed — tracking (fastest).
 
         // Offset 4: master, 255/0 only; flashes with the global strobe.
         let master_on = group_controls
