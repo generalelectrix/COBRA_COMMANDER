@@ -48,18 +48,20 @@ pub fn connect_to_provider(
     service: &SubscriberService<SharedClockData>,
     provider: &str,
 ) -> Result<ClockService> {
-    let mut receiver = service.subscribe(provider, 0)?;
+    let mut receiver = service.subscribe(provider)?;
     let storage = Arc::new(Mutex::new(SharedClockData::default()));
     let weak_handle = Arc::downgrade(&storage);
     crate::worker::spawn("clock-service", move |_shutdown| {
         loop {
-            let msg = match receiver.receive_msg(true) {
+            let msg = match receiver.receive_msg() {
                 Err(e) => {
                     warn!("clock receive error: {e}");
                     continue;
                 }
+                // The subscription yields nothing only once it has been
+                // stopped, which no later message can undo.
                 Ok(None) => {
-                    continue;
+                    break;
                 }
                 Ok(Some(msg)) => msg,
             };
