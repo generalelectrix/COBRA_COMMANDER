@@ -56,7 +56,7 @@ impl eframe::App for WelcomeApp {
                     let button_width = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
                     let button_size = egui::vec2(button_width, 50.0);
                     let button_font = egui::FontId::proportional(20.0);
-                    let button_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+                    let button_stroke = egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
                     if ui
                         .add_sized(
                             button_size,
