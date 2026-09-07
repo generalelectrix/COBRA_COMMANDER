@@ -72,17 +72,17 @@ impl VisualizerPanelState {
                 plot_ui.line(
                     Line::new("Unit Waveform", PlotPoints::Borrowed(&self.preview))
                         .color(Color32::DARK_RED)
-                        .width(2.0),
+                        .width(2.0_f32),
                 );
                 plot_ui.line(
                     Line::new("Scaled Waveform", PlotPoints::Borrowed(&self.live))
                         .color(Color32::WHITE)
-                        .width(2.0),
+                        .width(2.0_f32),
                 );
                 plot_ui.points(
                     Points::new("Fixture Values", PlotPoints::Borrowed(&self.dots))
                         .color(Color32::CYAN)
-                        .radius(5.0),
+                        .radius(5.0_f32),
                 );
             });
 

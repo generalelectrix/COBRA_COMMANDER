@@ -5,7 +5,7 @@ use anyhow::Result;
 use tunnels::{
     audio::{AudioInput, AudioSnapshot, EnvelopeStreams},
     clock_bank::{ClockBank, ControlMessage},
-    clock_server::{SharedClockData, StaticClockBank},
+    clock_server::SharedClockData,
 };
 
 use crate::{
@@ -92,7 +92,7 @@ impl Clocks {
                 audio_input,
                 ..
             } => SharedClockData {
-                clock_bank: StaticClockBank(clocks.as_static()),
+                clock_bank: clocks.as_static(),
                 audio_envelope: audio_input.envelope(),
             },
         }
