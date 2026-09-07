@@ -27,11 +27,10 @@ impl VisualizerPanelState {
         self.preview.extend((0..NUM_WAVE_POINTS).map(|i| {
             let phase = i as f64 / NUM_WAVE_POINTS as f64;
             let offset_index = (phase / phase_offset_per_fixture) as usize;
-            let y = state.animation.get_unit_value(
-                Phase::new(phase),
-                offset_index,
-                &state.clocks.clock_bank,
-            );
+            let y = state
+                .animation
+                .prepare(&state.clocks.clock_bank, state.clocks.audio_envelope)
+                .unit_value(Phase::new(phase), offset_index);
             PlotPoint::new(phase, y)
         }));
 
@@ -40,11 +39,10 @@ impl VisualizerPanelState {
         self.live.extend(self.preview.iter().map(|point| {
             PlotPoint::new(
                 point.x,
-                state.animation.scale_value(
-                    &state.clocks.clock_bank,
-                    state.clocks.audio_envelope,
-                    point.y,
-                ),
+                state
+                    .animation
+                    .prepare(&state.clocks.clock_bank, state.clocks.audio_envelope)
+                    .scale_value(point.y),
             )
         }));
 
@@ -52,12 +50,10 @@ impl VisualizerPanelState {
         self.dots.clear();
         self.dots.extend((0..state.fixture_count).map(|i| {
             let phase = i as f64 * phase_offset_per_fixture;
-            let y = state.animation.get_value(
-                Phase::new(phase),
-                i,
-                &state.clocks.clock_bank,
-                state.clocks.audio_envelope,
-            );
+            let y = state
+                .animation
+                .prepare(&state.clocks.clock_bank, state.clocks.audio_envelope)
+                .value(Phase::new(phase), i);
             PlotPoint::new(phase, y)
         }));
     }
