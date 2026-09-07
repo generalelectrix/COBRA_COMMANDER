@@ -276,12 +276,12 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         let mut anim_count = 0;
         for ta in self.animations.iter() {
             anim_buf[anim_count] = (
-                ta.animation.get_value(
-                    phase_offset,
-                    offset_index,
-                    &group_controls.master_controls.clock_state,
-                    group_controls.master_controls.audio_envelope,
-                ),
+                ta.animation
+                    .prepare(
+                        &group_controls.master_controls.clock_state,
+                        group_controls.master_controls.audio_envelope,
+                    )
+                    .value(phase_offset, offset_index),
                 ta.target,
             );
             anim_count += 1;
