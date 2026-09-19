@@ -504,7 +504,6 @@ impl Show {
                 )?;
                 Ok(StateDirty::CLEAN)
             }
-            crate::osc::audio::GROUP => self.clocks.control_audio_osc(msg, &mut self.controller),
             crate::osc::clock::GROUP => {
                 self.clocks.control_clock_osc(msg, &mut self.controller)?;
                 Ok(StateDirty::CLEAN)

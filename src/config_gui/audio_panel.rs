@@ -103,14 +103,6 @@ impl AudioCommands for ConsoleAudioCommands<'_> {
             )));
     }
 
-    fn set_norm_ceiling_mode(&mut self, mode: TrackingMode) {
-        let _ = self
-            .ctx
-            .send_command(MetaCommand::AudioControl(ControlMessage::Set(
-                StateChange::NormCeilingMode(mode),
-            )));
-    }
-
     fn toggle_monitor(&mut self) {
         let _ = self
             .ctx

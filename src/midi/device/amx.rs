@@ -281,12 +281,10 @@ impl MidiHandler for AkaiAmx {
             | AudioStateChange::OutputSmoothing(_)
             | AudioStateChange::AutoTrimEnabled(_)
             | AudioStateChange::InputGain(_)
-            | AudioStateChange::IsClipping(_)
             | AudioStateChange::ActiveBand(_)
             | AudioStateChange::NormFloorHalflife(_)
             | AudioStateChange::NormCeilingHalflife(_)
-            | AudioStateChange::NormFloorMode(_)
-            | AudioStateChange::NormCeilingMode(_) => {}
+            | AudioStateChange::NormFloorMode(_) => {}
         }
     }
 }

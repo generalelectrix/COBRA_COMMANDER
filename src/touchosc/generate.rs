@@ -15,7 +15,7 @@ pub struct GroupEntry<'a> {
 ///
 /// For each group, loads the fixture type's template and rewrites OSC addresses
 /// to use the group name. Then appends the base pages (channels, animation,
-/// master, audio, clocks, strobe).
+/// master, clocks, strobe).
 ///
 /// Groups whose fixture type has no template are skipped with a warning.
 pub fn assemble_layout<'a>(groups: impl Iterator<Item = GroupEntry<'a>>) -> Result<Layout> {
