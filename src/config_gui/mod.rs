@@ -244,6 +244,7 @@ impl eframe::App for ConsoleApp {
                         );
                         if audio_state.device_name != tunnels::audio::OFFLINE_DEVICE_NAME {
                             while let Ok(streams) = self.envelope_streams_rx.try_recv() {
+                                self.audio_panel.set_sample_rate(streams.sample_rate);
                                 self.envelope_viewer.set_envelope_streams(streams);
                             }
                             ui.add_space(8.0);
