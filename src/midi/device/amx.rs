@@ -275,16 +275,13 @@ impl MidiHandler for AkaiAmx {
             }
             // No AMX hardware feedback for these parameters.
             AudioStateChange::Monitor(_)
-            | AudioStateChange::FilterCutoff(_)
             | AudioStateChange::EnvelopeAttack(_)
             | AudioStateChange::EnvelopeRelease(_)
             | AudioStateChange::OutputSmoothing(_)
-            | AudioStateChange::AutoTrimEnabled(_)
             | AudioStateChange::InputGain(_)
             | AudioStateChange::ActiveBand(_)
             | AudioStateChange::NormFloorHalflife(_)
-            | AudioStateChange::NormCeilingHalflife(_)
-            | AudioStateChange::NormFloorMode(_) => {}
+            | AudioStateChange::NormCeilingHalflife(_) => {}
         }
     }
 }
