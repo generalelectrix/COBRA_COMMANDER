@@ -21,6 +21,7 @@ tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", branch = "ma
 zero_configure = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 stage_theme = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 gui_common = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
+touchosc_sync = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 color_organ = { git = "https://github.com/generalelectrix/color_organ", branch = "main" }
 
 arc-swap = "1"
@@ -49,9 +50,6 @@ owo-colors = "4.2.3"
 quick-xml = "0.37"
 zip = "2"
 base64 = "0.22"
-tiny_http = "0.12"
-mdns-sd = "0.13"
-gethostname = "1"
 rfd = "0.15"
 uuid = { version = "1", features = ["v4", "serde"] }
 
@@ -72,3 +70,4 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # tunnels_lib = { path = "../tunnels/tunnels_lib" }
 # zero_configure = { path = "../tunnels/zero_configure" }
 # gui_common = { path = "../tunnels/gui_common" }
+# touchosc_sync = { path = "../tunnels/touchosc_sync" }

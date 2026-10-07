@@ -217,7 +217,7 @@ fn layout_server_serves_xml() {
     let zip = &BASE_TEMPLATE;
     let expected_xml = zip.extract_xml().unwrap();
 
-    let _server = serve::LayoutServer::start("TestLayout".to_string(), &expected_xml).unwrap();
+    let _server = touchosc_sync::LayoutServer::start("TestLayout", &expected_xml.0).unwrap();
 
     // Give the server thread a moment to start accepting.
     std::thread::sleep(std::time::Duration::from_millis(50));
