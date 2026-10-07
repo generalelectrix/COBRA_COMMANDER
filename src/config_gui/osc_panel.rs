@@ -8,9 +8,9 @@ use crate::control::MetaCommand;
 use crate::osc::OscClientId;
 use tunnels::clock_bank::{CLOCKS_PER_WING, MAX_CLOCKS};
 
-use crate::touchosc::serve::LayoutServer;
 use crate::touchosc::{GroupEntry, assemble_layout};
 use crate::ui_util::GuiContext;
+use touchosc_sync::LayoutServer;
 
 /// The largest number of clock wings a generated layout can be sized for.
 const MAX_CLOCK_WINGS: usize = MAX_CLOCKS / CLOCKS_PER_WING;
@@ -227,7 +227,7 @@ impl OscPanel<'_> {
         };
         let xml = layout.to_xml();
         let layout_name = self.show_file_stem().to_string();
-        match LayoutServer::start(layout_name, &xml) {
+        match LayoutServer::start(&layout_name, &xml.0) {
             Ok(server) => {
                 self.state.sync_server = Some(server);
             }
