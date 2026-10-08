@@ -6,11 +6,7 @@ use strum_macros::Display;
 use tunnels::{
     clock_bank::ClockIdx,
     midi::{Event, EventType, cc, event, note_on},
-    midi_controls::{
-        MidiDevice,
-        audio::{envelope_edge_from_midi, filter_from_midi, gain_from_midi},
-        bipolar_from_midi, unipolar_from_midi,
-    },
+    midi_controls::{MidiDevice, bipolar_from_midi, unipolar_from_midi},
 };
 
 use tunnels::audio::StateChange as AudioStateChange;
@@ -163,7 +159,9 @@ pub enum CmdMM1ControlEvent {
     /// The small knobs at the top of the device.
     /// Indexed left to right.
     SmallKnob {
+        #[expect(dead_code)]
         index: u8,
+        #[expect(dead_code)]
         val: u8,
     },
     Single(CmdMM1Single),
@@ -230,23 +228,7 @@ impl MidiHandler for BehringerCmdMM1 {
                     },
                 },
             }),
-            SmallKnob { index, val } => {
-                use tunnels::audio::ControlMessage::Set;
-                use tunnels::audio::StateChange::*;
-                match index {
-                    0 => {
-                        ShowControlMessage::Audio(Set(EnvelopeAttack(envelope_edge_from_midi(val))))
-                    }
-                    1 => ShowControlMessage::Audio(Set(EnvelopeRelease(envelope_edge_from_midi(
-                        val,
-                    )))),
-                    2 => ShowControlMessage::Audio(Set(FilterCutoff(filter_from_midi(val)))),
-                    3 => ShowControlMessage::Audio(Set(InputGain(gain_from_midi(val)))),
-                    _ => {
-                        return None;
-                    }
-                }
-            }
+            SmallKnob { .. } => return None,
             Single(event) => match event {
                 CmdMM1Single::Monitor => {
                     ShowControlMessage::Audio(tunnels::audio::ControlMessage::ToggleMonitor)
