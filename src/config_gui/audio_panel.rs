@@ -90,15 +90,7 @@ impl AudioCommands for ConsoleAudioCommands<'_> {
 pub(crate) fn render_follow_selector(ui: &mut egui::Ui, ctx: GuiContext<'_>, active_role: Role) {
     ui.horizontal(|ui| {
         ui.label("Follow:");
-        let mut role = active_role;
-        egui::ComboBox::from_id_salt("active_role")
-            .selected_text(role.label())
-            .show_ui(ui, |ui| {
-                for r in Role::ALL {
-                    ui.selectable_value(&mut role, r, r.label());
-                }
-            });
-        if role != active_role {
+        if let Some(role) = gui_common::audio_panel::follow_selector(ui, active_role) {
             ConsoleAudioCommands { ctx }.set_active_role(role);
         }
     });
