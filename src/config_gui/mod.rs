@@ -281,6 +281,16 @@ impl eframe::App for ConsoleApp {
                         }
                     }
                     ClockStatus::Remote { .. } => {
+                        ui.add_space(8.0);
+                        ui.separator();
+                        audio_panel::render_follow_selector(
+                            ui,
+                            GuiContext {
+                                modal: &mut self.modal,
+                                client: &self.client,
+                            },
+                            **self.gui_state.active_role.load(),
+                        );
                         self.envelope_viewer.set_open(false);
                     }
                 }

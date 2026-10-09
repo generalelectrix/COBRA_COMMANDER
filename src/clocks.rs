@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use tunnels::{
-    audio::{AudioInput, AudioSnapshot, AudioState, EnvelopeStreams, Role},
+    audio::{AudioFrame, AudioInput, AudioSnapshot, AudioState, EnvelopeStreams, Role},
     clock_bank::{ClockBank, ControlMessage},
     clock_server::SharedClockData,
 };
@@ -17,15 +17,15 @@ use crate::{
 
 #[allow(clippy::large_enum_variant)]
 pub enum Clocks {
-    /// Full remote control of clocks and audio envelope.
+    /// Clocks and audio frames from a remote clock service.
     Service(ClockService),
     /// Local control of clocks with local audio input.
     Internal {
         clocks: ClockBank,
         clock_controls: GroupControlMap<tunnels::clock_bank::ControlMessage>,
         audio_input: AudioInput,
-        /// The audio input's latest frame and the role followed in it.
-        audio: AudioState,
+        /// The audio input's latest frame.
+        frame: AudioFrame,
     },
 }
 
@@ -43,7 +43,7 @@ impl Clocks {
             clocks: ClockBank::default(),
             clock_controls,
             audio_input: AudioInput::from_frames(frames),
-            audio: AudioState::default(),
+            frame: AudioFrame::default(),
         }
     }
 }
@@ -83,7 +83,7 @@ impl Clocks {
             clocks,
             clock_controls,
             audio_input,
-            audio: AudioState::default(),
+            frame: AudioFrame::default(),
         })
     }
 
@@ -95,12 +95,27 @@ impl Clocks {
         }
     }
 
-    pub fn get(&self) -> SharedClockData {
+    /// The clocks' state and the latest audio frame, following `active_role`
+    /// in it. A service's frame is followed by `active_role` too, whatever
+    /// role the service follows.
+    pub fn get(&self, active_role: Role) -> SharedClockData {
         match self {
-            Self::Service(service) => service.get(),
-            Self::Internal { clocks, audio, .. } => SharedClockData {
+            Self::Service(service) => {
+                let data = service.get();
+                SharedClockData {
+                    clock_bank: data.clock_bank,
+                    audio: AudioState {
+                        frame: data.audio.frame,
+                        active_role,
+                    },
+                }
+            }
+            Self::Internal { clocks, frame, .. } => SharedClockData {
                 clock_bank: clocks.as_static(),
-                audio: *audio,
+                audio: AudioState {
+                    frame: *frame,
+                    active_role,
+                },
             },
         }
     }
@@ -162,31 +177,32 @@ impl Clocks {
     }
 
     /// Advance internal clocks by `delta_t`, reading the audio input's latest
-    /// frame and following `active_role` in it. Clocks from a service carry
-    /// the service's own audio state and are left alone.
+    /// frame and following `active_role` in it. Clocks from a service advance
+    /// in the service and are left alone.
     pub fn update(&mut self, delta_t: Duration, active_role: Role, controller: &mut Controller) {
         let Self::Internal {
             clocks,
             audio_input,
-            audio,
+            frame,
             ..
         } = self
         else {
             return;
         };
-        *audio = AudioState {
-            frame: audio_input.frame(),
+        *frame = audio_input.frame();
+        let audio = AudioState {
+            frame: *frame,
             active_role,
         };
         audio_input.update_state(delta_t, audio.envelope(), controller);
-        clocks.update_state(delta_t, audio, controller);
+        clocks.update_state(delta_t, &audio, controller);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tunnels::audio::{AudioFrame, UnipolarF32};
+    use tunnels::audio::UnipolarF32;
 
     fn internal_clocks() -> Clocks {
         let (tx, _rx) = std::sync::mpsc::channel();
@@ -216,9 +232,9 @@ mod tests {
         );
     }
 
-    /// Internal clocks carry the audio input's latest frame with the role
-    /// they were told to follow. Clocks from a service carry the service's
-    /// audio state whatever role they are told to follow.
+    /// Internal clocks carry the audio input's latest frame, and clocks from
+    /// a service carry the service's frame; either follows the role it is
+    /// asked for, never the service's own.
     #[test]
     fn clock_data_carries_the_frame_and_the_followed_role() {
         let (mut controller, _send, _osc_recv) = Controller::test_new();
@@ -231,13 +247,16 @@ mod tests {
         producer.publish(frame);
 
         assert_eq!(
-            internal.get().audio,
-            AudioState::default(),
-            "nothing is read before the first update",
+            internal.get(Role::Hats).audio,
+            AudioState {
+                frame: AudioFrame::default(),
+                active_role: Role::Hats,
+            },
+            "no frame is read before the first update",
         );
         for role in [Role::Hats, Role::Kick] {
             internal.update(Duration::from_millis(25), role, &mut controller);
-            let audio = internal.get().audio;
+            let audio = internal.get(role).audio;
             assert_eq!(
                 audio,
                 AudioState {
@@ -248,16 +267,23 @@ mod tests {
             assert_eq!(audio.envelope(), frame.role(role));
         }
 
-        let remote = AudioState {
-            frame,
-            active_role: Role::Mid,
-        };
         let mut service = Clocks::Service(ClockService::test_with(SharedClockData {
             clock_bank: Default::default(),
-            audio: remote,
+            audio: AudioState {
+                frame,
+                active_role: Role::Mid,
+            },
         }));
         service.update(Duration::from_millis(25), Role::Hats, &mut controller);
-        assert_eq!(service.get().audio, remote);
+        let audio = service.get(Role::Hats).audio;
+        assert_eq!(
+            audio,
+            AudioState {
+                frame,
+                active_role: Role::Hats,
+            },
+        );
+        assert_eq!(audio.envelope(), frame.role(Role::Hats));
     }
 
     #[test]

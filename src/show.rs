@@ -610,7 +610,8 @@ impl Show {
         self.clocks
             .update(delta_t, self.active_role, &mut self.controller);
 
-        self.master_controls.set_clock_data(self.clocks.get());
+        self.master_controls
+            .set_clock_data(self.clocks.get(self.active_role));
 
         self.master_controls
             .update(delta_t, &self.controller.sender_with_metadata(None));
@@ -762,7 +763,7 @@ impl Show {
                     .map(ControllableTargetedAnimation::anim)
                     .cloned()
                     .unwrap_or_default(),
-                clocks: self.clocks.get(),
+                clocks: self.clocks.get(self.active_role),
                 fixture_count: group.fixture_configs().len(),
             }));
         Ok(())

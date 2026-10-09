@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use eframe::egui;
+
 use gui_common::audio_panel::{
     AudioCommands, AudioPanel as SharedAudioPanel, AudioPanelState as SharedAudioPanelState,
     AudioSnapshot,
@@ -84,6 +86,24 @@ impl AudioCommands for ConsoleAudioCommands<'_> {
     }
 }
 
+/// The selector for the audio role the show follows, on its own.
+pub(crate) fn render_follow_selector(ui: &mut egui::Ui, ctx: GuiContext<'_>, active_role: Role) {
+    ui.horizontal(|ui| {
+        ui.label("Follow:");
+        let mut role = active_role;
+        egui::ComboBox::from_id_salt("active_role")
+            .selected_text(role.label())
+            .show_ui(ui, |ui| {
+                for r in Role::ALL {
+                    ui.selectable_value(&mut role, r, r.label());
+                }
+            });
+        if role != active_role {
+            ConsoleAudioCommands { ctx }.set_active_role(role);
+        }
+    });
+}
+
 pub(crate) fn render_audio_panel(
     ui: &mut eframe::egui::Ui,
     ctx: GuiContext<'_>,
@@ -99,4 +119,47 @@ pub(crate) fn render_audio_panel(
         active_role,
     }
     .ui(ui);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::control::mock::recording_client;
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    use gui_common::MessageModal;
+
+    /// The follow selector offers every role and asks the show to follow the
+    /// one picked.
+    #[test]
+    fn follow_selector_sets_the_active_role() {
+        let (client, recorded) = recording_client();
+        let mut modal = MessageModal::default();
+        let mut harness = Harness::new_ui(|ui| {
+            render_follow_selector(
+                ui,
+                GuiContext {
+                    modal: &mut modal,
+                    client: &client,
+                },
+                Role::Bass,
+            );
+        });
+        harness.run();
+
+        harness.get_by_value("Bass").click();
+        harness.run();
+        for role in Role::ALL {
+            assert!(
+                harness.query_all_by_label(role.label()).next().is_some(),
+                "{} is offered",
+                role.label()
+            );
+        }
+        harness.get_by_label("Hats").click();
+        harness.run();
+
+        let recorded = recorded.lock().expect("recording log poisoned");
+        assert_eq!(*recorded, ["SetActiveRole(Hats)"]);
+    }
 }
