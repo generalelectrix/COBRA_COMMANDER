@@ -42,7 +42,7 @@ const RESET_GROUP: Button = button("ResetGroup");
 
 const WAVEFORM_SELECT: RadioButton = RadioButton {
     control: "Waveform",
-    n: 6,
+    n: 4,
     x_primary_coordinate: false,
 };
 
@@ -65,12 +65,10 @@ impl AnimationUIState {
         use StateChange::*;
         WAVEFORM_SELECT.map_fallible(map, |v| {
             match v {
-                0 => Some(Sine),
-                1 => Some(Triangle),
-                2 => Some(Square),
-                3 => Some(Sawtooth),
-                4 => Some(Noise),
-                5 => Some(Constant),
+                0 => Some(SineSquare),
+                1 => Some(TriSaw),
+                2 => Some(Noise),
+                3 => Some(Constant),
                 _ => None,
             }
             .map(|waveform| WrapAnimation(Set(Waveform(waveform))))
@@ -158,12 +156,10 @@ impl AnimationUIState {
         match sc {
             Waveform(v) => WAVEFORM_SELECT.set(
                 match v {
-                    Sine => 0,
-                    Triangle => 1,
-                    Square => 2,
-                    Sawtooth => 3,
-                    Noise => 4,
-                    Constant => 5,
+                    SineSquare => 0,
+                    TriSaw => 1,
+                    Noise => 2,
+                    Constant => 3,
                 },
                 false,
                 emitter,
