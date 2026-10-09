@@ -41,14 +41,10 @@ const RESET: Button = button("Reset");
 const RESET_GROUP: Button = button("ResetGroup");
 
 /// One cell per waveform, in this order: sine/square, tri/saw, noise,
-/// constant. Spectrum has no cell, so selecting it lights none.
-// PLACEHOLDER: Spectrum becomes reachable once the TouchOSC layout's
-// Waveform grid has a fifth cell. Then this takes tunnels' order — sine/square,
-// tri/saw, noise, spectrum, constant — with `n: 5`, and constant moves to the
-// new last cell.
+/// spectrum, constant.
 const WAVEFORM_SELECT: RadioButton = RadioButton {
     control: "Waveform",
-    n: 4,
+    n: 5,
     x_primary_coordinate: false,
 };
 
@@ -74,7 +70,8 @@ impl AnimationUIState {
                 0 => Some(SineSquare),
                 1 => Some(TriSaw),
                 2 => Some(Noise),
-                3 => Some(Constant),
+                3 => Some(Spectrum),
+                4 => Some(Constant),
                 _ => None,
             }
             .map(|waveform| WrapAnimation(Set(Waveform(waveform))))
@@ -164,9 +161,8 @@ impl AnimationUIState {
                 SineSquare => WAVEFORM_SELECT.set(0, false, emitter),
                 TriSaw => WAVEFORM_SELECT.set(1, false, emitter),
                 Noise => WAVEFORM_SELECT.set(2, false, emitter),
-                Constant => WAVEFORM_SELECT.set(3, false, emitter),
-                // An index past the last cell lights none of them.
-                Spectrum => WAVEFORM_SELECT.set(WAVEFORM_SELECT.n, true, emitter),
+                Spectrum => WAVEFORM_SELECT.set(3, false, emitter),
+                Constant => WAVEFORM_SELECT.set(4, false, emitter),
             },
             Speed(v) => emitter.emit_float(SPEED, v.into()),
             Size(v) => emitter.emit_float(SIZE, v.into()),
