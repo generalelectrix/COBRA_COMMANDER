@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tunnels::audio::AudioState;
 use tunnels::clock_server::{SharedClockData, StaticClockBank};
-use tunnels_model::spectrum::SpectrumTables;
+use tunnels::spectrum::SpectrumTables;
 
 use crate::fixture::prelude::*;
 use crate::osc::ScopedControlEmitter;

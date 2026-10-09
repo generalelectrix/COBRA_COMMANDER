@@ -1,7 +1,7 @@
 use eframe::egui::{self, Color32};
 use egui_plot::{Line, Plot, PlotPoint, PlotPoints, Points};
 use number::Phase;
-use tunnels_model::spectrum::SpectrumTables;
+use tunnels::spectrum::SpectrumTables;
 
 use crate::gui_state::AnimationSnapshot;
 

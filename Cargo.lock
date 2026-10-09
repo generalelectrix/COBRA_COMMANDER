@@ -984,7 +984,6 @@ dependencies = [
  "touchosc_sync",
  "tunnels",
  "tunnels_lib",
- "tunnels_model",
  "typetag",
  "url",
  "uuid",

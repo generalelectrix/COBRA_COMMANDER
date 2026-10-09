@@ -18,7 +18,6 @@ strum_macros = "0.27"
 midi_harness = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 tunnels = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
-tunnels_model = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 zero_configure = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 stage_theme = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
 gui_common = { git = "https://github.com/generalelectrix/tunnels", branch = "main" }
@@ -69,7 +68,6 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # midi_harness = { path = "../tunnels/midi_harness" }
 # tunnels = { path = "../tunnels/tunnels" }
 # tunnels_lib = { path = "../tunnels/tunnels_lib" }
-# tunnels_model = { path = "../tunnels/tunnels_model" }
 # zero_configure = { path = "../tunnels/zero_configure" }
 # gui_common = { path = "../tunnels/gui_common" }
 # touchosc_sync = { path = "../tunnels/touchosc_sync" }
