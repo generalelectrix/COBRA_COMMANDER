@@ -111,6 +111,10 @@ fn main() -> Result<()> {
         None => HSLUV_LIGHTNESS_OFFSET,
     };
     let simulated_kw = args.simulated_kw.unwrap_or(W_DIODE_BRIGHTNESS);
+    let appearance = Appearance {
+        lightness,
+        simulated_kw,
+    };
 
     // Cells differ in height between RGB (3 strips) and RGBW (4 strips); pick
     // the larger so panel rows align even though the row content differs.
@@ -131,22 +135,15 @@ fn main() -> Result<()> {
             let panel_x = args.gutter + (col as u32) * (panel_w + args.gutter);
             let panel_y = args.gutter + (row as u32) * (panel_h + args.gutter);
             render_panel(
-                &mut img,
-                panel_x,
-                panel_y,
-                *space,
-                *gamut,
-                &args,
-                lightness,
-                simulated_kw,
+                &mut img, panel_x, panel_y, *space, *gamut, &args, appearance,
             );
         }
     }
 
-    if let Some(parent) = args.output.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = args.output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
     }
     img.save(&args.output)?;
 
@@ -178,6 +175,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// The settings every cell of a run is rendered at.
+#[derive(Clone, Copy)]
+struct Appearance {
+    lightness: UnipolarFloat,
+    simulated_kw: f64,
+}
+
 fn render_panel(
     img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
     panel_x: u32,
@@ -185,8 +189,7 @@ fn render_panel(
     space: Space,
     gamut: Gamut,
     args: &Args,
-    lightness: UnipolarFloat,
-    simulated_kw: f64,
+    appearance: Appearance,
 ) {
     let n_strips = gamut.n_diodes();
     let cell_h = args.swatch_h + 4 * args.strip_h; // align row heights across gamuts
@@ -195,7 +198,7 @@ fn render_panel(
         let sat = sat_for_row(sy, args.sat_steps);
         for hx in 0..args.hue_steps {
             let hue = Phase::new((hx as f64) / (args.hue_steps as f64));
-            let cell = build_cell(space, gamut, hue, sat, lightness, simulated_kw);
+            let cell = build_cell(space, gamut, hue, sat, appearance);
 
             let cx = panel_x + hx * args.cell_w;
             let cy = panel_y + sy * cell_h;
@@ -229,9 +232,12 @@ fn build_cell(
     gamut: Gamut,
     hue: Phase,
     sat: UnipolarFloat,
-    lightness: UnipolarFloat,
-    simulated_kw: f64,
+    appearance: Appearance,
 ) -> Cell {
+    let Appearance {
+        lightness,
+        simulated_kw,
+    } = appearance;
     match (space, gamut) {
         (Space::Hsv, Gamut::Rgb) => {
             let c = Hsv {

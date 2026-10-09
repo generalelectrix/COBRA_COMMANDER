@@ -362,33 +362,32 @@ pub fn derive_control(input: TokenStream) -> TokenStream {
     // order — decoupling the enum, and thus the parameter-select slot order,
     // from struct field layout. The override must name every animation target
     // exactly once; a mismatch is a compile error so the two can't drift.
-    let ordered_target_idents =
-        match get_attr_and_list_payload(&attrs, "animation_target_order") {
-            Some(order) => {
-                let mut expected = animate_target_idents.clone();
-                expected.sort();
-                let mut got = order.clone();
-                got.sort();
-                if expected != got {
-                    let missing: Vec<_> = animate_target_idents
-                        .iter()
-                        .filter(|t| !order.contains(t))
-                        .cloned()
-                        .collect();
-                    let unknown: Vec<_> = order
-                        .iter()
-                        .filter(|t| !animate_target_idents.contains(t))
-                        .cloned()
-                        .collect();
-                    panic!(
+    let ordered_target_idents = match get_attr_and_list_payload(&attrs, "animation_target_order") {
+        Some(order) => {
+            let mut expected = animate_target_idents.clone();
+            expected.sort();
+            let mut got = order.clone();
+            got.sort();
+            if expected != got {
+                let missing: Vec<_> = animate_target_idents
+                    .iter()
+                    .filter(|t| !order.contains(t))
+                    .cloned()
+                    .collect();
+                let unknown: Vec<_> = order
+                    .iter()
+                    .filter(|t| !animate_target_idents.contains(t))
+                    .cloned()
+                    .collect();
+                panic!(
                         "animation_target_order must list every animation target exactly once \
                          (targets: {animate_target_idents:?}). missing: {missing:?}, unknown: {unknown:?}"
                     );
-                }
-                order
             }
-            None => animate_target_idents.clone(),
-        };
+            order
+        }
+        None => animate_target_idents.clone(),
+    };
 
     let mut anim_target_enum = quote! {};
     if !ordered_target_idents.is_empty() {
