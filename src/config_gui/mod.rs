@@ -51,7 +51,7 @@ use animation_panel::VisualizerPanelState;
 use audio_panel::AudioPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
-use gui_common::audio_panel::METER_REFRESH;
+use gui_common::audio_panel::{METER_REFRESH, audio_tab};
 use gui_common::envelope_viewer::EnvelopeViewerState;
 use gui_common::log_status::{self, LogRecord, LogStatusPanel, LogStatusState};
 use gui_common::{CloseHandler, MessageModal};
@@ -155,7 +155,19 @@ impl eframe::App for ConsoleApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Dmx, "DMX");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
-                ui.selectable_value(&mut self.active_tab, Tab::ClocksAudio, "Clocks/Audio");
+                let clip = if audio_online {
+                    self.audio_panel.input_clipping()
+                } else {
+                    None
+                };
+                if audio_tab(
+                    ui,
+                    "Clocks/Audio",
+                    self.active_tab == Tab::ClocksAudio,
+                    clip,
+                ) {
+                    self.active_tab = Tab::ClocksAudio;
+                }
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
                 ui.selectable_value(&mut self.active_tab, Tab::Positioner, "Positioner");
                 if log_status::status_tab(ui, self.active_tab == Tab::Status, &self.log_status) {
