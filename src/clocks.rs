@@ -24,7 +24,6 @@ pub enum Clocks {
         clocks: ClockBank,
         clock_controls: GroupControlMap<tunnels::clock_bank::ControlMessage>,
         audio_input: AudioInput,
-        audio_controls: GroupControlMap<tunnels::audio::ControlMessage>,
         /// The audio input's latest frame and the role followed in it.
         audio: AudioState,
     },
@@ -40,13 +39,10 @@ impl Clocks {
     pub fn test_internal_with_frames(frames: tunnels::audio::frame_buffer::FrameReader) -> Self {
         let mut clock_controls = GroupControlMap::default();
         crate::osc::clock::map_controls(&mut clock_controls);
-        let mut audio_controls = GroupControlMap::default();
-        crate::osc::audio::map_controls(&mut audio_controls);
         Clocks::Internal {
             clocks: ClockBank::default(),
             clock_controls,
             audio_input: AudioInput::from_frames(frames),
-            audio_controls,
             audio: AudioState::default(),
         }
     }
@@ -82,14 +78,11 @@ impl Clocks {
         let clocks = ClockBank::default();
         let mut clock_controls = GroupControlMap::default();
         crate::osc::clock::map_controls(&mut clock_controls);
-        let mut audio_controls = GroupControlMap::default();
-        crate::osc::audio::map_controls(&mut audio_controls);
         let audio_input = AudioInput::new(audio_device_name, envelope_streams_tx)?;
         Ok(Clocks::Internal {
             clocks,
             clock_controls,
             audio_input,
-            audio_controls,
             audio: AudioState::default(),
         })
     }
@@ -139,27 +132,6 @@ impl Clocks {
             return;
         };
         clocks.control(msg, emitter);
-    }
-
-    /// Handle an audio OSC message.
-    pub fn control_audio_osc(
-        &mut self,
-        msg: &OscControlMessage,
-        emitter: &mut Controller,
-    ) -> Result<StateDirty> {
-        let Self::Internal {
-            audio_input,
-            audio_controls,
-            ..
-        } = self
-        else {
-            return Ok(StateDirty::CLEAN);
-        };
-        let Some((msg, _talkback)) = audio_controls.handle(msg)? else {
-            return Ok(StateDirty::CLEAN);
-        };
-        audio_input.control(msg, emitter);
-        Ok(StateDirty::AUDIO)
     }
 
     /// Handle an audio control message.
@@ -214,24 +186,11 @@ impl Clocks {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::osc::OscClientId;
-    use rosc::{OscMessage, OscType};
     use tunnels::audio::{AudioFrame, UnipolarF32};
 
     fn internal_clocks() -> Clocks {
         let (tx, _rx) = std::sync::mpsc::channel();
         Clocks::internal(None, tx).expect("internal clocks should construct in test")
-    }
-
-    fn audio_osc_msg(control: &str, value: f32) -> OscControlMessage {
-        OscControlMessage::new(
-            OscMessage {
-                addr: format!("/Audio/{control}"),
-                args: vec![OscType::Float(value)],
-            },
-            OscClientId::example(),
-        )
-        .unwrap()
     }
 
     #[test]
@@ -255,43 +214,6 @@ mod tests {
             ),
             StateDirty::AUDIO,
         );
-    }
-
-    #[test]
-    fn control_audio_osc_marks_audio_dirty_only_in_internal_mode() {
-        let (mut controller, _send, _osc_recv) = Controller::test_new();
-        let msg = audio_osc_msg("EnvelopeAttack", 0.5);
-
-        assert_eq!(
-            Clocks::test_new()
-                .control_audio_osc(&msg, &mut controller)
-                .expect("recognized msg should not error"),
-            StateDirty::CLEAN,
-        );
-
-        assert_eq!(
-            internal_clocks()
-                .control_audio_osc(&msg, &mut controller)
-                .expect("recognized msg should not error"),
-            StateDirty::AUDIO,
-        );
-    }
-
-    /// Controls for parameters the audio input does not have are accepted
-    /// and change nothing.
-    #[test]
-    fn unsupported_audio_osc_controls_are_ignored() {
-        let (mut controller, _send, _osc_recv) = Controller::test_new();
-        let mut internal = internal_clocks();
-        for control in ["FilterCutoff", "Gain"] {
-            assert_eq!(
-                internal
-                    .control_audio_osc(&audio_osc_msg(control, 0.5), &mut controller)
-                    .expect("an unsupported control is not an error"),
-                StateDirty::CLEAN,
-                "{control}",
-            );
-        }
     }
 
     /// Internal clocks carry the audio input's latest frame with the role

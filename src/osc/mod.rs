@@ -24,7 +24,6 @@ use thiserror::Error;
 use self::radio_button::RadioButton;
 
 pub mod animation;
-pub mod audio;
 mod basic_controls;
 mod bipolar_array;
 mod button_array;
