@@ -264,30 +264,12 @@ impl MidiHandler for BehringerCmdMM1 {
                 self.set_vu_meter(true, *v, output);
                 Ok(())
             }
-            AudioStateChange::IsClipping(v) => {
-                self.set_vu_meter(
-                    false,
-                    if *v {
-                        UnipolarFloat::ONE
-                    } else {
-                        UnipolarFloat::ZERO
-                    },
-                    output,
-                );
-                Ok(())
-            }
             // No CMD-MM1 hardware feedback for these parameters.
-            AudioStateChange::FilterCutoff(_)
-            | AudioStateChange::EnvelopeAttack(_)
+            AudioStateChange::EnvelopeAttack(_)
             | AudioStateChange::EnvelopeRelease(_)
             | AudioStateChange::OutputSmoothing(_)
-            | AudioStateChange::AutoTrimEnabled(_)
-            | AudioStateChange::InputGain(_)
-            | AudioStateChange::ActiveBand(_)
             | AudioStateChange::NormFloorHalflife(_)
-            | AudioStateChange::NormCeilingHalflife(_)
-            | AudioStateChange::NormFloorMode(_)
-            | AudioStateChange::NormCeilingMode(_) => Ok(()),
+            | AudioStateChange::NormCeilingHalflife(_) => Ok(()),
         } {
             warn!("MIDI error updating audio control for {msg:?}: {err}.");
         }

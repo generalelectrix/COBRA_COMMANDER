@@ -24,8 +24,13 @@ impl ClockService {
 #[cfg(test)]
 impl ClockService {
     pub fn test_new() -> Self {
+        Self::test_with(SharedClockData::default())
+    }
+
+    /// A service that has received `data`.
+    pub fn test_with(data: SharedClockData) -> Self {
         Self {
-            data: Arc::new(Mutex::new(SharedClockData::default())),
+            data: Arc::new(Mutex::new(data)),
             provider: "test".to_string(),
         }
     }

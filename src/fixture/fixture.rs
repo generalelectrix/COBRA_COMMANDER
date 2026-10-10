@@ -257,7 +257,7 @@ impl<F: AnimatedFixture> Update for FixtureWithAnimations<F> {
         self.fixture.update(update, dt);
         for ta in &mut self.animations {
             ta.animation
-                .update_state(dt, update.master_controls.audio_envelope);
+                .update_state(dt, update.master_controls.audio());
         }
     }
 }
@@ -274,13 +274,11 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         // contributions visible to the fixture.
         let mut anim_buf = [(0.0, F::Target::default()); N_ANIM];
         let mut anim_count = 0;
+        let master = group_controls.master_controls;
         for ta in self.animations.iter() {
             anim_buf[anim_count] = (
                 ta.animation
-                    .prepare(
-                        &group_controls.master_controls.clock_state,
-                        group_controls.master_controls.audio_envelope,
-                    )
+                    .prepare(&master.clock_state, master.audio(), master.spectrum())
                     .value(phase_offset, offset_index),
                 ta.target,
             );

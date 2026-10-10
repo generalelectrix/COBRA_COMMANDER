@@ -16,6 +16,7 @@ use strum::VariantArray;
 use strum_macros::VariantArray;
 
 use number::UnipolarFloat;
+use tunnels::audio::AudioState;
 use tunnels::clock::{Clock, TapSync};
 use tunnels_lib::transient_indicator::TransientIndicator;
 
@@ -228,10 +229,10 @@ impl StrobeClock {
     pub fn update(
         &mut self,
         delta_t: Duration,
-        audio_envelope: UnipolarFloat,
+        audio: &AudioState,
         emitter: &ScopedControlEmitter,
     ) {
-        self.clock.update_state(delta_t, audio_envelope);
+        self.clock.update_state(delta_t, audio);
         // Update the tap sync/rate flasher.
         if let Some(tick_state) = self
             .tick_indicator

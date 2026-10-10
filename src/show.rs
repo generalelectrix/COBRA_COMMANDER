@@ -23,7 +23,7 @@ use crate::{
     preview::Previewer,
 };
 
-use tunnels::audio::EnvelopeStreams;
+use tunnels::audio::{EnvelopeStreams, Role};
 
 use anyhow::{Context, Result, bail};
 use color_organ::{HsluvColor, IgnoreEmitter};
@@ -38,6 +38,8 @@ pub struct Show {
     master_controls: MasterControls,
     animation_ui_state: AnimationUIState,
     clocks: Clocks,
+    /// The audio role followed in the local audio input.
+    active_role: Role,
     preview: Previewer,
     master_strobe_channel: Option<usize>,
     gui_state: SharedGuiState,
@@ -87,6 +89,7 @@ impl Show {
             master_controls: Default::default(),
             animation_ui_state,
             clocks,
+            active_role: Role::default(),
             preview,
             master_strobe_channel: None,
             gui_state,
@@ -309,8 +312,10 @@ impl Show {
                 }
                 Ok(StateDirty::CLEAN)
             }
-            MetaCommand::AudioControl(msg) => {
-                Ok(self.clocks.control_audio(msg, &mut self.controller))
+            MetaCommand::AudioControl(msg) => Ok(self.control_audio(msg)),
+            MetaCommand::SetActiveRole(role) => {
+                self.active_role = role;
+                Ok(StateDirty::AUDIO)
             }
             MetaCommand::RenamePositionerPreset(name) => {
                 let Some(channel) = self.channels.current_channel() else {
@@ -333,6 +338,17 @@ impl Show {
                 Ok(StateDirty::SHOW_FILE)
             }
         }
+    }
+
+    /// Handle an audio control message. Resetting the audio parameters also
+    /// returns the followed role to its default.
+    fn control_audio(&mut self, msg: tunnels::audio::ControlMessage) -> StateDirty {
+        let mut dirty = StateDirty::CLEAN;
+        if matches!(msg, tunnels::audio::ControlMessage::ResetParameters) {
+            self.active_role = Role::default();
+            dirty |= StateDirty::AUDIO;
+        }
+        dirty | self.clocks.control_audio(msg, &mut self.controller)
     }
 
     /// Shared post-repatch logic: clear channels, reconcile wings, resize DMX buffers.
@@ -417,9 +433,7 @@ impl Show {
                 self.clocks.control_clock(msg, sender.controller);
                 Ok(StateDirty::CLEAN)
             }
-            ShowControlMessage::Audio(msg) => {
-                Ok(self.clocks.control_audio(msg, &mut self.controller))
-            }
+            ShowControlMessage::Audio(msg) => Ok(self.control_audio(msg)),
             ShowControlMessage::Master(msg) => {
                 self.master_controls.control(&msg, &sender);
                 Ok(StateDirty::CLEAN)
@@ -504,7 +518,6 @@ impl Show {
                 )?;
                 Ok(StateDirty::CLEAN)
             }
-            crate::osc::audio::GROUP => self.clocks.control_audio_osc(msg, &mut self.controller),
             crate::osc::clock::GROUP => {
                 self.clocks.control_clock_osc(msg, &mut self.controller)?;
                 Ok(StateDirty::CLEAN)
@@ -584,20 +597,22 @@ impl Show {
                         .collect(),
                 }));
         }
-        if dirty.contains(StateDirty::AUDIO)
-            && let Some(snap) = self.clocks.audio_snapshot()
-        {
-            self.gui_state.audio_state.store(snap);
+        if dirty.contains(StateDirty::AUDIO) {
+            if let Some(snap) = self.clocks.audio_snapshot() {
+                self.gui_state.audio_state.store(snap);
+            }
+            self.gui_state.active_role.store(self.active_role);
         }
     }
 
     /// Update the state of the show using the provided timestep.
     fn update(&mut self, delta_t: Duration) {
-        self.clocks.update(delta_t, &mut self.controller);
+        self.clocks
+            .update(delta_t, self.active_role, &mut self.controller);
+        self.relay_input_meter();
 
-        let clock_state = self.clocks.get();
-        self.master_controls.clock_state = clock_state.clock_bank;
-        self.master_controls.audio_envelope = clock_state.audio_envelope;
+        self.master_controls
+            .set_clock_data(self.clocks.get(self.active_role));
 
         self.master_controls
             .update(delta_t, &self.controller.sender_with_metadata(None));
@@ -619,6 +634,18 @@ impl Show {
         if let Err(err) = self.snapshot_animation_state() {
             warn!("Animation state snapshot error: {err}.");
         };
+    }
+
+    /// Store what the GUI shows of the local audio input's meter, waking the
+    /// GUI only when that changes.
+    fn relay_input_meter(&mut self) {
+        let meter = self.clocks.input_meter();
+        self.gui_state
+            .input_clip_lit
+            .store_if_changed(meter.as_ref().map(|m| m.clip_lit()));
+        self.gui_state
+            .input_trim_db
+            .store_if_changed(meter.as_ref().map(|m| m.displayed_trim_db()));
     }
 
     /// Render the state of the show out to DMX.
@@ -749,7 +776,7 @@ impl Show {
                     .map(ControllableTargetedAnimation::anim)
                     .cloned()
                     .unwrap_or_default(),
-                clocks: self.clocks.get(),
+                clocks: self.clocks.get(self.active_role),
                 fixture_count: group.fixture_configs().len(),
             }));
         Ok(())
@@ -870,6 +897,7 @@ impl Show {
             master_controls: Default::default(),
             animation_ui_state: AnimationUIState::new(initial_channel),
             clocks,
+            active_role: Role::default(),
             preview: Previewer::Off,
             master_strobe_channel: None,
             gui_state,
@@ -1038,6 +1066,157 @@ mod tests {
             .expect("audio control should not error");
 
         assert_eq!(dirty, StateDirty::AUDIO);
+    }
+
+    /// The role chosen in the GUI reaches the GUI snapshot, is followed in
+    /// the audio frame the fixtures read, and survives a change of audio
+    /// device; the frame's spectrum is baked for the fixtures; resetting the
+    /// audio parameters returns the role to its default.
+    #[test]
+    fn active_role_flows_from_command_to_fixtures_and_snapshot() {
+        use tunnels::audio::{AudioFrame, AudioState, UnipolarF32};
+        use tunnels_lib::number::{Phase, UnipolarFloat};
+
+        let configs: Vec<crate::config::FixtureGroupConfig> =
+            serde_yaml::from_str(ONE_UNIVERSE_PATCH).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
+        let (mut producer, frames) = tunnels::audio::frame_buffer::frame_buffer();
+        let (mut show, _send, _osc_recv) = Show::test_new_inner(patch, |_tx| {
+            Clocks::test_internal_with_readers(tunnels::audio::InputReaders {
+                frames,
+                meter: std::sync::Weak::new(),
+            })
+        });
+        let frame = AudioFrame::new(
+            std::array::from_fn(|r| UnipolarF32::new(0.1 + 0.2 * r as f32)),
+            std::array::from_fn(|b| UnipolarF32::new((b + 1) as f32 / 27.0)),
+        );
+        producer.publish(frame);
+        assert_eq!(**show.gui_state.active_role.load(), Role::Bass);
+
+        let dirty = show
+            .handle_meta_command(MetaCommand::SetActiveRole(Role::Hats))
+            .expect("setting the role should not error");
+        assert_eq!(dirty, StateDirty::AUDIO);
+        show.snapshot_state(dirty);
+        assert_eq!(**show.gui_state.active_role.load(), Role::Hats);
+
+        show.update(UPDATE_INTERVAL);
+        let master = &show.master_controls;
+        assert_eq!(
+            *master.audio(),
+            AudioState {
+                frame,
+                active_role: Role::Hats,
+            },
+        );
+        let spectrum = frame.spectrum();
+        for (phase, band) in [(0.0, 0), (0.5, spectrum.len() - 1)] {
+            assert_eq!(
+                master
+                    .spectrum()
+                    .value(Phase::new(phase), UnipolarFloat::ZERO),
+                spectrum[band].val(),
+                "band {band}",
+            );
+        }
+
+        show.handle_meta_command(MetaCommand::UseInternalClocks(None))
+            .expect("switching to the offline device should not error");
+        show.update(UPDATE_INTERVAL);
+        assert_eq!(show.master_controls.audio().active_role, Role::Hats);
+
+        let dirty = show
+            .handle_meta_command(MetaCommand::AudioControl(
+                tunnels::audio::ControlMessage::ResetParameters,
+            ))
+            .expect("audio control should not error");
+        show.snapshot_state(dirty);
+        assert_eq!(**show.gui_state.active_role.load(), Role::Bass);
+    }
+
+    /// A show tick stores what the GUI shows of the local audio input's
+    /// meter, firing the repaint signal only when that changes; a dropped
+    /// meter and clocks from a service both show no meter.
+    #[test]
+    fn the_input_meter_wakes_the_gui_only_on_change() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tunnels::audio::{InputMeter, InputReaders};
+
+        let configs: Vec<crate::config::FixtureGroupConfig> =
+            serde_yaml::from_str(ONE_UNIVERSE_PATCH).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
+        let internal_clocks = |meter: &Arc<InputMeter>| {
+            let (_producer, frames) = tunnels::audio::frame_buffer::frame_buffer();
+            Clocks::test_internal_with_readers(InputReaders {
+                frames,
+                meter: Arc::downgrade(meter),
+            })
+        };
+        let meter = Arc::new(InputMeter::default());
+        let (mut show, _send, _osc_recv) =
+            Show::test_new_inner(patch, |_tx| internal_clocks(&meter));
+        let repaints = Arc::new(AtomicUsize::new(0));
+        let repaints_for_signal = repaints.clone();
+        show.gui_state = Arc::new(crate::gui_state::GuiState::new(
+            vec![],
+            show.clocks.status(),
+            None,
+            Arc::new(move || {
+                repaints_for_signal.fetch_add(1, Ordering::Relaxed);
+            }),
+            tunnels_lib::repaint::noop_repaint(),
+        ));
+
+        let tick = |show: &mut Show| {
+            let before = repaints.load(Ordering::Relaxed);
+            show.update(UPDATE_INTERVAL);
+            let gui = &show.gui_state;
+            (
+                gui.input_clip_lit.load(),
+                gui.input_trim_db.load(),
+                repaints.load(Ordering::Relaxed) - before,
+            )
+        };
+
+        meter.set(0.1, false);
+        assert_eq!(
+            tick(&mut show),
+            (Some(false), Some(0.0), 2),
+            "a meter appearing"
+        );
+        meter.set(0.2, false);
+        assert_eq!(
+            tick(&mut show),
+            (Some(false), Some(0.0), 0),
+            "a sub-step trim change and an unchanged lit flag"
+        );
+        meter.set(0.2, true);
+        assert_eq!(
+            tick(&mut show),
+            (Some(true), Some(0.0), 1),
+            "the clip indicator lighting"
+        );
+        meter.set(0.3, true);
+        assert_eq!(
+            tick(&mut show),
+            (Some(true), Some(0.5), 1),
+            "the trim crossing a display step"
+        );
+        assert_eq!(
+            tick(&mut show),
+            (Some(true), Some(0.5), 0),
+            "an unchanged meter"
+        );
+
+        drop(meter);
+        assert_eq!(tick(&mut show), (None, None, 2), "a dropped meter");
+
+        let meter = Arc::new(InputMeter::default());
+        show.clocks = internal_clocks(&meter);
+        assert_eq!(tick(&mut show), (Some(false), Some(0.0), 2), "a new meter");
+        show.clocks = Clocks::test_new();
+        assert_eq!(tick(&mut show), (None, None, 2), "clocks from a service");
     }
 
     #[test]

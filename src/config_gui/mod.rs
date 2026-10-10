@@ -51,6 +51,7 @@ use animation_panel::VisualizerPanelState;
 use audio_panel::AudioPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
+use gui_common::audio_panel::audio_tab;
 use gui_common::envelope_viewer::EnvelopeViewerState;
 use gui_common::log_status::{self, LogRecord, LogStatusPanel, LogStatusState};
 use gui_common::{CloseHandler, MessageModal};
@@ -137,7 +138,15 @@ impl eframe::App for ConsoleApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Dmx, "DMX");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
-                ui.selectable_value(&mut self.active_tab, Tab::ClocksAudio, "Clocks/Audio");
+                let clip = self.gui_state.input_clip_lit.load();
+                if audio_tab(
+                    ui,
+                    "Clocks/Audio",
+                    self.active_tab == Tab::ClocksAudio,
+                    clip,
+                ) {
+                    self.active_tab = Tab::ClocksAudio;
+                }
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
                 ui.selectable_value(&mut self.active_tab, Tab::Positioner, "Positioner");
                 if log_status::status_tab(ui, self.active_tab == Tab::Status, &self.log_status) {
@@ -241,8 +250,12 @@ impl eframe::App for ConsoleApp {
                             },
                             &mut self.audio_panel,
                             &audio_state,
+                            **self.gui_state.active_role.load(),
+                            self.gui_state.input_trim_db.load(),
                         );
                         if audio_state.device_name != tunnels::audio::OFFLINE_DEVICE_NAME {
+                            // The most recent device open wins: each bundle
+                            // fully replaces the viewer's streams.
                             while let Ok(streams) = self.envelope_streams_rx.try_recv() {
                                 self.envelope_viewer.set_envelope_streams(streams);
                             }
@@ -254,6 +267,16 @@ impl eframe::App for ConsoleApp {
                         }
                     }
                     ClockStatus::Remote { .. } => {
+                        ui.add_space(8.0);
+                        ui.separator();
+                        audio_panel::render_follow_selector(
+                            ui,
+                            GuiContext {
+                                modal: &mut self.modal,
+                                client: &self.client,
+                            },
+                            **self.gui_state.active_role.load(),
+                        );
                         self.envelope_viewer.set_open(false);
                     }
                 }
