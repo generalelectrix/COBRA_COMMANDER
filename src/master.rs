@@ -2,18 +2,33 @@
 
 use std::time::Duration;
 
-use number::UnipolarFloat;
-use tunnels::clock_server::StaticClockBank;
+use tunnels::audio::AudioState;
+use tunnels::clock_server::{SharedClockData, StaticClockBank};
+use tunnels_model::spectrum::SpectrumTables;
 
 use crate::fixture::prelude::*;
 use crate::osc::ScopedControlEmitter;
 use crate::strobe::{Distributor, StrobeClock};
 
-#[derive(Default)]
 pub struct MasterControls {
     strobe_clock: StrobeClock,
     pub clock_state: StaticClockBank,
-    pub audio_envelope: UnipolarFloat,
+    /// The current audio frame and the role followed in it.
+    audio: AudioState,
+    /// The spectrum of `audio`'s frame, baked for animations to read.
+    spectrum: SpectrumTables,
+}
+
+impl Default for MasterControls {
+    fn default() -> Self {
+        let audio = AudioState::default();
+        Self {
+            strobe_clock: Default::default(),
+            clock_state: Default::default(),
+            spectrum: SpectrumTables::new(&audio.frame),
+            audio,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -28,13 +43,29 @@ impl MasterControls {
 }
 
 impl MasterControls {
+    /// Take on a frame of clock and audio state, baking the frame's spectrum.
+    pub fn set_clock_data(&mut self, data: SharedClockData) {
+        self.clock_state = data.clock_bank;
+        self.spectrum = SpectrumTables::new(&data.audio.frame);
+        self.audio = data.audio;
+    }
+
+    /// The current audio frame and the role followed in it.
+    pub fn audio(&self) -> &AudioState {
+        &self.audio
+    }
+
+    /// The spectrum of the current audio frame.
+    pub fn spectrum(&self) -> &SpectrumTables {
+        &self.spectrum
+    }
+
     pub fn update(&mut self, delta_t: Duration, emitter: &dyn EmitControlMessage) {
         let emitter = &ScopedControlEmitter {
             entity: GROUP,
             emitter,
         };
-        self.strobe_clock
-            .update(delta_t, self.audio_envelope, emitter);
+        self.strobe_clock.update(delta_t, &self.audio, emitter);
     }
 
     pub fn emit_state(&self, emitter: &dyn EmitControlMessage) {

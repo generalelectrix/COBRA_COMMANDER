@@ -233,6 +233,16 @@ impl eframe::App for ConsoleApp {
                         ui.add_space(8.0);
                         ui.separator();
                         let audio_state = self.gui_state.audio_state.load();
+                        let online = audio_state.device_name != tunnels::audio::OFFLINE_DEVICE_NAME;
+                        if online {
+                            // The most recent device open wins: each bundle
+                            // fully replaces the meter and the viewer's streams.
+                            while let Ok(streams) = self.envelope_streams_rx.try_recv() {
+                                self.audio_panel
+                                    .set_input_meter(Arc::clone(&streams.input_meter));
+                                self.envelope_viewer.set_envelope_streams(streams);
+                            }
+                        }
                         audio_panel::render_audio_panel(
                             ui,
                             GuiContext {
@@ -241,11 +251,9 @@ impl eframe::App for ConsoleApp {
                             },
                             &mut self.audio_panel,
                             &audio_state,
+                            **self.gui_state.active_role.load(),
                         );
-                        if audio_state.device_name != tunnels::audio::OFFLINE_DEVICE_NAME {
-                            while let Ok(streams) = self.envelope_streams_rx.try_recv() {
-                                self.envelope_viewer.set_envelope_streams(streams);
-                            }
+                        if online {
                             ui.add_space(8.0);
                             ui.separator();
                             self.envelope_viewer.ui(ui);

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use tunnels::{
-    audio::{AudioInput, AudioSnapshot, EnvelopeStreams},
+    audio::{AudioInput, AudioSnapshot, AudioState, EnvelopeStreams, Role},
     clock_bank::{ClockBank, ControlMessage},
     clock_server::SharedClockData,
 };
@@ -25,6 +25,8 @@ pub enum Clocks {
         clock_controls: GroupControlMap<tunnels::clock_bank::ControlMessage>,
         audio_input: AudioInput,
         audio_controls: GroupControlMap<tunnels::audio::ControlMessage>,
+        /// The audio input's latest frame and the role followed in it.
+        audio: AudioState,
     },
 }
 
@@ -32,6 +34,21 @@ pub enum Clocks {
 impl Clocks {
     pub fn test_new() -> Self {
         Clocks::Service(ClockService::test_new())
+    }
+
+    /// Internal clocks whose audio input reads its frames from `frames`.
+    pub fn test_internal_with_frames(frames: tunnels::audio::frame_buffer::FrameReader) -> Self {
+        let mut clock_controls = GroupControlMap::default();
+        crate::osc::clock::map_controls(&mut clock_controls);
+        let mut audio_controls = GroupControlMap::default();
+        crate::osc::audio::map_controls(&mut audio_controls);
+        Clocks::Internal {
+            clocks: ClockBank::default(),
+            clock_controls,
+            audio_input: AudioInput::from_frames(frames),
+            audio_controls,
+            audio: AudioState::default(),
+        }
     }
 }
 
@@ -73,6 +90,7 @@ impl Clocks {
             clock_controls,
             audio_input,
             audio_controls,
+            audio: AudioState::default(),
         })
     }
 
@@ -87,13 +105,9 @@ impl Clocks {
     pub fn get(&self) -> SharedClockData {
         match self {
             Self::Service(service) => service.get(),
-            Self::Internal {
-                clocks,
-                audio_input,
-                ..
-            } => SharedClockData {
+            Self::Internal { clocks, audio, .. } => SharedClockData {
                 clock_bank: clocks.as_static(),
-                audio_envelope: audio_input.envelope(),
+                audio: *audio,
             },
         }
     }
@@ -175,19 +189,25 @@ impl Clocks {
         clocks.emit_state(emitter);
     }
 
-    /// Update clock state.
-    pub fn update(&mut self, delta_t: Duration, controller: &mut Controller) {
+    /// Advance internal clocks by `delta_t`, reading the audio input's latest
+    /// frame and following `active_role` in it. Clocks from a service carry
+    /// the service's own audio state and are left alone.
+    pub fn update(&mut self, delta_t: Duration, active_role: Role, controller: &mut Controller) {
         let Self::Internal {
             clocks,
             audio_input,
+            audio,
             ..
         } = self
         else {
             return;
         };
-        audio_input.update_state(delta_t, controller);
-        let audio_envelope = audio_input.envelope();
-        clocks.update_state(delta_t, audio_envelope, controller);
+        *audio = AudioState {
+            frame: audio_input.frame(),
+            active_role,
+        };
+        audio_input.update_state(delta_t, audio.envelope(), controller);
+        clocks.update_state(delta_t, audio, controller);
     }
 }
 
@@ -196,6 +216,7 @@ mod tests {
     use super::*;
     use crate::osc::OscClientId;
     use rosc::{OscMessage, OscType};
+    use tunnels::audio::{AudioFrame, UnipolarF32};
 
     fn internal_clocks() -> Clocks {
         let (tx, _rx) = std::sync::mpsc::channel();
@@ -239,7 +260,7 @@ mod tests {
     #[test]
     fn control_audio_osc_marks_audio_dirty_only_in_internal_mode() {
         let (mut controller, _send, _osc_recv) = Controller::test_new();
-        let msg = audio_osc_msg("FilterCutoff", 0.5);
+        let msg = audio_osc_msg("EnvelopeAttack", 0.5);
 
         assert_eq!(
             Clocks::test_new()
@@ -254,6 +275,67 @@ mod tests {
                 .expect("recognized msg should not error"),
             StateDirty::AUDIO,
         );
+    }
+
+    /// Controls for parameters the audio input does not have are accepted
+    /// and change nothing.
+    #[test]
+    fn unsupported_audio_osc_controls_are_ignored() {
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
+        let mut internal = internal_clocks();
+        for control in ["FilterCutoff", "Gain"] {
+            assert_eq!(
+                internal
+                    .control_audio_osc(&audio_osc_msg(control, 0.5), &mut controller)
+                    .expect("an unsupported control is not an error"),
+                StateDirty::CLEAN,
+                "{control}",
+            );
+        }
+    }
+
+    /// Internal clocks carry the audio input's latest frame with the role
+    /// they were told to follow. Clocks from a service carry the service's
+    /// audio state whatever role they are told to follow.
+    #[test]
+    fn clock_data_carries_the_frame_and_the_followed_role() {
+        let (mut controller, _send, _osc_recv) = Controller::test_new();
+        let frame = AudioFrame::new(
+            std::array::from_fn(|r| UnipolarF32::new(0.1 + 0.2 * r as f32)),
+            std::array::from_fn(|b| UnipolarF32::new((b + 1) as f32 / 27.0)),
+        );
+        let (mut producer, reader) = tunnels::audio::frame_buffer::frame_buffer();
+        let mut internal = Clocks::test_internal_with_frames(reader);
+        producer.publish(frame);
+
+        assert_eq!(
+            internal.get().audio,
+            AudioState::default(),
+            "nothing is read before the first update",
+        );
+        for role in [Role::Hats, Role::Kick] {
+            internal.update(Duration::from_millis(25), role, &mut controller);
+            let audio = internal.get().audio;
+            assert_eq!(
+                audio,
+                AudioState {
+                    frame,
+                    active_role: role,
+                },
+            );
+            assert_eq!(audio.envelope(), frame.role(role));
+        }
+
+        let remote = AudioState {
+            frame,
+            active_role: Role::Mid,
+        };
+        let mut service = Clocks::Service(ClockService::test_with(SharedClockData {
+            clock_bank: Default::default(),
+            audio: remote,
+        }));
+        service.update(Duration::from_millis(25), Role::Hats, &mut controller);
+        assert_eq!(service.get().audio, remote);
     }
 
     #[test]

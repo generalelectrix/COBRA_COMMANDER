@@ -350,6 +350,8 @@ pub enum MetaCommand {
     SetClockWingModel(Device),
     /// Forward an audio control message to the active audio input.
     AudioControl(tunnels::audio::ControlMessage),
+    /// Choose the audio role followed in the local audio input.
+    SetActiveRole(tunnels::audio::Role),
     /// Give the OSC listener a pre-bound receive socket.
     SwapOscSocket(UdpSocket),
     /// Rename the currently-active preset of the currently-selected
@@ -386,6 +388,7 @@ impl fmt::Debug for MetaCommand {
             }
             Self::SetClockWingModel(model) => write!(f, "SetClockWingModel({model})"),
             Self::AudioControl(msg) => write!(f, "AudioControl({msg:?})"),
+            Self::SetActiveRole(role) => write!(f, "SetActiveRole({role:?})"),
             Self::SwapOscSocket(_) => write!(f, "SwapOscSocket"),
             Self::RenamePositionerPreset(name) => write!(f, "RenamePositionerPreset({name:?})"),
         }
