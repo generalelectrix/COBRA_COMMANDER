@@ -6,6 +6,7 @@ use gui_common::audio_panel::{
     AudioCommands, AudioPanel as SharedAudioPanel, AudioPanelState as SharedAudioPanelState,
     AudioSnapshot,
 };
+use tunnels::audio::time::HalfLife;
 use tunnels::audio::{AudioInput, ControlMessage, Role, StateChange};
 
 use crate::control::MetaCommand;
@@ -52,7 +53,7 @@ impl AudioCommands for ConsoleAudioCommands<'_> {
         let _ = self.ctx.send_command(MetaCommand::SetActiveRole(role));
     }
 
-    fn set_norm_floor_halflife(&mut self, halflife: Duration) {
+    fn set_norm_floor_halflife(&mut self, halflife: HalfLife) {
         let _ = self
             .ctx
             .send_command(MetaCommand::AudioControl(ControlMessage::Set(
@@ -60,7 +61,7 @@ impl AudioCommands for ConsoleAudioCommands<'_> {
             )));
     }
 
-    fn set_norm_ceiling_halflife(&mut self, halflife: Duration) {
+    fn set_norm_ceiling_halflife(&mut self, halflife: HalfLife) {
         let _ = self
             .ctx
             .send_command(MetaCommand::AudioControl(ControlMessage::Set(
