@@ -1,9 +1,10 @@
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use anyhow::Result;
 use tunnels::{
-    audio::{AudioFrame, AudioInput, AudioSnapshot, AudioState, EnvelopeStreams, Role},
+    audio::{AudioFrame, AudioInput, AudioSnapshot, AudioState, EnvelopeStreams, InputMeter, Role},
     clock_bank::{ClockBank, ControlMessage},
     clock_server::SharedClockData,
 };
@@ -35,14 +36,14 @@ impl Clocks {
         Clocks::Service(ClockService::test_new())
     }
 
-    /// Internal clocks whose audio input reads its frames from `frames`.
-    pub fn test_internal_with_frames(frames: tunnels::audio::frame_buffer::FrameReader) -> Self {
+    /// Internal clocks whose audio input reads from `readers`.
+    pub fn test_internal_with_readers(readers: tunnels::audio::InputReaders) -> Self {
         let mut clock_controls = GroupControlMap::default();
         crate::osc::clock::map_controls(&mut clock_controls);
         Clocks::Internal {
             clocks: ClockBank::default(),
             clock_controls,
-            audio_input: AudioInput::from_frames(frames),
+            audio_input: AudioInput::from_readers(readers),
             frame: AudioFrame::default(),
         }
     }
@@ -91,6 +92,15 @@ impl Clocks {
     pub fn audio_snapshot(&self) -> Option<AudioSnapshot> {
         match self {
             Self::Internal { audio_input, .. } => Some(audio_input.snapshot()),
+            Self::Service(_) => None,
+        }
+    }
+
+    /// The meter of the local audio input's live stream, or `None` with
+    /// clocks from a service or no live stream.
+    pub fn input_meter(&mut self) -> Option<Arc<InputMeter>> {
+        match self {
+            Self::Internal { audio_input, .. } => audio_input.input_meter(),
             Self::Service(_) => None,
         }
     }
@@ -242,8 +252,11 @@ mod tests {
             std::array::from_fn(|r| UnipolarF32::new(0.1 + 0.2 * r as f32)),
             std::array::from_fn(|b| UnipolarF32::new((b + 1) as f32 / 27.0)),
         );
-        let (mut producer, reader) = tunnels::audio::frame_buffer::frame_buffer();
-        let mut internal = Clocks::test_internal_with_frames(reader);
+        let (mut producer, frames) = tunnels::audio::frame_buffer::frame_buffer();
+        let mut internal = Clocks::test_internal_with_readers(tunnels::audio::InputReaders {
+            frames,
+            meter: std::sync::Weak::new(),
+        });
         producer.publish(frame);
 
         assert_eq!(

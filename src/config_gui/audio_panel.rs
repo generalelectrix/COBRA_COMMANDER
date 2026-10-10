@@ -103,6 +103,7 @@ pub(crate) fn render_audio_panel(
     state: &mut AudioPanelState,
     snapshot: &AudioSnapshot,
     active_role: Role,
+    input_trim_db: Option<f32>,
 ) {
     let mut commands = ConsoleAudioCommands { ctx };
     SharedAudioPanel {
@@ -110,6 +111,7 @@ pub(crate) fn render_audio_panel(
         state,
         snapshot,
         active_role,
+        input_trim_db,
     }
     .ui(ui);
 }

@@ -609,6 +609,7 @@ impl Show {
     fn update(&mut self, delta_t: Duration) {
         self.clocks
             .update(delta_t, self.active_role, &mut self.controller);
+        self.relay_input_meter();
 
         self.master_controls
             .set_clock_data(self.clocks.get(self.active_role));
@@ -633,6 +634,18 @@ impl Show {
         if let Err(err) = self.snapshot_animation_state() {
             warn!("Animation state snapshot error: {err}.");
         };
+    }
+
+    /// Store what the GUI shows of the local audio input's meter, waking the
+    /// GUI only when that changes.
+    fn relay_input_meter(&mut self) {
+        let meter = self.clocks.input_meter();
+        self.gui_state
+            .input_clip_lit
+            .store_if_changed(meter.as_ref().map(|m| m.clip_lit()));
+        self.gui_state
+            .input_trim_db
+            .store_if_changed(meter.as_ref().map(|m| m.displayed_trim_db()));
     }
 
     /// Render the state of the show out to DMX.
@@ -1067,9 +1080,13 @@ mod tests {
         let configs: Vec<crate::config::FixtureGroupConfig> =
             serde_yaml::from_str(ONE_UNIVERSE_PATCH).unwrap();
         let patch = Patch::patch_all(configs.into()).unwrap();
-        let (mut producer, reader) = tunnels::audio::frame_buffer::frame_buffer();
-        let (mut show, _send, _osc_recv) =
-            Show::test_new_inner(patch, |_tx| Clocks::test_internal_with_frames(reader));
+        let (mut producer, frames) = tunnels::audio::frame_buffer::frame_buffer();
+        let (mut show, _send, _osc_recv) = Show::test_new_inner(patch, |_tx| {
+            Clocks::test_internal_with_readers(tunnels::audio::InputReaders {
+                frames,
+                meter: std::sync::Weak::new(),
+            })
+        });
         let frame = AudioFrame::new(
             std::array::from_fn(|r| UnipolarF32::new(0.1 + 0.2 * r as f32)),
             std::array::from_fn(|b| UnipolarF32::new((b + 1) as f32 / 27.0)),
@@ -1116,6 +1133,90 @@ mod tests {
             .expect("audio control should not error");
         show.snapshot_state(dirty);
         assert_eq!(**show.gui_state.active_role.load(), Role::Bass);
+    }
+
+    /// A show tick stores what the GUI shows of the local audio input's
+    /// meter, firing the repaint signal only when that changes; a dropped
+    /// meter and clocks from a service both show no meter.
+    #[test]
+    fn the_input_meter_wakes_the_gui_only_on_change() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tunnels::audio::{InputMeter, InputReaders};
+
+        let configs: Vec<crate::config::FixtureGroupConfig> =
+            serde_yaml::from_str(ONE_UNIVERSE_PATCH).unwrap();
+        let patch = Patch::patch_all(configs.into()).unwrap();
+        let internal_clocks = |meter: &Arc<InputMeter>| {
+            let (_producer, frames) = tunnels::audio::frame_buffer::frame_buffer();
+            Clocks::test_internal_with_readers(InputReaders {
+                frames,
+                meter: Arc::downgrade(meter),
+            })
+        };
+        let meter = Arc::new(InputMeter::default());
+        let (mut show, _send, _osc_recv) =
+            Show::test_new_inner(patch, |_tx| internal_clocks(&meter));
+        let repaints = Arc::new(AtomicUsize::new(0));
+        let repaints_for_signal = repaints.clone();
+        show.gui_state = Arc::new(crate::gui_state::GuiState::new(
+            vec![],
+            show.clocks.status(),
+            None,
+            Arc::new(move || {
+                repaints_for_signal.fetch_add(1, Ordering::Relaxed);
+            }),
+            tunnels_lib::repaint::noop_repaint(),
+        ));
+
+        let tick = |show: &mut Show| {
+            let before = repaints.load(Ordering::Relaxed);
+            show.update(UPDATE_INTERVAL);
+            let gui = &show.gui_state;
+            (
+                **gui.input_clip_lit.load(),
+                **gui.input_trim_db.load(),
+                repaints.load(Ordering::Relaxed) - before,
+            )
+        };
+
+        meter.set(0.1, false);
+        assert_eq!(
+            tick(&mut show),
+            (Some(false), Some(0.0), 2),
+            "a meter appearing"
+        );
+        meter.set(0.2, false);
+        assert_eq!(
+            tick(&mut show),
+            (Some(false), Some(0.0), 0),
+            "a sub-step trim change and an unchanged lit flag"
+        );
+        meter.set(0.2, true);
+        assert_eq!(
+            tick(&mut show),
+            (Some(true), Some(0.0), 1),
+            "the clip indicator lighting"
+        );
+        meter.set(0.3, true);
+        assert_eq!(
+            tick(&mut show),
+            (Some(true), Some(0.5), 1),
+            "the trim crossing a display step"
+        );
+        assert_eq!(
+            tick(&mut show),
+            (Some(true), Some(0.5), 0),
+            "an unchanged meter"
+        );
+
+        drop(meter);
+        assert_eq!(tick(&mut show), (None, None, 2), "a dropped meter");
+
+        let meter = Arc::new(InputMeter::default());
+        show.clocks = internal_clocks(&meter);
+        assert_eq!(tick(&mut show), (Some(false), Some(0.0), 2), "a new meter");
+        show.clocks = Clocks::test_new();
+        assert_eq!(tick(&mut show), (None, None, 2), "clocks from a service");
     }
 
     #[test]
