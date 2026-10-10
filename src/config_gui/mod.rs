@@ -138,7 +138,7 @@ impl eframe::App for ConsoleApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Dmx, "DMX");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
-                let clip = **self.gui_state.input_clip_lit.load();
+                let clip = self.gui_state.input_clip_lit.load();
                 if audio_tab(
                     ui,
                     "Clocks/Audio",
@@ -251,7 +251,7 @@ impl eframe::App for ConsoleApp {
                             &mut self.audio_panel,
                             &audio_state,
                             **self.gui_state.active_role.load(),
-                            **self.gui_state.input_trim_db.load(),
+                            self.gui_state.input_trim_db.load(),
                         );
                         if audio_state.device_name != tunnels::audio::OFFLINE_DEVICE_NAME {
                             // The most recent device open wins: each bundle

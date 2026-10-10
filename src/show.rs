@@ -1173,8 +1173,8 @@ mod tests {
             show.update(UPDATE_INTERVAL);
             let gui = &show.gui_state;
             (
-                **gui.input_clip_lit.load(),
-                **gui.input_trim_db.load(),
+                gui.input_clip_lit.load(),
+                gui.input_trim_db.load(),
                 repaints.load(Ordering::Relaxed) - before,
             )
         };

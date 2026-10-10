@@ -15,13 +15,13 @@ local-ip-address = "0.6"
 number = { git = "https://github.com/generalelectrix/number", branch = "main" }
 strum = "0.27"
 strum_macros = "0.27"
-midi_harness = { git = "https://github.com/generalelectrix/tunnels", rev = "fb9831d6213be5aef5a3ef32cd7f31d738e13712" }
-tunnels = { git = "https://github.com/generalelectrix/tunnels", rev = "fb9831d6213be5aef5a3ef32cd7f31d738e13712" }
-tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", rev = "fb9831d6213be5aef5a3ef32cd7f31d738e13712" }
-zero_configure = { git = "https://github.com/generalelectrix/tunnels", rev = "fb9831d6213be5aef5a3ef32cd7f31d738e13712" }
-stage_theme = { git = "https://github.com/generalelectrix/tunnels", rev = "fb9831d6213be5aef5a3ef32cd7f31d738e13712" }
-gui_common = { git = "https://github.com/generalelectrix/tunnels", rev = "fb9831d6213be5aef5a3ef32cd7f31d738e13712" }
-touchosc_sync = { git = "https://github.com/generalelectrix/tunnels", rev = "fb9831d6213be5aef5a3ef32cd7f31d738e13712" }
+midi_harness = { git = "https://github.com/generalelectrix/tunnels", rev = "921861d585d8aa49cea17be9a4160193fe122d72" }
+tunnels = { git = "https://github.com/generalelectrix/tunnels", rev = "921861d585d8aa49cea17be9a4160193fe122d72" }
+tunnels_lib = { git = "https://github.com/generalelectrix/tunnels", rev = "921861d585d8aa49cea17be9a4160193fe122d72" }
+zero_configure = { git = "https://github.com/generalelectrix/tunnels", rev = "921861d585d8aa49cea17be9a4160193fe122d72" }
+stage_theme = { git = "https://github.com/generalelectrix/tunnels", rev = "921861d585d8aa49cea17be9a4160193fe122d72" }
+gui_common = { git = "https://github.com/generalelectrix/tunnels", rev = "921861d585d8aa49cea17be9a4160193fe122d72" }
+touchosc_sync = { git = "https://github.com/generalelectrix/tunnels", rev = "921861d585d8aa49cea17be9a4160193fe122d72" }
 color_organ = { git = "https://github.com/generalelectrix/color_organ", branch = "main" }
 
 arc-swap = "1"
