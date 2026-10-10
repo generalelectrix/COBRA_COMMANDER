@@ -51,6 +51,7 @@ use animation_panel::VisualizerPanelState;
 use audio_panel::AudioPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
+use gui_common::audio_panel::{METER_REFRESH, audio_tab};
 use gui_common::envelope_viewer::EnvelopeViewerState;
 use gui_common::log_status::{self, LogRecord, LogStatusPanel, LogStatusState};
 use gui_common::{CloseHandler, MessageModal};
@@ -131,13 +132,42 @@ impl eframe::App for ConsoleApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.close_handler.update("Quit Cobra Commander?", ctx);
 
+        let audio_state = self.gui_state.audio_state.load();
+        let audio_online = matches!(
+            **self.gui_state.clock_status.load(),
+            ClockStatus::Internal { .. }
+        ) && audio_state.device_name != tunnels::audio::OFFLINE_DEVICE_NAME;
+        if audio_online {
+            // The most recent device open wins: each bundle fully replaces the
+            // meter and the viewer's streams.
+            while let Ok(streams) = self.envelope_streams_rx.try_recv() {
+                self.audio_panel
+                    .set_input_meter(streams.input_meter.clone());
+                self.envelope_viewer.set_envelope_streams(streams);
+            }
+            // Keep the input meter live on every tab.
+            ctx.request_repaint_after(METER_REFRESH);
+        }
+
         egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.active_tab, Tab::Patch, "Patch");
                 ui.selectable_value(&mut self.active_tab, Tab::Dmx, "DMX");
                 ui.selectable_value(&mut self.active_tab, Tab::Midi, "MIDI");
                 ui.selectable_value(&mut self.active_tab, Tab::Osc, "OSC");
-                ui.selectable_value(&mut self.active_tab, Tab::ClocksAudio, "Clocks/Audio");
+                let clip = if audio_online {
+                    self.audio_panel.input_clipping()
+                } else {
+                    None
+                };
+                if audio_tab(
+                    ui,
+                    "Clocks/Audio",
+                    self.active_tab == Tab::ClocksAudio,
+                    clip,
+                ) {
+                    self.active_tab = Tab::ClocksAudio;
+                }
                 ui.selectable_value(&mut self.active_tab, Tab::Animation, "Animation");
                 ui.selectable_value(&mut self.active_tab, Tab::Positioner, "Positioner");
                 if log_status::status_tab(ui, self.active_tab == Tab::Status, &self.log_status) {
@@ -232,7 +262,6 @@ impl eframe::App for ConsoleApp {
                     ClockStatus::Internal { .. } => {
                         ui.add_space(8.0);
                         ui.separator();
-                        let audio_state = self.gui_state.audio_state.load();
                         audio_panel::render_audio_panel(
                             ui,
                             GuiContext {
@@ -241,11 +270,9 @@ impl eframe::App for ConsoleApp {
                             },
                             &mut self.audio_panel,
                             &audio_state,
+                            **self.gui_state.active_role.load(),
                         );
-                        if audio_state.device_name != tunnels::audio::OFFLINE_DEVICE_NAME {
-                            while let Ok(streams) = self.envelope_streams_rx.try_recv() {
-                                self.envelope_viewer.set_envelope_streams(streams);
-                            }
+                        if audio_online {
                             ui.add_space(8.0);
                             ui.separator();
                             self.envelope_viewer.ui(ui);
@@ -254,6 +281,16 @@ impl eframe::App for ConsoleApp {
                         }
                     }
                     ClockStatus::Remote { .. } => {
+                        ui.add_space(8.0);
+                        ui.separator();
+                        audio_panel::render_follow_selector(
+                            ui,
+                            GuiContext {
+                                modal: &mut self.modal,
+                                client: &self.client,
+                            },
+                            **self.gui_state.active_role.load(),
+                        );
                         self.envelope_viewer.set_open(false);
                     }
                 }

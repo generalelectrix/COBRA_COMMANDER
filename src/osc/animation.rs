@@ -40,9 +40,11 @@ const RESET: Button = button("Reset");
 /// Trigger reset of all animations in the currently-selected group.
 const RESET_GROUP: Button = button("ResetGroup");
 
+/// One cell per waveform, in this order: sine/square, tri/saw, noise,
+/// spectrum, constant.
 const WAVEFORM_SELECT: RadioButton = RadioButton {
     control: "Waveform",
-    n: 4,
+    n: 5,
     x_primary_coordinate: false,
 };
 
@@ -68,7 +70,8 @@ impl AnimationUIState {
                 0 => Some(SineSquare),
                 1 => Some(TriSaw),
                 2 => Some(Noise),
-                3 => Some(Constant),
+                3 => Some(Spectrum),
+                4 => Some(Constant),
                 _ => None,
             }
             .map(|waveform| WrapAnimation(Set(Waveform(waveform))))
@@ -154,16 +157,13 @@ impl AnimationUIState {
     {
         use StateChange::*;
         match sc {
-            Waveform(v) => WAVEFORM_SELECT.set(
-                match v {
-                    SineSquare => 0,
-                    TriSaw => 1,
-                    Noise => 2,
-                    Constant => 3,
-                },
-                false,
-                emitter,
-            ),
+            Waveform(v) => match v {
+                SineSquare => WAVEFORM_SELECT.set(0, false, emitter),
+                TriSaw => WAVEFORM_SELECT.set(1, false, emitter),
+                Noise => WAVEFORM_SELECT.set(2, false, emitter),
+                Spectrum => WAVEFORM_SELECT.set(3, false, emitter),
+                Constant => WAVEFORM_SELECT.set(4, false, emitter),
+            },
             Speed(v) => emitter.emit_float(SPEED, v.into()),
             Size(v) => emitter.emit_float(SIZE, v.into()),
             DutyCycle(v) => emitter.emit_float(DUTY_CYCLE, v.into()),
