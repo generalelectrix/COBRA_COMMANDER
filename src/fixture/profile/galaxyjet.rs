@@ -3,10 +3,6 @@
 //! A 300W LED beam/spot: color wheel, a fixed gobo wheel, a rotating gobo
 //! wheel plus its spin, a 5-facet prism plus its spin, frost, zoom, 16-bit
 //! focus, 16-bit dimmer, and 16-bit pan/tilt.
-//!
-//! The onboard strobe, LED ring effects, reset, and pan/tilt speed channels
-//! are pinned to safe values — Cobra strobes globally via the dimmer, and the
-//! ring's built-in effect programs are antithetical to live control.
 use crate::fixture::prelude::*;
 
 #[derive(Debug, EmitState, Control, DescribeControls, Update, PatchFixture)]
@@ -33,7 +29,6 @@ pub struct Galaxyjet {
     prism_rotation: ChannelKnobBipolar<BipolarSplitChannelMirror>,
     /// Frost filter insert.
     frost: BoolChannel,
-    #[channel_control]
     #[animate]
     zoom: ChannelKnobUnipolar<UnipolarChannel>,
     /// Beam focus.
