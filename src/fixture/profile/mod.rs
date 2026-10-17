@@ -17,6 +17,7 @@ pub mod flash_bang;
 pub mod freedom_fries;
 pub mod freq_strobe;
 pub mod fusion_roll;
+pub mod galaxyjet;
 pub mod h2o;
 pub mod hypnotic;
 pub mod iwash_led;
