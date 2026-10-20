@@ -74,7 +74,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "$TAG" dist/CobraCommander.dmg \
+          gh release create "$TAG" dist/CobraCommander.dmg dist/CobraCommander.app.tar.gz \
             --title "Cobra Commander $VERSION" \
             --notes-file release_notes.md
 
