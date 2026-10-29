@@ -58,6 +58,9 @@ rm -rf "$(dirname "$DOC_ICONSET")"
 
 echo "==> Building universal binary..."
 export MACOSX_DEPLOYMENT_TARGET=10.13
+# The in-app updater compares this against the latest release; a value that isn't a
+# YYYY.MM.DD-N version (e.g. "test") builds an app that never offers updates.
+export COBRA_COMMANDER_VERSION="$VERSION"
 
 cargo build --release --target x86_64-apple-darwin
 cargo build --release --target aarch64-apple-darwin
@@ -153,6 +156,22 @@ PLIST
 echo "==> Signing app bundle..."
 codesign -s - --force --deep --identifier com.generalelectrix.cobra-commander "$APP"
 
+# --- Create update archive ---
+# The in-app updater installs from this archive. COPYFILE_DISABLE and --no-xattrs stop macOS tar
+# from adding AppleDouble `._*` entries, which would unpack as stray files inside the bundle and
+# break its code-signature seal.
+
+echo "==> Creating update archive..."
+ARCHIVE="$PROJECT_DIR/dist/CobraCommander.app.tar.gz"
+rm -f "$ARCHIVE"
+COPYFILE_DISABLE=1 tar --no-xattrs -czf "$ARCHIVE" -C "$PROJECT_DIR/dist" "Cobra Commander.app"
+# Listed into a variable first so that `set -e` stops the build if the listing itself fails.
+LISTING=$(tar -tzf "$ARCHIVE")
+if grep -Eq '(^|/)\._' <<< "$LISTING"; then
+  echo "error: $ARCHIVE contains AppleDouble entries" >&2
+  exit 1
+fi
+
 # --- Create DMG ---
 
 echo "==> Creating DMG..."
@@ -166,4 +185,4 @@ create-dmg \
   --app-drop-link 450 210 \
   "$DMG" "$APP"
 
-echo "==> Done: $DMG"
+echo "==> Done: $DMG, $ARCHIVE"

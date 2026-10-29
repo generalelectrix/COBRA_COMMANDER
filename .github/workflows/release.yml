@@ -11,6 +11,9 @@ env:
 
 jobs:
   release:
+    # Installed copies offer every release as an update, so only main is ever released, even
+    # when the workflow is dispatched by hand from another branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-latest
     permissions:
       contents: write
@@ -74,7 +77,8 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "$TAG" dist/CobraCommander.dmg \
+          gh release create "$TAG" dist/CobraCommander.dmg dist/CobraCommander.app.tar.gz \
+            --target "$GITHUB_SHA" \
             --title "Cobra Commander $VERSION" \
             --notes-file release_notes.md
 
