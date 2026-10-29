@@ -8,14 +8,6 @@ use crate::fixture::Patch;
 use crate::osc::BoundOsc;
 use crate::show_file::{self, ShowFile};
 use gui_common::MessageModal;
-use gui_common::update_panel::UpdatePanel;
-use tunnels_lib::repaint::RepaintSignal;
-
-/// The welcome window's size without the update row.
-const WINDOW_SIZE: egui::Vec2 = egui::vec2(624.0, 634.0);
-
-/// The height of the update row along the bottom of the window.
-const UPDATE_ROW_HEIGHT: f32 = 32.0;
 
 /// The result of the welcome screen interaction.
 #[derive(Debug)]
@@ -45,26 +37,10 @@ struct WelcomeApp {
     pending: Option<PendingShow>,
     /// The bind failure message shown in the port prompt.
     bind_error: String,
-    /// The offer to update, absent for a build without a release version.
-    update: Option<UpdatePanel>,
 }
 
 impl eframe::App for WelcomeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.ui(ctx);
-    }
-}
-
-impl WelcomeApp {
-    fn ui(&mut self, ctx: &egui::Context) {
-        if let Some(update) = &mut self.update {
-            egui::TopBottomPanel::bottom("update_row")
-                .exact_height(UPDATE_ROW_HEIGHT)
-                .show(ctx, |ui| {
-                    ui.centered_and_justified(|ui| update.row(ui));
-                });
-        }
-
         let frame = egui::Frame::central_panel(&ctx.style());
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
@@ -117,15 +93,6 @@ impl WelcomeApp {
 
         self.modal.ui(ctx);
 
-        if self
-            .update
-            .as_mut()
-            .is_some_and(|update| update.dialog(ctx))
-        {
-            // The updated app is launching, or a close held during an install can go ahead.
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        }
-
         if self.pending.is_some() {
             let mut retry = false;
             let mut cancel = false;
@@ -153,7 +120,9 @@ impl WelcomeApp {
             }
         }
     }
+}
 
+impl WelcomeApp {
     fn handle_load(&mut self, ctx: &egui::Context) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter(show_file::FILTER_NAME, &[show_file::EXTENSION])
@@ -237,15 +206,9 @@ pub(crate) fn run_welcome(initial_port: u16) -> Result<WelcomeResult> {
     let result: Arc<Mutex<Option<WelcomeResult>>> = Arc::new(Mutex::new(None));
     let app_result = result.clone();
 
-    let updater = crate::update::updater();
-    let window_size = if updater.is_some() {
-        WINDOW_SIZE + egui::vec2(0.0, UPDATE_ROW_HEIGHT)
-    } else {
-        WINDOW_SIZE
-    };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size(window_size)
+            .with_inner_size([624.0, 634.0])
             .with_resizable(false)
             .with_icon(std::sync::Arc::new(egui::IconData::default())),
         ..Default::default()
@@ -257,19 +220,12 @@ pub(crate) fn run_welcome(initial_port: u16) -> Result<WelcomeResult> {
         Box::new(move |cc| {
             super::apply_dark_theme(&cc.egui_ctx);
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            let repaint: RepaintSignal = {
-                let ctx = cc.egui_ctx.clone();
-                Arc::new(move || ctx.request_repaint())
-            };
-            let update = updater
-                .map(|updater| UpdatePanel::start(updater, crate::update::spawner(), repaint));
             Ok(Box::new(WelcomeApp {
                 result: app_result,
                 modal: MessageModal::default(),
                 port: initial_port,
                 pending: None,
                 bind_error: String::new(),
-                update,
             }))
         }),
     )
@@ -280,41 +236,4 @@ pub(crate) fn run_welcome(initial_port: u16) -> Result<WelcomeResult> {
         .into_inner()
         .expect("welcome result mutex poisoned");
     Ok(inner.unwrap_or(WelcomeResult::Quit))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use egui_kittest::Harness;
-    use egui_kittest::kittest::Queryable;
-
-    /// The update row sits under NEW/LOAD in the enlarged window without crowding them.
-    #[test]
-    fn welcome_with_update_row() {
-        let version = "2026.10.17-1".parse().unwrap();
-        let update = UpdatePanel::start(
-            crate::update::updater_for(version),
-            Arc::new(|_, _| {}),
-            tunnels_lib::repaint::noop_repaint(),
-        );
-        let app = WelcomeApp {
-            result: Arc::new(Mutex::new(None)),
-            modal: MessageModal::default(),
-            port: crate::osc::DEFAULT_RECEIVE_PORT,
-            pending: None,
-            bind_error: String::new(),
-            update: Some(update),
-        };
-        let mut harness = Harness::builder()
-            .with_size(WINDOW_SIZE + egui::vec2(0.0, UPDATE_ROW_HEIGHT))
-            .build_state(|ctx, app: &mut WelcomeApp| app.ui(ctx), app);
-        super::super::apply_dark_theme(&harness.ctx);
-        egui_extras::install_image_loaders(&harness.ctx);
-        harness.run();
-
-        harness.get_by_label("NEW");
-        harness.get_by_label("LOAD");
-        harness.get_by_label("2026.10.17-1");
-        harness.snapshot("welcome_update_row");
-    }
 }
