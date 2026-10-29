@@ -58,7 +58,6 @@ impl eframe::App for WelcomeApp {
 impl WelcomeApp {
     fn ui(&mut self, ctx: &egui::Context) {
         if let Some(update) = &mut self.update {
-            update.hold_close(ctx);
             egui::TopBottomPanel::bottom("update_row")
                 .exact_height(UPDATE_ROW_HEIGHT)
                 .show(ctx, |ui| {
@@ -123,7 +122,7 @@ impl WelcomeApp {
             .as_mut()
             .is_some_and(|update| update.dialog(ctx))
         {
-            // The updated app is launching; this one quits.
+            // The updated app is launching, or a close held during an install can go ahead.
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 

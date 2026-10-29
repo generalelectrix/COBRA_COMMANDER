@@ -165,7 +165,9 @@ echo "==> Creating update archive..."
 ARCHIVE="$PROJECT_DIR/dist/CobraCommander.app.tar.gz"
 rm -f "$ARCHIVE"
 COPYFILE_DISABLE=1 tar --no-xattrs -czf "$ARCHIVE" -C "$PROJECT_DIR/dist" "Cobra Commander.app"
-if tar -tzf "$ARCHIVE" | grep -Eq '(^|/)\._'; then
+# Listed into a variable first so that `set -e` stops the build if the listing itself fails.
+LISTING=$(tar -tzf "$ARCHIVE")
+if grep -Eq '(^|/)\._' <<< "$LISTING"; then
   echo "error: $ARCHIVE contains AppleDouble entries" >&2
   exit 1
 fi
