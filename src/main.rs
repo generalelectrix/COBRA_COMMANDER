@@ -69,6 +69,7 @@ mod show_saver;
 mod strobe;
 mod touchosc;
 mod ui_util;
+mod update;
 mod util;
 mod wled;
 mod worker;
