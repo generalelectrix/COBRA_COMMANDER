@@ -397,9 +397,13 @@ impl eframe::App for ConsoleApp {
     }
 }
 
-/// Single entry point for the console. Runs the welcome screen, initializes
-/// the show, and runs the main console GUI.
+/// Single entry point for the console. Offers any newer release, runs the
+/// welcome screen, initializes the show, and runs the main console GUI.
 pub fn run_console(log_rx: Receiver<LogRecord>) -> Result<()> {
+    if !crate::update::offer(apply_dark_theme) {
+        return Ok(());
+    }
+
     // Phase 1: Welcome screen. The OSC receive port is bound here so a port
     // conflict is recoverable via a prompt instead of crashing show init.
     let welcome_result = welcome::run_welcome(crate::osc::DEFAULT_RECEIVE_PORT)?;
