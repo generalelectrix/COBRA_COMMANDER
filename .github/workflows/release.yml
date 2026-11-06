@@ -5,6 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Each run numbers its release from the ones already published, so runs must
+# not overlap.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   MACOSX_DEPLOYMENT_TARGET: "10.13"
@@ -76,7 +82,8 @@ jobs:
         run: |
           gh release create "$TAG" dist/CobraCommander.dmg \
             --title "Cobra Commander $VERSION" \
-            --notes-file release_notes.md
+            --notes-file release_notes.md \
+            --target "$GITHUB_SHA"
 
       - name: Update latest tag
         run: |
