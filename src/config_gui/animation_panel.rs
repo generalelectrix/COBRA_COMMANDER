@@ -37,8 +37,7 @@ impl VisualizerPanelState {
         self.preview.clear();
         self.preview.extend((0..NUM_WAVE_POINTS).map(|i| {
             let phase = i as f64 / NUM_WAVE_POINTS as f64;
-            let offset_index = (phase / phase_offset_per_fixture) as usize;
-            PlotPoint::new(phase, anim.unit_value(Phase::new(phase), offset_index))
+            PlotPoint::new(phase, anim.unit_value(Phase::new(phase)))
         }));
 
         // Scaled waveform (applies audio envelope and animation scaling).
@@ -53,7 +52,7 @@ impl VisualizerPanelState {
         self.dots.clear();
         self.dots.extend((0..state.fixture_count).map(|i| {
             let phase = i as f64 * phase_offset_per_fixture;
-            PlotPoint::new(phase, anim.value(Phase::new(phase), i))
+            PlotPoint::new(phase, anim.value(Phase::new(phase)))
         }));
     }
 

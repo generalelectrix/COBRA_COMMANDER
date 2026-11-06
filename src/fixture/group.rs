@@ -335,7 +335,6 @@ impl FixtureGroup {
                 .and_then(|p| p.offset_for_fixture(i));
             self.fixture.render(
                 phase_offset,
-                i,
                 &FixtureGroupControls {
                     master_controls,
                     mirror: cfg.mirror,
