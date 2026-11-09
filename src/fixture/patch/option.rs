@@ -53,7 +53,7 @@ impl AsPatchOption for u8 {
 
 impl AsPatchOption for NonZeroU8 {
     fn as_patch_option() -> PatchOption {
-        PatchOption::PositiveU8
+        PatchOption::NonZeroU8
     }
 }
 
@@ -158,7 +158,7 @@ pub enum PatchOption {
     /// An integer.
     Int,
     /// An integer from 1 to 255.
-    PositiveU8,
+    NonZeroU8,
     /// Select a specific option from a menu.
     Select(Vec<String>),
     /// A network address.
@@ -180,7 +180,7 @@ impl PatchOption {
     pub fn example_value(&self) -> serde_yaml::Value {
         use serde_yaml::Value;
         match self {
-            PatchOption::Int | PatchOption::PositiveU8 => Value::Number(1.into()),
+            PatchOption::Int | PatchOption::NonZeroU8 => Value::Number(1.into()),
             PatchOption::Bool => Value::Bool(false),
             PatchOption::Bipolar => Value::Number(0.0.into()),
             PatchOption::Unipolar => Value::Number(1.0.into()),
@@ -196,7 +196,7 @@ impl Display for PatchOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Int => f.write_str("<integer>"),
-            Self::PositiveU8 => f.write_str("<integer, 1..255>"),
+            Self::NonZeroU8 => f.write_str("<integer, 1..255>"),
             Self::Select(opts) => f.write_str(&opts.join(", ")),
             Self::SocketAddr => f.write_str("<socket address>"),
             Self::Url => f.write_str("<url>"),

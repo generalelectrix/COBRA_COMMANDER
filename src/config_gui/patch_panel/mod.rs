@@ -1535,8 +1535,8 @@ mod test {
     }
 
     #[test]
-    fn validate_positive_u8_option() {
-        let opt = PatchOption::PositiveU8;
+    fn validate_non_zero_u8_option() {
+        let opt = PatchOption::NonZeroU8;
         assert!(validate_option(&opt, "1").is_ok());
         assert!(validate_option(&opt, "255").is_ok());
         assert!(validate_option(&opt, &default_for_option(&opt)).is_ok());

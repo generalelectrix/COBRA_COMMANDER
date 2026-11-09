@@ -13,7 +13,7 @@ pub fn default_for_option(opt: &PatchOption) -> String {
     match opt {
         PatchOption::Bool => "false".to_string(),
         PatchOption::Int => "0".to_string(),
-        PatchOption::PositiveU8 => "1".to_string(),
+        PatchOption::NonZeroU8 => "1".to_string(),
         PatchOption::Bipolar => "0".to_string(),
         PatchOption::Unipolar => "1".to_string(),
         PatchOption::Select(choices) => choices.first().cloned().unwrap_or_default(),
@@ -30,7 +30,7 @@ pub fn validate_option(opt: &PatchOption, value: &str) -> Result<(), String> {
             .parse::<i64>()
             .map(|_| ())
             .map_err(|_| "must be a number".to_string()),
-        PatchOption::PositiveU8 => value
+        PatchOption::NonZeroU8 => value
             .parse::<NonZeroU8>()
             .map(|_| ())
             .map_err(|_| "must be a number from 1 to 255".to_string()),
@@ -93,7 +93,7 @@ pub fn render_option_widget(ui: &mut egui::Ui, key: &str, opt: &PatchOption, val
             });
         }
         PatchOption::Int
-        | PatchOption::PositiveU8
+        | PatchOption::NonZeroU8
         | PatchOption::Bipolar
         | PatchOption::Unipolar
         | PatchOption::Url
