@@ -1535,6 +1535,21 @@ mod test {
     }
 
     #[test]
+    fn validate_non_zero_u8_option() {
+        let opt = PatchOption::NonZeroU8;
+        assert!(validate_option(&opt, "1").is_ok());
+        assert!(validate_option(&opt, "255").is_ok());
+        assert!(validate_option(&opt, &default_for_option(&opt)).is_ok());
+        for bad in ["0", "256", "-1", "abc"] {
+            assert_eq!(
+                validate_option(&opt, bad),
+                Err("must be a number from 1 to 255".to_string()),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
     fn validate_bipolar_option() {
         assert!(validate_option(&PatchOption::Bipolar, "0.33").is_ok());
         assert!(validate_option(&PatchOption::Bipolar, "-1").is_ok());
