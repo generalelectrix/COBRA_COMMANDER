@@ -1,5 +1,5 @@
 //! Types and traits for specification of patch options.
-use std::{fmt::Display, net::SocketAddr};
+use std::{fmt::Display, net::SocketAddr, num::NonZeroUsize};
 
 use anyhow::Error;
 use number::{BipolarFloat, UnipolarFloat};
@@ -48,6 +48,12 @@ impl AsPatchOption for usize {
 impl AsPatchOption for u8 {
     fn as_patch_option() -> PatchOption {
         PatchOption::Int
+    }
+}
+
+impl AsPatchOption for NonZeroUsize {
+    fn as_patch_option() -> PatchOption {
+        PatchOption::PositiveInt
     }
 }
 
@@ -151,6 +157,8 @@ impl<T: EnumRenderModel + IntoEnumIterator + Display> AsPatchOption for T {
 pub enum PatchOption {
     /// An integer.
     Int,
+    /// An integer of at least 1.
+    PositiveInt,
     /// Select a specific option from a menu.
     Select(Vec<String>),
     /// A network address.
@@ -172,7 +180,7 @@ impl PatchOption {
     pub fn example_value(&self) -> serde_yaml::Value {
         use serde_yaml::Value;
         match self {
-            PatchOption::Int => Value::Number(1.into()),
+            PatchOption::Int | PatchOption::PositiveInt => Value::Number(1.into()),
             PatchOption::Bool => Value::Bool(false),
             PatchOption::Bipolar => Value::Number(0.0.into()),
             PatchOption::Unipolar => Value::Number(1.0.into()),
@@ -188,6 +196,7 @@ impl Display for PatchOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Int => f.write_str("<integer>"),
+            Self::PositiveInt => f.write_str("<integer, at least 1>"),
             Self::Select(opts) => f.write_str(&opts.join(", ")),
             Self::SocketAddr => f.write_str("<socket address>"),
             Self::Url => f.write_str("<url>"),

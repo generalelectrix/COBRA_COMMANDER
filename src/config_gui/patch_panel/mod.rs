@@ -1535,6 +1535,19 @@ mod test {
     }
 
     #[test]
+    fn validate_positive_int_option() {
+        let opt = PatchOption::PositiveInt;
+        assert!(validate_option(&opt, "1").is_ok());
+        assert!(validate_option(&opt, &default_for_option(&opt)).is_ok());
+        assert_eq!(
+            validate_option(&opt, "0"),
+            Err("must be a number, at least 1".to_string())
+        );
+        assert!(validate_option(&opt, "-1").is_err());
+        assert!(validate_option(&opt, "abc").is_err());
+    }
+
+    #[test]
     fn validate_bipolar_option() {
         assert!(validate_option(&PatchOption::Bipolar, "0.33").is_ok());
         assert!(validate_option(&PatchOption::Bipolar, "-1").is_ok());
