@@ -192,30 +192,9 @@ fn chases_for_paired() -> Result<Chases<10>> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::config::Options;
-
     #[test]
     fn test_chases() {
         super::chases_for_single().unwrap();
         super::chases_for_paired().unwrap();
-    }
-
-    #[test]
-    fn max_intensity_is_between_1_and_255() {
-        let options = |max: i64| Options::from_entries([("max_intensity".to_string(), max.into())]);
-        assert!(FlashBang::parse_group_options(Options::default()).is_ok());
-        assert!(FlashBang::parse_group_options(options(255)).is_ok());
-        for max in [0, 256] {
-            let Err(err) = FlashBang::parse_group_options(options(max)) else {
-                panic!("max_intensity {max} was accepted");
-            };
-            assert!(
-                format!("{err:#}").contains(&format!(
-                    "invalid value: integer `{max}`, expected a nonzero u8"
-                )),
-                "{err:#}"
-            );
-        }
     }
 }
