@@ -284,13 +284,18 @@ mod test {
     }
 
     #[test]
-    fn preset_count_must_be_at_least_one() {
-        let Err(err) = Wled::parse_group_options(options(0)) else {
-            panic!("0 presets were accepted");
-        };
-        assert!(
-            format!("{err:#}").contains("invalid value: integer `0`, expected a nonzero usize"),
-            "{err:#}"
-        );
+    fn preset_count_is_between_1_and_255() {
+        assert!(Wled::parse_group_options(options(255)).is_ok());
+        for count in [0, 256] {
+            let Err(err) = Wled::parse_group_options(options(count)) else {
+                panic!("{count} presets were accepted");
+            };
+            assert!(
+                format!("{err:#}").contains(&format!(
+                    "invalid value: integer `{count}`, expected a nonzero u8"
+                )),
+                "{err:#}"
+            );
+        }
     }
 }

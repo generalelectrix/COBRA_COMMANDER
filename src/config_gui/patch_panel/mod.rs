@@ -1538,13 +1538,15 @@ mod test {
     fn validate_positive_int_option() {
         let opt = PatchOption::PositiveInt;
         assert!(validate_option(&opt, "1").is_ok());
+        assert!(validate_option(&opt, "255").is_ok());
         assert!(validate_option(&opt, &default_for_option(&opt)).is_ok());
-        assert_eq!(
-            validate_option(&opt, "0"),
-            Err("must be a number, at least 1".to_string())
-        );
-        assert!(validate_option(&opt, "-1").is_err());
-        assert!(validate_option(&opt, "abc").is_err());
+        for bad in ["0", "256", "-1", "abc"] {
+            assert_eq!(
+                validate_option(&opt, bad),
+                Err("must be a number from 1 to 255".to_string()),
+                "{bad}"
+            );
+        }
     }
 
     #[test]
