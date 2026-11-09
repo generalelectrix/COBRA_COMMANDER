@@ -4,6 +4,8 @@
 //! the brightness of each LED ring is directly controlled. There is also a
 //! special 10-channel mode provided for using a pair of these fixtures where
 //! the patterns can be extended over both arrays for additional effects.
+use std::num::NonZeroU8;
+
 use anyhow::Result;
 
 use crate::fixture::control::strobe_array::*;
@@ -36,7 +38,7 @@ pub struct GroupOptions {
     #[serde(default)]
     paired: bool,
     #[serde(default)]
-    max_intensity: Option<u8>,
+    max_intensity: Option<NonZeroU8>,
 }
 
 impl PatchFixture for FlashBang {
@@ -55,7 +57,7 @@ impl PatchFixture for FlashBang {
             intensity: Unipolar::new("Intensity", ())
                 .at(UnipolarFloat::new(0.0))
                 .with_channel_knob(0),
-            max_intensity: options.max_intensity.unwrap_or(255),
+            max_intensity: options.max_intensity.map_or(u8::MAX, NonZeroU8::get),
             chase: IndexedSelect::new("Chase", flasher.len(), false, ()),
             multiplier: IndexedSelect::new("Multiplier", 2, false, ()),
             reverse: Bool::new_off("Reverse", ()),
