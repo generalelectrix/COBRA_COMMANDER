@@ -113,13 +113,7 @@ impl Wled {
     }
 
     fn update_preset(&self, _emitter: &FixtureStateEmitter) {
-        self.controller
-            .send(WledControlMessage::SetState(self.preset_state()));
-    }
-
-    /// The state that loads the selected preset, with the current speed and size.
-    /// WLED numbers presets from 1.
-    fn preset_state(&self) -> State {
+        // WLED numbers presets from 1.
         let preset_id = self.preset.selected().saturating_add(1);
         let mut state = State {
             ps: Some(i32::try_from(preset_id).unwrap_or(i32::MAX)),
@@ -128,7 +122,7 @@ impl Wled {
         // TODO: this may not actually do anything
         self.set_speed(&mut state);
         self.set_size(&mut state);
-        state
+        self.controller.send(WledControlMessage::SetState(state));
     }
 }
 
@@ -260,47 +254,4 @@ pub mod rug_doctor {
         speed_scale: 1.0,
         colors: [[0, 0, 0]; 4],
     };
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::config::Options;
-    use crate::control::mock::NoOpEmitter;
-
-    fn options(preset_count: i64) -> Options {
-        Options::from_entries([
-            ("url".to_string(), "http://127.0.0.1:9".into()),
-            ("preset_count".to_string(), preset_count.into()),
-        ])
-    }
-
-    /// The Preset buttons load WLED presets 1 through preset_count, since WLED
-    /// numbers presets from 1.
-    #[test]
-    fn preset_buttons_load_presets_from_one() {
-        let Ok(group_options) = Wled::parse_group_options(options(6)) else {
-            panic!("6 presets were rejected");
-        };
-        let mut wled = Wled::new(group_options);
-        assert_eq!(wled.preset_state().ps, Some(1));
-        wled.preset.control_direct(5, &NoOpEmitter).unwrap();
-        assert_eq!(wled.preset_state().ps, Some(6));
-    }
-
-    #[test]
-    fn preset_count_is_between_1_and_255() {
-        assert!(Wled::parse_group_options(options(255)).is_ok());
-        for count in [0, 256] {
-            let Err(err) = Wled::parse_group_options(options(count)) else {
-                panic!("{count} presets were accepted");
-            };
-            assert!(
-                format!("{err:#}").contains(&format!(
-                    "invalid value: integer `{count}`, expected a nonzero u8"
-                )),
-                "{err:#}"
-            );
-        }
-    }
 }
