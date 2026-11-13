@@ -7,9 +7,8 @@ use std::sync::{
 use arc_swap::ArcSwap;
 use midi_harness::SlotStatus;
 use tunnels::{
-    animation::Animation,
+    animation_visualizer::AnimationSnapshot,
     audio::{AudioSnapshot, Role},
-    clock_server::SharedClockData,
 };
 use tunnels_lib::{
     notified::{Notified, NotifiedAtomic},
@@ -19,14 +18,6 @@ use tunnels_lib::{
 use crate::dmx::{DmxBuffer, UniverseIdx};
 use crate::osc::OscClientId;
 use crate::show_file::ShowPatchConfigs;
-
-/// Snapshot of animation state for the visualizer panel.
-#[derive(Default)]
-pub struct AnimationSnapshot {
-    pub animation: Animation,
-    pub clocks: SharedClockData,
-    pub fixture_count: usize,
-}
 
 /// Snapshot of the patch configuration.
 #[derive(Clone, Debug, Default)]

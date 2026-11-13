@@ -14,8 +14,8 @@ use crate::{
         Patch, animation_target::ControllableTargetedAnimation, prelude::FixtureGroupUpdate,
     },
     gui_state::{
-        AnimationSnapshot, DMX_DEBUG_NOT_WATCHING, DmxDebugSnapshot, DmxPortInfo, DmxPortStatus,
-        PatchSnapshot, SharedGuiState, StateDirty,
+        DMX_DEBUG_NOT_WATCHING, DmxDebugSnapshot, DmxPortInfo, DmxPortStatus, PatchSnapshot,
+        SharedGuiState, StateDirty,
     },
     master::MasterControls,
     midi::{EmitMidiChannelMessage, MidiControlMessage, MidiHandler, slots},
@@ -23,6 +23,7 @@ use crate::{
     preview::Previewer,
 };
 
+use tunnels::animation_visualizer::AnimationSnapshot;
 use tunnels::audio::{EnvelopeStreams, Role};
 
 use anyhow::{Context, Result, bail};
@@ -778,6 +779,7 @@ impl Show {
                     .unwrap_or_default(),
                 clocks: self.clocks.get(self.active_role),
                 fixture_count: group.fixture_configs().len(),
+                show_fixture_values: true,
             }));
         Ok(())
     }

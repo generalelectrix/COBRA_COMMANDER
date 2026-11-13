@@ -15,7 +15,6 @@
 //! - Panel-local UI state (combo box selections, etc.) lives in `FooPanelState`
 //!   and syncs from the authoritative Show state via `sync_from_status()`
 
-mod animation_panel;
 mod audio_panel;
 mod clock_panel;
 mod dmx_debug_panel;
@@ -47,7 +46,6 @@ use crate::midi::ControlHandler;
 use crate::preview::Previewer;
 use crate::show::Show;
 use crate::ui_util::GuiContext;
-use animation_panel::VisualizerPanelState;
 use audio_panel::AudioPanelState;
 use clock_panel::{ClockPanel, ClockPanelState};
 use dmx_panel::{DmxPortPanel, DmxPortPanelState};
@@ -58,6 +56,7 @@ use gui_common::{CloseHandler, MessageModal};
 use midi_panel::{MidiPanel, MidiPanelState};
 use patch_panel::{PatchPanel, PatchPanelState};
 use positioner_panel::{PositionerPanel, PositionerPanelState};
+use tunnels::animation_visualizer::VisualizerPanelState;
 use welcome::WelcomeResult;
 
 fn apply_dark_theme(ctx: &egui::Context) {
