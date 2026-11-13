@@ -167,7 +167,6 @@ pub trait Fixture: Update + EmitState + Control + DescribeOscControls {
     fn render(
         &self,
         phase_offset: Phase,
-        offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     );
@@ -195,7 +194,6 @@ where
     fn render(
         &self,
         _phase_offset: Phase,
-        _offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     ) {
@@ -266,7 +264,6 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
     fn render(
         &self,
         phase_offset: Phase,
-        offset_index: usize,
         group_controls: &FixtureGroupControls,
         dmx_buffer: &mut [u8],
     ) {
@@ -279,7 +276,7 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
             anim_buf[anim_count] = (
                 ta.animation
                     .prepare(&master.clock_state, master.audio(), master.spectrum())
-                    .value(phase_offset, offset_index),
+                    .value(phase_offset),
                 ta.target,
             );
             anim_count += 1;
