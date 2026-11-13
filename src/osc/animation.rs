@@ -29,6 +29,7 @@ const INVERT: Button = button("Invert");
 const USE_AUDIO_SIZE: Button = button("UseAudioSize");
 const USE_AUDIO_SPEED: Button = button("UseAudioSpeed");
 const STANDING: Button = button("Standing");
+const REFLECT: Button = button("Reflect");
 
 // clipboard
 const COPY: Button = button("Copy");
@@ -94,6 +95,7 @@ impl AnimationUIState {
         PULSE.map_trigger(map, || WrapAnimation(TogglePulse));
         INVERT.map_trigger(map, || WrapAnimation(ToggleInvert));
         STANDING.map_trigger(map, || WrapAnimation(ToggleStanding));
+        REFLECT.map_trigger(map, || WrapAnimation(ToggleReflect));
         USE_AUDIO_SPEED.map_trigger(map, || WrapAnimation(ToggleUseAudioSpeed));
         USE_AUDIO_SIZE.map_trigger(map, || WrapAnimation(ToggleUseAudioSize));
 
@@ -177,6 +179,7 @@ impl AnimationUIState {
             Pulse(v) => PULSE.send(v, emitter),
             Standing(v) => STANDING.send(v, emitter),
             Invert(v) => INVERT.send(v, emitter),
+            Reflect(v) => REFLECT.send(v, emitter),
             UseAudioSize(v) => USE_AUDIO_SIZE.send(v, emitter),
             UseAudioSpeed(v) => USE_AUDIO_SPEED.send(v, emitter),
         }
