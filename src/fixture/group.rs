@@ -203,6 +203,8 @@ impl FixtureGroup {
     /// How the group's fixtures lie along an animation's phase: one place per
     /// fixture, in patch order.
     pub fn sampling(&self) -> Sampling {
+        // FIXME: make patch groups non-empty by construction, so this has no
+        // empty case to fall back from.
         NonZeroUsize::new(self.fixture_configs.len()).map_or(Sampling::Continuous, Sampling::Points)
     }
 
