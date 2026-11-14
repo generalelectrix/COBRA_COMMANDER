@@ -275,7 +275,12 @@ impl<F: AnimatedFixture> Fixture for FixtureWithAnimations<F> {
         for ta in self.animations.iter() {
             anim_buf[anim_count] = (
                 ta.animation
-                    .prepare(&master.clock_state, master.audio(), master.spectrum())
+                    .prepare(
+                        &master.clock_state,
+                        master.audio(),
+                        master.spectrum(),
+                        group_controls.sampling,
+                    )
                     .value(phase_offset),
                 ta.target,
             );

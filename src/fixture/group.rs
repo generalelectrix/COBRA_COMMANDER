@@ -5,9 +5,11 @@ use color_organ::ColorOrganHsluv;
 use color_organ::FixtureId;
 use log::error;
 use std::fmt::{Debug, Display};
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use number::Phase;
+use tunnels::animation::Sampling;
 
 use super::animation_target::ControllableTargetedAnimation;
 use super::control::OscControlDescription;
@@ -198,6 +200,14 @@ impl FixtureGroup {
         &self.fixture_configs
     }
 
+    /// How the group's fixtures lie along an animation's phase: one place per
+    /// fixture, in patch order.
+    pub fn sampling(&self) -> Sampling {
+        // FIXME: make patch groups non-empty by construction, so this has no
+        // empty case to fall back from.
+        NonZeroUsize::new(self.fixture_configs.len()).map_or(Sampling::Continuous, Sampling::Points)
+    }
+
     /// Read-only access to the positioner, if this group is positionable.
     pub fn positioner(&self) -> Option<&crate::positioner::Positioner> {
         self.positioner.as_ref()
@@ -306,6 +316,7 @@ impl FixtureGroup {
         preview: &Previewer,
     ) {
         let phase_offset_per_fixture = Phase::new(1.0 / self.fixture_configs.len() as f64);
+        let sampling = self.sampling();
         let group_name = self.qualified_name();
         let preview = preview.for_group(&group_name);
         for (i, cfg) in self.fixture_configs.iter().enumerate() {
@@ -338,6 +349,7 @@ impl FixtureGroup {
                 &FixtureGroupControls {
                     master_controls,
                     mirror: cfg.mirror,
+                    sampling,
                     render_mode: cfg.render_mode,
                     color: self.color_organ.as_ref().and_then(|color_organ| {
                         color_organ.render(FixtureId(i as u32)).map(|color| Hsluv {

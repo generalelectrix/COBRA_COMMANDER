@@ -278,6 +278,7 @@ mod strobe_tests {
     use crate::osc::MockEmitter;
     use crate::preview::FixturePreviewer;
     use crate::strobe::StrobeClock;
+    use tunnels::animation::Sampling;
 
     use super::{AnimationTarget, Color};
 
@@ -308,6 +309,7 @@ mod strobe_tests {
         let gc = FixtureGroupControls {
             master_controls: master,
             mirror: false,
+            sampling: Sampling::Continuous,
             render_mode: None,
             color: None,
             strobe_enabled,

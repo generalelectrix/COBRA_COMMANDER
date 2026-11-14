@@ -778,7 +778,7 @@ impl Show {
                     .cloned()
                     .unwrap_or_default(),
                 clocks: self.clocks.get(self.active_role),
-                fixture_count: group.fixture_configs().len(),
+                sampling: group.sampling(),
                 show_fixture_values: true,
             }));
         Ok(())
@@ -1452,9 +1452,9 @@ mod tests {
 
         show.snapshot_animation_state().unwrap();
 
-        // Animation state should still be the default (fixture_count == 0).
+        // Animation state should still be the default.
         let state = show.gui_state.animation_state.load();
-        assert_eq!(state.fixture_count, 0);
+        assert_eq!(state.sampling, tunnels::animation::Sampling::Continuous);
     }
 
     #[test]
@@ -1468,9 +1468,13 @@ mod tests {
 
         show.snapshot_animation_state().unwrap();
 
-        // The patch has one Dimmer fixture, so fixture_count should be 1.
+        // The patch has one Dimmer fixture, so the animation is resolved at one
+        // place.
         let state = show.gui_state.animation_state.load();
-        assert_eq!(state.fixture_count, 1);
+        assert_eq!(
+            state.sampling,
+            tunnels::animation::Sampling::Points(std::num::NonZeroUsize::new(1).unwrap())
+        );
     }
 
     /// Generate YAML for N dimmer fixtures, each on a separate channel.

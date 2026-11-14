@@ -16,6 +16,7 @@ pub use group::FixtureGroup;
 use number::UnipolarFloat;
 pub use patch::Patch;
 pub use profile::*;
+use tunnels::animation::Sampling;
 
 /// Wrap up the master and group-level controls into a single struct to pass
 /// into fixtures.
@@ -24,6 +25,8 @@ pub struct FixtureGroupControls<'a> {
     master_controls: &'a MasterControls,
     /// True if the fixture should render in mirrored mode.
     mirror: bool,
+    /// How the group's fixtures lie along an animation's phase.
+    sampling: Sampling,
     /// Optional render mode index for fixtures that support more than one.
     render_mode: Option<RenderMode>,
     /// A color value for this fixture to use in rendering.
